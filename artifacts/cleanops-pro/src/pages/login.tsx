@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuthStore } from "@/lib/auth";
 import { useLogin } from "@workspace/api-client-react";
@@ -20,8 +20,14 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function Login() {
   const [, setLocation] = useLocation();
+  const token = useAuthStore(state => state.token);
   const setToken = useAuthStore(state => state.setToken);
   const { toast } = useToast();
+
+  // If already logged in, go straight to dashboard
+  useEffect(() => {
+    if (token) setLocation("/dashboard");
+  }, [token, setLocation]);
   
   const { register, handleSubmit, formState: { errors } } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),

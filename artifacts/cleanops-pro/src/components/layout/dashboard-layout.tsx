@@ -12,6 +12,7 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const token = useAuthStore(state => state.token);
+  const setToken = useAuthStore(state => state.setToken);
   const [, setLocation] = useLocation();
 
   useEffect(() => {
@@ -22,13 +23,24 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     document.documentElement.classList.add('dark');
   }, [token, setLocation]);
 
-  const { data: user, isLoading } = useGetMe({
+  const { data: user, isLoading, isError, error } = useGetMe({
     request: { headers: getAuthHeaders() },
     query: {
       enabled: !!token,
       retry: false,
     }
   });
+
+  // If token is invalid/expired (401), clear it and redirect to login
+  useEffect(() => {
+    if (isError) {
+      const status = (error as any)?.status;
+      if (status === 401 || status === 403) {
+        setToken(null);
+        setLocation("/login");
+      }
+    }
+  }, [isError, error, setToken, setLocation]);
 
   if (!token) return null;
   if (isLoading) return <div className="h-screen w-full flex items-center justify-center bg-background"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
