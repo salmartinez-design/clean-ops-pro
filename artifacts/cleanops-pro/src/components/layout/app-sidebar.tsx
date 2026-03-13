@@ -1,20 +1,10 @@
-import { Home, Users, UsersRound, Briefcase, FileText, BarChart3, Settings, LogOut, Medal } from "lucide-react";
+import { Home, Users, UsersRound, Briefcase, FileText, BarChart3, Settings, LogOut, Medal, BookOpen, LayoutDashboard } from "lucide-react";
 import { Link, useLocation } from "wouter";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarFooter,
-} from "@/components/ui/sidebar";
 import { useAuthStore } from "@/lib/auth";
+import { useTenantBrand } from "@/lib/tenant-brand";
 
-const navItems = [
-  { title: "Dashboard", url: "/dashboard", icon: Home },
+const opsItems = [
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Jobs", url: "/jobs", icon: Briefcase },
   { title: "Employees", url: "/employees", icon: Users },
   { title: "Customers", url: "/customers", icon: UsersRound },
@@ -22,84 +12,121 @@ const navItems = [
   { title: "Payroll", url: "/payroll", icon: BarChart3 },
 ];
 
-const settingsItems = [
+const toolItems = [
+  { title: "Cleancyclopedia", url: "/cleancyclopedia", icon: BookOpen },
+];
+
+const configItems = [
   { title: "Loyalty", url: "/loyalty", icon: Medal },
   { title: "Company", url: "/company", icon: Settings },
 ];
 
+function NavSection({ label, items, currentPath }: { label: string; items: typeof opsItems; currentPath: string }) {
+  return (
+    <div className="mb-2">
+      <p style={{ fontSize: '10px', letterSpacing: '0.1em', color: '#555550', fontFamily: "'DM Mono', monospace", fontWeight: 400 }} className="uppercase px-4 py-2">
+        {label}
+      </p>
+      {items.map(item => {
+        const isActive = currentPath.startsWith(item.url);
+        return (
+          <Link key={item.title} href={item.url}>
+            <div
+              style={isActive ? {
+                backgroundColor: 'rgba(var(--tenant-color-rgb), 0.12)',
+                borderLeft: '3px solid var(--tenant-color)',
+                color: 'var(--tenant-color)',
+              } : {
+                borderLeft: '3px solid transparent',
+                color: '#888780',
+              }}
+              className="flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors hover:bg-[#1A1A1A] hover:text-[#E8E0D0]"
+            >
+              <item.icon size={15} strokeWidth={1.5} style={isActive ? { color: 'var(--tenant-color)' } : {}} />
+              <span style={{ fontSize: '13px', fontFamily: "'DM Mono', monospace", fontWeight: isActive ? 400 : 300 }}>
+                {item.title}
+              </span>
+            </div>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
 export function AppSidebar() {
   const [location] = useLocation();
   const logout = useAuthStore(state => state.logout);
+  const { logoUrl, companyName, brandColor } = useTenantBrand();
+
+  const token = useAuthStore(state => state.token);
+  let userEmail: { email: string; role: string } | null = null;
+  if (token) {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      userEmail = { email: payload.email, role: payload.role };
+    } catch { /* empty */ }
+  }
 
   return (
-    <Sidebar>
-      <SidebarContent>
-        <div className="p-4 flex items-center gap-3 border-b border-border mb-4">
-          <div className="w-8 h-8 rounded bg-primary flex items-center justify-center">
-            <img src={`${import.meta.env.BASE_URL}images/logo-mark.png`} alt="CleanOps Pro" className="w-5 h-5 object-contain invert brightness-0" />
+    <div
+      style={{ width: '220px', minWidth: '220px', backgroundColor: '#111111', borderRight: '1px solid #252525' }}
+      className="flex flex-col h-screen overflow-y-auto"
+    >
+      {/* Logo / Company Header */}
+      <div style={{ borderBottom: '1px solid #252525', padding: '16px' }} className="shrink-0">
+        {logoUrl ? (
+          <img src={logoUrl} alt={companyName} style={{ maxHeight: '36px', objectFit: 'contain' }} />
+        ) : (
+          <div className="flex items-center gap-2.5">
+            <div style={{ width: '28px', height: '28px', borderRadius: '6px', backgroundColor: brandColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <span style={{ color: '#0D0D0D', fontSize: '13px', fontFamily: "'Playfair Display', serif", fontWeight: 700 }}>C</span>
+            </div>
+            <div>
+              <p style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: '15px', color: '#E8E0D0', lineHeight: 1.2 }}>CleanOps Pro</p>
+              <p style={{ fontSize: '11px', color: '#888780', fontFamily: "'DM Mono', monospace", fontWeight: 300, lineHeight: 1.2 }}>{companyName}</p>
+            </div>
           </div>
-          <span className="font-display font-bold text-xl tracking-tight text-white">CleanOps Pro</span>
-        </div>
+        )}
+      </div>
 
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-muted-foreground uppercase tracking-wider text-xs font-semibold">Operations</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {navItems.map((item) => {
-                const isActive = location.startsWith(item.url);
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton 
-                      asChild 
-                      isActive={isActive}
-                      className={isActive ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-muted-foreground hover:text-white"}
-                    >
-                      <Link href={item.url} className="flex items-center gap-3">
-                        <item.icon className="w-4 h-4" />
-                        <span className="font-medium">{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+      {/* Navigation */}
+      <nav className="flex-1 py-3 overflow-y-auto">
+        <NavSection label="Operations" items={opsItems} currentPath={location} />
+        <NavSection label="Tools" items={toolItems} currentPath={location} />
+        <NavSection label="Configuration" items={configItems} currentPath={location} />
+      </nav>
 
-        <SidebarGroup className="mt-4">
-          <SidebarGroupLabel className="text-muted-foreground uppercase tracking-wider text-xs font-semibold">Configuration</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {settingsItems.map((item) => {
-                const isActive = location.startsWith(item.url);
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton 
-                      asChild 
-                      isActive={isActive}
-                      className={isActive ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-muted-foreground hover:text-white"}
-                    >
-                      <Link href={item.url} className="flex items-center gap-3">
-                        <item.icon className="w-4 h-4" />
-                        <span className="font-medium">{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-      <SidebarFooter className="border-t border-border p-4">
-        <button 
-          onClick={() => logout()} 
-          className="flex items-center gap-3 text-muted-foreground hover:text-white transition-colors w-full p-2 rounded-md hover-elevate font-medium"
+      {/* Footer — User + Sign Out */}
+      <div style={{ borderTop: '1px solid #252525', padding: '12px 16px' }} className="shrink-0">
+        {userEmail && (
+          <div className="mb-3">
+            <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", fontWeight: 400, color: '#E8E0D0' }} className="truncate">{userEmail.email}</p>
+            <span style={{
+              display: 'inline-block',
+              fontSize: '10px',
+              fontFamily: "'DM Mono', monospace",
+              backgroundColor: `rgba(var(--tenant-color-rgb), 0.15)`,
+              color: 'var(--tenant-color)',
+              padding: '1px 6px',
+              borderRadius: '3px',
+              marginTop: '3px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+            }}>
+              {userEmail.role}
+            </span>
+          </div>
+        )}
+        <button
+          onClick={() => logout()}
+          style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#888780' }}
+          className="flex items-center gap-2 hover:text-[#E8E0D0] transition-colors w-full py-1"
         >
-          <LogOut className="w-4 h-4" />
-          <span>Sign Out</span>
+          <LogOut size={13} strokeWidth={1.5} />
+          Sign Out
         </button>
-      </SidebarFooter>
-    </Sidebar>
+      </div>
+    </div>
   );
 }

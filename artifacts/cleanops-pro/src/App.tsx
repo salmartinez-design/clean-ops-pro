@@ -2,17 +2,22 @@ import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/not-found";
 
-// Page Imports
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import JobsPage from "@/pages/jobs";
 import EmployeesPage from "@/pages/employees";
 import CustomersPage from "@/pages/customers";
 import InvoicesPage from "@/pages/invoices";
+import CompanyPage from "@/pages/company";
+import LoyaltyPage from "@/pages/loyalty";
+import NotFound from "@/pages/not-found";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { staleTime: 30_000, retry: false },
+  },
+});
 
 function Router() {
   return (
@@ -24,7 +29,8 @@ function Router() {
       <Route path="/employees" component={EmployeesPage} />
       <Route path="/customers" component={CustomersPage} />
       <Route path="/invoices" component={InvoicesPage} />
-      {/* Fallback to NotFound if no route matches */}
+      <Route path="/company" component={CompanyPage} />
+      <Route path="/loyalty" component={LoyaltyPage} />
       <Route component={NotFound} />
     </Switch>
   );

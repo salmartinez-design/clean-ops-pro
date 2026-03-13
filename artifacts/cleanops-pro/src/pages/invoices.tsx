@@ -2,127 +2,139 @@ import { useState } from "react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { useListInvoices, ListInvoicesStatus } from "@workspace/api-client-react";
 import { getAuthHeaders } from "@/lib/auth";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Plus, Search, Send, Download } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, Send, Download } from "lucide-react";
-import { StatusBadge } from "@/components/ui/status-badge";
+
+const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
+  paid:     { bg: '#EAF3DE', text: '#27500A', label: 'PAID' },
+  overdue:  { bg: '#FAEEDA', text: '#633806', label: 'OVERDUE' },
+  draft:    { bg: '#F1EFE8', text: '#444441', label: 'DRAFT' },
+  sent:     { bg: '#E6F1FB', text: '#0C447C', label: 'SENT' },
+};
+
+type TabId = ListInvoicesStatus | 'all';
 
 export default function InvoicesPage() {
-  const [activeTab, setActiveTab] = useState<ListInvoicesStatus | 'all'>('all');
+  const [activeTab, setActiveTab] = useState<TabId>('all');
+  const [search, setSearch] = useState('');
   const { data, isLoading } = useListInvoices(
     activeTab !== 'all' ? { status: activeTab } : {},
     { request: { headers: getAuthHeaders() } }
   );
 
-  const tabs = [
-    { id: 'all', label: 'All Invoices' },
+  const tabs: { id: TabId; label: string }[] = [
+    { id: 'all', label: 'All' },
     { id: 'draft', label: 'Drafts' },
     { id: 'sent', label: 'Sent' },
     { id: 'paid', label: 'Paid' },
     { id: 'overdue', label: 'Overdue' },
   ];
 
+  const invoices = (data?.data || []).filter(i =>
+    !search || i.client_name?.toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
     <DashboardLayout>
-      <div className="flex flex-col space-y-6">
-        <div className="flex justify-between items-center">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <h1 className="text-3xl font-display font-bold">Invoicing</h1>
-            <p className="text-muted-foreground mt-1">Manage billing, capture payments, and track revenue.</p>
+            <h1 style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: '42px', color: '#E8E0D0', margin: 0, lineHeight: 1.1 }}>Invoices</h1>
+            <p style={{ fontFamily: "'DM Mono', monospace", fontWeight: 300, fontSize: '13px', color: '#888780', marginTop: '6px' }}>Manage billing, capture payments, and track revenue.</p>
           </div>
-          <Button className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-lg shadow-primary/20">
-            <Plus className="w-4 h-4 mr-2" /> Create Invoice
-          </Button>
+          <button style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 18px', backgroundColor: 'var(--tenant-color)', color: '#0D0D0D', borderRadius: '6px', fontSize: '13px', fontFamily: "'DM Mono', monospace", fontWeight: 400, border: 'none', cursor: 'pointer' }}>
+            <Plus size={15} strokeWidth={2} /> Create Invoice
+          </button>
         </div>
 
-        {/* Header Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card className="p-4 bg-card border-border">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Total Outstanding</p>
-            <p className="text-2xl font-bold text-white mt-1">${(data?.stats?.total_outstanding || 0).toLocaleString()}</p>
-          </Card>
-          <Card className="p-4 bg-card border-border">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Total Overdue</p>
-            <p className="text-2xl font-bold text-status-danger mt-1">${(data?.stats?.total_overdue || 0).toLocaleString()}</p>
-          </Card>
-          <Card className="p-4 bg-card border-border">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Paid (Last 30D)</p>
-            <p className="text-2xl font-bold text-status-success mt-1">${(data?.stats?.total_paid || 0).toLocaleString()}</p>
-          </Card>
-          <Card className="p-4 bg-[#1A1A1A] border-primary/30 card-active-accent">
-            <p className="text-xs text-primary uppercase tracking-wider font-semibold">Total Revenue (YTD)</p>
-            <p className="text-2xl font-bold text-white mt-1">${(data?.stats?.total_revenue || 0).toLocaleString()}</p>
-          </Card>
+        {/* Stat Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+          <StatCard label="Total Outstanding" value={`$${(data?.stats?.total_outstanding || 0).toLocaleString()}`} />
+          <StatCard label="Total Overdue" value={`$${(data?.stats?.total_overdue || 0).toLocaleString()}`} danger />
+          <StatCard label="Paid (Last 30D)" value={`$${(data?.stats?.total_paid || 0).toLocaleString()}`} positive />
+          <StatCard label="Total Revenue (YTD)" value={`$${(data?.stats?.total_revenue || 0).toLocaleString()}`} accent />
         </div>
 
-        <Card className="p-0 overflow-hidden border-border bg-card mt-6">
-          <div className="flex flex-col sm:flex-row justify-between items-center p-4 border-b border-border bg-[#1A1A1A] gap-4">
-             <div className="flex space-x-1 p-1 bg-background rounded-lg border border-border overflow-x-auto w-full sm:w-auto">
+        {/* Table */}
+        <div style={{ backgroundColor: '#161616', border: '1px solid #252525', borderRadius: '8px', overflow: 'hidden' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #252525', backgroundColor: '#1A1A1A', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
               {tabs.map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={`px-3 py-1.5 text-sm font-semibold rounded-md transition-all whitespace-nowrap ${
-                    activeTab === tab.id 
-                      ? 'bg-secondary text-white shadow-sm' 
-                      : 'text-muted-foreground hover:text-foreground hover:bg-background/80'
-                  }`}
-                >
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '5px 14px', fontSize: '12px', fontFamily: "'DM Mono', monospace", fontWeight: 300, borderRadius: '4px', cursor: 'pointer', border: activeTab === tab.id ? 'none' : '1px solid #252525', backgroundColor: activeTab === tab.id ? 'var(--tenant-color)' : 'transparent', color: activeTab === tab.id ? '#0D0D0D' : '#888780', transition: 'all 0.15s' }}>
                   {tab.label}
                 </button>
               ))}
             </div>
-            <div className="relative w-full sm:w-64">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input className="pl-9 bg-background border-border h-10" placeholder="Search invoice # or client..." />
+            <div style={{ position: 'relative' }}>
+              <Search size={14} strokeWidth={1.5} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#888780' }} />
+              <input
+                placeholder="Search invoice or client..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                style={{ paddingLeft: '34px', paddingRight: '12px', height: '36px', backgroundColor: '#0D0D0D', border: '1px solid #252525', borderRadius: '6px', color: '#E8E0D0', fontSize: '12px', fontFamily: "'DM Mono', monospace", width: '220px', outline: 'none' }}
+              />
             </div>
           </div>
-          
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs uppercase bg-background text-muted-foreground border-b border-border">
-                <tr>
-                  <th className="px-6 py-4 font-semibold">Invoice #</th>
-                  <th className="px-6 py-4 font-semibold">Client</th>
-                  <th className="px-6 py-4 font-semibold">Amount</th>
-                  <th className="px-6 py-4 font-semibold">Date</th>
-                  <th className="px-6 py-4 font-semibold">Status</th>
-                  <th className="px-6 py-4 font-semibold text-right">Actions</th>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#0D0D0D', borderBottom: '1px solid #252525' }}>
+                  {['Invoice #', 'Client', 'Amount', 'Date', 'Status', ''].map(h => (
+                    <th key={h} style={{ padding: '12px 20px', textAlign: h === '' ? 'right' : 'left', fontSize: '11px', fontFamily: "'DM Mono', monospace", fontWeight: 400, color: '#555550', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">Loading invoices...</td></tr>
-                ) : data?.data?.map(invoice => (
-                  <tr key={invoice.id} className="border-b border-border hover:bg-background/50 transition-colors">
-                    <td className="px-6 py-4 font-mono font-bold text-white">INV-{invoice.id.toString().padStart(4, '0')}</td>
-                    <td className="px-6 py-4 font-semibold">{invoice.client_name}</td>
-                    <td className="px-6 py-4 font-bold text-white">${invoice.total.toFixed(2)}</td>
-                    <td className="px-6 py-4 text-muted-foreground">{new Date(invoice.created_at).toLocaleDateString()}</td>
-                    <td className="px-6 py-4">
-                      <StatusBadge status={invoice.status} />
-                    </td>
-                    <td className="px-6 py-4 text-right space-x-2">
-                      {invoice.status === 'draft' && (
-                        <Button variant="outline" size="sm" className="h-8 border-border hover-elevate">
-                          <Send className="w-3 h-3 mr-2" /> Send
-                        </Button>
-                      )}
-                      <Button variant="ghost" size="icon" className="h-8 w-8 hover-elevate">
-                        <Download className="w-4 h-4 text-muted-foreground" />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-                {!data?.data?.length && (
-                  <tr><td colSpan={6} className="px-6 py-12 text-center text-muted-foreground font-medium">No invoices found matching criteria.</td></tr>
-                )}
+                  <tr><td colSpan={6} style={{ padding: '32px', textAlign: 'center', color: '#888780', fontSize: '13px', fontFamily: "'DM Mono', monospace" }}>Loading invoices...</td></tr>
+                ) : invoices.length === 0 ? (
+                  <tr><td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#888780', fontSize: '13px', fontFamily: "'DM Mono', monospace" }}>No invoices found.</td></tr>
+                ) : invoices.map(inv => {
+                  const s = STATUS_STYLES[inv.status] || STATUS_STYLES.draft;
+                  return (
+                    <tr key={inv.id} style={{ borderBottom: '1px solid #252525' }} className="hover:bg-[#1A1A1A] transition-colors">
+                      <td style={{ padding: '14px 20px', fontSize: '13px', fontFamily: "'DM Mono', monospace", fontWeight: 400, color: '#E8E0D0' }}>INV-{inv.id.toString().padStart(4, '0')}</td>
+                      <td style={{ padding: '14px 20px', fontSize: '13px', fontFamily: "'DM Mono', monospace", fontWeight: 400, color: '#E8E0D0' }}>{inv.client_name}</td>
+                      <td style={{ padding: '14px 20px', fontSize: '13px', fontFamily: "'Playfair Display', serif", fontWeight: 700, color: '#E8E0D0' }}>${inv.total.toFixed(2)}</td>
+                      <td style={{ padding: '14px 20px', fontSize: '12px', fontFamily: "'DM Mono', monospace", color: '#888780' }}>{new Date(inv.created_at).toLocaleDateString()}</td>
+                      <td style={{ padding: '14px 20px' }}>
+                        <span style={{ backgroundColor: s.bg, color: s.text, padding: '3px 10px', borderRadius: '4px', fontSize: '11px', fontFamily: "'DM Mono', monospace", fontWeight: 400, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</span>
+                      </td>
+                      <td style={{ padding: '14px 20px', textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                        {inv.status === 'draft' && (
+                          <button style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 12px', border: '1px solid #252525', borderRadius: '5px', backgroundColor: 'transparent', color: '#888780', fontSize: '12px', fontFamily: "'DM Mono', monospace", cursor: 'pointer' }}>
+                            <Send size={12} strokeWidth={1.5} /> Send
+                          </button>
+                        )}
+                        <button style={{ padding: '5px', border: 'none', backgroundColor: 'transparent', color: '#888780', cursor: 'pointer', borderRadius: '4px' }} className="hover:text-[#E8E0D0] transition-colors">
+                          <Download size={15} strokeWidth={1.5} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-        </Card>
+        </div>
       </div>
     </DashboardLayout>
+  );
+}
+
+function StatCard({ label, value, danger, positive, accent }: { label: string; value: string; danger?: boolean; positive?: boolean; accent?: boolean }) {
+  const valueColor = danger ? '#FCEBEB' : positive ? '#EAF3DE' : '#E8E0D0';
+  return (
+    <div style={{
+      backgroundColor: '#1A1A1A',
+      borderRadius: '8px',
+      padding: '16px 20px',
+      border: accent ? '1px solid var(--tenant-color)' : 'none',
+    }}>
+      <p style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", fontWeight: 400, color: accent ? 'var(--tenant-color)' : '#888780', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 8px 0' }}>{label}</p>
+      <p style={{ fontFamily: "'Playfair Display', serif", fontWeight: 900, fontSize: '24px', color: valueColor, margin: 0 }}>{value}</p>
+    </div>
   );
 }

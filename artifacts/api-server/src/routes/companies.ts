@@ -27,7 +27,7 @@ router.get("/me", requireAuth, async (req, res) => {
 
 router.put("/me", requireAuth, async (req, res) => {
   try {
-    const { name, logo_url, pay_cadence, geo_fence_threshold_ft } = req.body;
+    const { name, logo_url, pay_cadence, geo_fence_threshold_ft, brand_color } = req.body;
 
     const updated = await db
       .update(companiesTable)
@@ -36,6 +36,7 @@ router.put("/me", requireAuth, async (req, res) => {
         ...(logo_url !== undefined && { logo_url }),
         ...(pay_cadence && { pay_cadence }),
         ...(geo_fence_threshold_ft !== undefined && { geo_fence_threshold_ft }),
+        ...(brand_color && { brand_color }),
       })
       .where(eq(companiesTable.id, req.auth!.companyId))
       .returning();

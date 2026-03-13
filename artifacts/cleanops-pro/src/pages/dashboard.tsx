@@ -1,20 +1,18 @@
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { useGetDashboardMetrics } from "@workspace/api-client-react";
 import { getAuthHeaders } from "@/lib/auth";
-import { Card } from "@/components/ui/card";
-import { Briefcase, CheckCircle2, DollarSign, AlertTriangle, Users } from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { StatusBadge } from "@/components/ui/status-badge";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { DollarSign, CheckCircle2, Users, AlertTriangle } from "lucide-react";
 
-// Mock chart data for visual polish
 const mockChartData = [
-  { name: 'Mon', revenue: 4000 },
-  { name: 'Tue', revenue: 3000 },
-  { name: 'Wed', revenue: 5500 },
-  { name: 'Thu', revenue: 4500 },
-  { name: 'Fri', revenue: 6000 },
-  { name: 'Sat', revenue: 2000 },
-  { name: 'Sun', revenue: 1500 },
+  { name: 'Mon', revenue: 3200 },
+  { name: 'Tue', revenue: 2800 },
+  { name: 'Wed', revenue: 4800 },
+  { name: 'Thu', revenue: 4100 },
+  { name: 'Fri', revenue: 5600 },
+  { name: 'Sat', revenue: 2100 },
+  { name: 'Sun', revenue: 1400 },
 ];
 
 export default function Dashboard() {
@@ -25,164 +23,160 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout>
-      <div className="flex flex-col space-y-8">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+        {/* Page Title */}
         <div>
-          <h1 className="text-3xl font-display font-bold">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">Overview of operations for the current week.</p>
+          <h1 style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: '42px', color: '#E8E0D0', margin: 0, lineHeight: 1.1 }}>Dashboard</h1>
+          <p style={{ fontFamily: "'DM Mono', monospace", fontWeight: 300, fontSize: '13px', color: '#888780', marginTop: '6px' }}>Overview of operations for the current week.</p>
         </div>
 
-        {/* Metrics Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard 
-            title="Total Revenue" 
-            value={`$${(data?.total_revenue || 0).toLocaleString()}`} 
-            icon={<DollarSign className="w-5 h-5 text-primary" />} 
-            trend="+12% from last week"
-            isPositive
+        {/* Metric Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+          <MetricCard
+            label="Total Revenue"
+            value={`$${(data?.total_revenue || 0).toLocaleString()}`}
+            sub="+12% from last week"
+            subPositive
+            icon={<DollarSign size={16} strokeWidth={1.5} />}
           />
-          <MetricCard 
-            title="Jobs Completed" 
-            value={data?.jobs_completed || 0} 
-            icon={<CheckCircle2 className="w-5 h-5 text-status-success" />} 
-            trend={`${data?.jobs_in_progress || 0} in progress`}
-            isNeutral
+          <MetricCard
+            label="Jobs Completed"
+            value={data?.jobs_completed || 0}
+            sub={`${data?.jobs_in_progress || 0} in progress`}
+            icon={<CheckCircle2 size={16} strokeWidth={1.5} />}
           />
-          <MetricCard 
-            title="Active Employees" 
-            value={data?.active_employees || 0} 
-            icon={<Users className="w-5 h-5 text-secondary" />} 
-            trend="Avg score: 3.8/4.0"
-            isPositive
+          <MetricCard
+            label="Active Employees"
+            value={data?.active_employees || 0}
+            sub={`Avg score: ${(data?.avg_job_score || 0).toFixed(1)}/4.0`}
+            subPositive
+            icon={<Users size={16} strokeWidth={1.5} />}
           />
-          <MetricCard 
-            title="Flagged Clock-ins" 
-            value={data?.flagged_clock_ins || 0} 
-            icon={<AlertTriangle className="w-5 h-5 text-status-danger" />} 
-            trend="Requires review"
-            isNegative={data?.flagged_clock_ins ? data.flagged_clock_ins > 0 : false}
+          <MetricCard
+            label="Flagged Clock-Ins"
+            value={data?.flagged_clock_ins || 0}
+            sub="Requires review"
+            subNegative={!!data?.flagged_clock_ins}
+            icon={<AlertTriangle size={16} strokeWidth={1.5} />}
           />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Chart + Top Employees */}
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px' }}>
           {/* Revenue Chart */}
-          <Card className="lg:col-span-2 p-6 bg-[#1A1A1A] border-transparent">
-            <div className="mb-6">
-              <h3 className="text-lg font-bold font-display">Revenue Trend</h3>
-              <p className="text-sm text-muted-foreground">7 day rolling volume</p>
-            </div>
-            <div className="h-[300px] w-full">
+          <div style={{ backgroundColor: '#1A1A1A', borderRadius: '8px', padding: '24px' }}>
+            <h3 style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: '18px', color: '#E8E0D0', margin: '0 0 4px 0' }}>Revenue Trend</h3>
+            <p style={{ fontFamily: "'DM Mono', monospace", fontWeight: 300, fontSize: '11px', color: '#888780', margin: '0 0 20px 0' }}>7 day rolling volume</p>
+            <div style={{ height: '240px' }}>
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={mockChartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="var(--tenant-color)" stopOpacity={0.15}/>
+                      <stop offset="95%" stopColor="var(--tenant-color)" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                  <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value}`} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }}
-                    itemStyle={{ color: 'hsl(var(--foreground))' }}
+                  <CartesianGrid strokeDasharray="3 3" stroke="#252525" vertical={false} />
+                  <XAxis dataKey="name" stroke="#555550" fontSize={11} tickLine={false} axisLine={false} fontFamily="'DM Mono', monospace" />
+                  <YAxis stroke="#555550" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} fontFamily="'DM Mono', monospace" />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#161616', border: '1px solid #252525', borderRadius: '6px', fontFamily: "'DM Mono', monospace", fontSize: '12px' }}
+                    itemStyle={{ color: '#E8E0D0' }}
+                    labelStyle={{ color: '#888780' }}
                   />
-                  <Area type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+                  <Area type="monotone" dataKey="revenue" stroke="var(--tenant-color)" strokeWidth={2} fillOpacity={1} fill="url(#colorRevenue)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
-          </Card>
+          </div>
 
           {/* Top Employees */}
-          <Card className="p-6">
-            <h3 className="text-lg font-bold font-display mb-6">Top Employees</h3>
-            <div className="space-y-4">
-              {data?.top_employees?.length ? data.top_employees.map((emp, i) => (
-                <div key={emp.user_id} className="flex items-center justify-between p-3 rounded-lg bg-background hover-elevate border border-border">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded bg-secondary/20 text-secondary flex items-center justify-center font-bold text-sm">
-                      {i + 1}
+          <div style={{ backgroundColor: '#161616', border: '1px solid #252525', borderRadius: '8px', padding: '24px' }}>
+            <h3 style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: '18px', color: '#E8E0D0', margin: '0 0 20px 0' }}>Top Employees</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {data?.top_employees?.length ? data.top_employees.slice(0, 5).map((emp, i) => (
+                <div key={emp.user_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', backgroundColor: '#0D0D0D', borderRadius: '6px', border: '1px solid #252525' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: 'var(--tenant-color)', fontWeight: 400, minWidth: '14px' }}>{i + 1}</span>
+                    <div style={{ width: '30px', height: '30px', borderRadius: '50%', backgroundColor: 'rgba(var(--tenant-color-rgb), 0.20)', color: 'var(--tenant-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontFamily: "'DM Mono', monospace" }}>
+                      {emp.name.split(' ').map(n => n[0]).join('').slice(0,2)}
                     </div>
                     <div>
-                      <p className="font-bold text-sm">{emp.name}</p>
-                      <p className="text-xs text-muted-foreground">{emp.jobs_completed} jobs</p>
+                      <p style={{ fontSize: '13px', fontFamily: "'DM Mono', monospace", fontWeight: 400, color: '#E8E0D0', margin: 0 }}>{emp.name}</p>
+                      <p style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#888780', margin: 0 }}>{emp.jobs_completed} jobs</p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="inline-flex items-center gap-1 bg-[#EAF3DE]/10 text-[#EAF3DE] px-2 py-1 rounded text-xs font-bold border border-[#3B6D11]/30">
-                      ★ {emp.avg_score?.toFixed(1)}
-                    </div>
-                  </div>
+                  {emp.avg_score != null && (
+                    <span style={{ backgroundColor: '#EAF3DE', color: '#27500A', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontFamily: "'DM Mono', monospace" }}>
+                      ★ {emp.avg_score.toFixed(1)}
+                    </span>
+                  )}
                 </div>
               )) : (
-                <p className="text-sm text-muted-foreground text-center py-8">No data available</p>
+                <p style={{ fontSize: '13px', color: '#888780', textAlign: 'center', padding: '24px 0', fontFamily: "'DM Mono', monospace" }}>No data available</p>
               )}
             </div>
-          </Card>
+          </div>
         </div>
 
-        {/* Recent Jobs */}
-        <Card className="p-0 overflow-hidden">
-          <div className="p-6 border-b border-border flex justify-between items-center bg-card">
-            <h3 className="text-lg font-bold font-display">Recent & Upcoming Jobs</h3>
+        {/* Recent Jobs Table */}
+        <div style={{ backgroundColor: '#161616', border: '1px solid #252525', borderRadius: '8px', overflow: 'hidden' }}>
+          <div style={{ padding: '16px 24px', borderBottom: '1px solid #252525', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: '18px', color: '#E8E0D0', margin: 0 }}>Recent & Upcoming Jobs</h3>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs uppercase bg-background text-muted-foreground border-b border-border">
-                <tr>
-                  <th className="px-6 py-4 font-semibold">Client</th>
-                  <th className="px-6 py-4 font-semibold">Date & Time</th>
-                  <th className="px-6 py-4 font-semibold">Service</th>
-                  <th className="px-6 py-4 font-semibold">Assigned</th>
-                  <th className="px-6 py-4 font-semibold">Status</th>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#0D0D0D', borderBottom: '1px solid #252525' }}>
+                  {['Client', 'Date & Time', 'Service', 'Assigned', 'Status'].map(h => (
+                    <th key={h} style={{ padding: '12px 24px', textAlign: 'left', fontSize: '11px', fontFamily: "'DM Mono', monospace", fontWeight: 400, color: '#555550', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {data?.recent_jobs?.length ? data.recent_jobs.slice(0, 5).map(job => (
-                  <tr key={job.id} className="border-b border-border hover:bg-background/50 transition-colors">
-                    <td className="px-6 py-4 font-bold">{job.client_name}</td>
-                    <td className="px-6 py-4">
-                      {new Date(job.scheduled_date).toLocaleDateString()} <br/>
-                      <span className="text-muted-foreground">{job.scheduled_time || 'Anytime'}</span>
+                {data?.recent_jobs?.slice(0, 6).map(job => (
+                  <tr key={job.id} style={{ borderBottom: '1px solid #252525' }} className="hover:bg-[#1A1A1A] transition-colors">
+                    <td style={{ padding: '14px 24px', fontSize: '13px', fontFamily: "'DM Mono', monospace", fontWeight: 400, color: '#E8E0D0' }}>{job.client_name}</td>
+                    <td style={{ padding: '14px 24px' }}>
+                      <p style={{ fontSize: '13px', fontFamily: "'DM Mono', monospace", fontWeight: 400, color: '#E8E0D0', margin: 0 }}>{new Date(job.scheduled_date).toLocaleDateString()}</p>
+                      <p style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#888780', margin: 0 }}>{job.scheduled_time || 'Anytime'}</p>
                     </td>
-                    <td className="px-6 py-4">
-                      <span className="bg-background px-2 py-1 rounded border border-border text-xs">
-                        {job.service_type.replace('_', ' ')}
+                    <td style={{ padding: '14px 24px' }}>
+                      <span style={{ border: '1px solid #252525', borderRadius: '4px', padding: '2px 8px', fontSize: '11px', fontFamily: "'DM Mono', monospace", color: '#888780', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        {job.service_type.replace(/_/g, ' ')}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-muted-foreground">{job.assigned_user_name || 'Unassigned'}</td>
-                    <td className="px-6 py-4">
-                      <StatusBadge status={job.status} />
-                    </td>
+                    <td style={{ padding: '14px 24px', fontSize: '13px', fontFamily: "'DM Mono', monospace", color: '#888780' }}>{job.assigned_user_name || 'Unassigned'}</td>
+                    <td style={{ padding: '14px 24px' }}><StatusBadge status={job.status as any} /></td>
                   </tr>
-                )) : (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">No recent jobs</td>
-                  </tr>
+                )) || (
+                  <tr><td colSpan={5} style={{ padding: '32px 24px', textAlign: 'center', color: '#888780', fontSize: '13px', fontFamily: "'DM Mono', monospace" }}>No recent jobs</td></tr>
                 )}
               </tbody>
             </table>
           </div>
-        </Card>
+        </div>
       </div>
     </DashboardLayout>
   );
 }
 
-function MetricCard({ title, value, icon, trend, isPositive, isNegative, isNeutral }: any) {
-  let trendColor = "text-muted-foreground";
-  if (isPositive) trendColor = "text-status-success";
-  if (isNegative) trendColor = "text-status-danger";
-
+function MetricCard({ label, value, sub, subPositive, subNegative, icon }: {
+  label: string; value: any; sub?: string; subPositive?: boolean; subNegative?: boolean; icon?: React.ReactNode;
+}) {
+  const subColor = subNegative ? '#FCEBEB' : subPositive ? '#EAF3DE' : '#888780';
   return (
-    <Card className="p-6 bg-[#1A1A1A] border-transparent hover-elevate transition-all">
-      <div className="flex justify-between items-start mb-4">
-        <p className="text-muted-foreground font-semibold text-sm tracking-wider uppercase">{title}</p>
-        <div className="p-2 bg-background rounded-lg border border-border">
-          {icon}
-        </div>
+    <div style={{ backgroundColor: '#1A1A1A', borderRadius: '8px', padding: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+        <p style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", fontWeight: 400, color: '#888780', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>{label}</p>
+        {icon && (
+          <div style={{ padding: '6px', backgroundColor: '#161616', borderRadius: '6px', border: '1px solid #252525', color: 'rgba(var(--tenant-color-rgb), 0.6)', display: 'flex' }}>
+            {icon}
+          </div>
+        )}
       </div>
-      <h3 className="text-3xl font-bold font-display text-white mb-2">{value}</h3>
-      <p className={`text-xs font-medium ${trendColor}`}>{trend}</p>
-    </Card>
+      <p style={{ fontFamily: "'Playfair Display', serif", fontWeight: 900, fontSize: '28px', color: '#E8E0D0', margin: '0 0 6px 0', lineHeight: 1 }}>{value}</p>
+      {sub && <p style={{ fontSize: '11px', fontFamily: "'DM Mono', monospace", fontWeight: 300, color: subColor, margin: 0 }}>{sub}</p>}
+    </div>
   );
 }

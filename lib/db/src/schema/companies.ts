@@ -27,6 +27,7 @@ export const companiesTable = pgTable("companies", {
   employee_count: integer("employee_count").notNull().default(0),
   pay_cadence: payCadenceEnum("pay_cadence").notNull().default("biweekly"),
   geo_fence_threshold_ft: integer("geo_fence_threshold_ft").notNull().default(500),
+  brand_color: text("brand_color").notNull().default("#00C9A7"),
   created_at: timestamp("created_at").notNull().defaultNow(),
 });
 

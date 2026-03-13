@@ -10,6 +10,29 @@ Multi-tenant SaaS platform for residential and commercial cleaning businesses. B
 - **Admin:** admin@phescleaning.com / demo1234
 - **Technician:** jessica@phescleaning.com / demo1234
 
+## Design System
+
+**Fonts:** Playfair Display 700 headings · DM Mono 300/400 body/labels/nav
+**Colors:** #0D0D0D background · #161616 cards · #252525 borders · #E8E0D0 foreground
+**Tenant accent:** `--tenant-color` CSS var (default #00C9A7), set per company via `/company` > Branding
+**No box-shadows** (except 0 0 0 2px focus rings) · No gradients · 6px scrollbars
+
+## Pages
+
+- `/dashboard` — Metrics, revenue chart, top employees, recent jobs
+- `/jobs` — Job grid with frequency-color left borders + status bottom borders, Create Job dialog
+- `/employees` — Table with SVG productivity rings, role badges, score
+- `/customers` — Client table with loyalty points display, batch selection
+- `/invoices` — Stat cards, tabbed filter, invoice table with status badges
+- `/company` — General settings + Branding tab (live color picker, logo URL, sidebar preview)
+- `/loyalty` — Program style selector, earn rules with toggles/slider, rewards toggle list
+
+## Tenant Branding
+
+`useTenantBrand()` hook fetches company on login, injects `--tenant-color` and `--tenant-color-rgb` CSS vars.
+`applyTenantColor(hex)` can be called directly for instant preview updates (used in Company page).
+Stored in `companies.brand_color` column (VARCHAR 7). Default: #00C9A7.
+
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces

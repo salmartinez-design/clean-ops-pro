@@ -1,21 +1,15 @@
-import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle } from "lucide-react";
+import { Link } from "wouter";
 
 export default function NotFound() {
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
-      <Card className="w-full max-w-md mx-4">
-        <CardContent className="pt-6">
-          <div className="flex mb-4 gap-2">
-            <AlertCircle className="h-8 w-8 text-red-500" />
-            <h1 className="text-2xl font-bold text-gray-900">404 Page Not Found</h1>
-          </div>
-
-          <p className="mt-4 text-sm text-gray-600">
-            Did you forget to add the page to the router?
-          </p>
-        </CardContent>
-      </Card>
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0D0D0D', gap: '16px' }}>
+      <h1 style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: '72px', color: '#E8E0D0', margin: 0, lineHeight: 1 }}>404</h1>
+      <p style={{ fontFamily: "'DM Mono', monospace", fontWeight: 300, fontSize: '14px', color: '#888780', margin: 0 }}>This page could not be found.</p>
+      <Link href="/dashboard">
+        <button style={{ marginTop: '8px', padding: '8px 20px', backgroundColor: 'var(--tenant-color)', color: '#0D0D0D', borderRadius: '6px', fontSize: '13px', fontFamily: "'DM Mono', monospace", border: 'none', cursor: 'pointer' }}>
+          Back to Dashboard
+        </button>
+      </Link>
     </div>
   );
 }
