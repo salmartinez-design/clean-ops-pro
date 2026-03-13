@@ -1,0 +1,35 @@
+import { pgTable, serial, text, integer, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+
+export const subscriptionStatusEnum = pgEnum("subscription_status", [
+  "active", "past_due", "canceled", "trialing"
+]);
+
+export const planEnum = pgEnum("plan", [
+  "starter", "growth", "enterprise"
+]);
+
+export const payCadenceEnum = pgEnum("pay_cadence", [
+  "weekly", "biweekly", "semimonthly"
+]);
+
+export const companiesTable = pgTable("companies", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  logo_url: text("logo_url"),
+  stripe_customer_id: text("stripe_customer_id"),
+  stripe_subscription_id: text("stripe_subscription_id"),
+  square_oauth_token: text("square_oauth_token"),
+  subscription_status: subscriptionStatusEnum("subscription_status").notNull().default("trialing"),
+  plan: planEnum("plan").notNull().default("starter"),
+  employee_count: integer("employee_count").notNull().default(0),
+  pay_cadence: payCadenceEnum("pay_cadence").notNull().default("biweekly"),
+  geo_fence_threshold_ft: integer("geo_fence_threshold_ft").notNull().default(500),
+  created_at: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertCompanySchema = createInsertSchema(companiesTable).omit({ id: true, created_at: true });
+export type InsertCompany = z.infer<typeof insertCompanySchema>;
+export type Company = typeof companiesTable.$inferSelect;

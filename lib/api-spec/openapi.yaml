@@ -1,22 +1,45 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
-  version: 0.1.0
-  description: API specification
+  version: 1.0.0
+  description: CleanOps Pro - Multi-tenant SaaS API for cleaning businesses
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication and session management
+  - name: companies
+    description: Company management
+  - name: users
+    description: Employee/user management
+  - name: clients
+    description: Client management
+  - name: jobs
+    description: Job scheduling and management
+  - name: timeclock
+    description: Time clock management
+  - name: invoices
+    description: Invoice management
+  - name: scorecards
+    description: Employee scorecards
+  - name: photos
+    description: Job photos
+  - name: payroll
+    description: Payroll summary and exports
+  - name: loyalty
+    description: Loyalty program
+  - name: dashboard
+    description: Dashboard metrics
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,7 +47,944 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /companies/me:
+    get:
+      operationId: getMyCompany
+      tags: [companies]
+      summary: Get current user's company
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Company details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Company"
+
+    put:
+      operationId: updateMyCompany
+      tags: [companies]
+      summary: Update current user's company
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCompanyRequest"
+      responses:
+        "200":
+          description: Company updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Company"
+
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List employees
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [owner, admin, office, technician]
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 25
+      responses:
+        "200":
+          description: List of employees
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserListResponse"
+
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create employee
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: Employee created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users/{id}:
+    get:
+      operationId: getUser
+      tags: [users]
+      summary: Get employee by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Employee details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      operationId: updateUser
+      tags: [users]
+      summary: Update employee
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: Employee updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+    delete:
+      operationId: deleteUser
+      tags: [users]
+      summary: Delete/deactivate employee
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Employee deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /users/{id}/scorecards:
+    get:
+      operationId: getUserScorecards
+      tags: [users]
+      summary: Get employee scorecards
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Employee scorecards
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScorecardListResponse"
+
+  /users/{id}/additional-pay:
+    get:
+      operationId: getUserAdditionalPay
+      tags: [users]
+      summary: Get employee additional pay records
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Additional pay records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdditionalPayListResponse"
+
+    post:
+      operationId: createAdditionalPay
+      tags: [users]
+      summary: Add additional pay for employee
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAdditionalPayRequest"
+      responses:
+        "201":
+          description: Additional pay created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdditionalPay"
+
+  /clients:
+    get:
+      operationId: listClients
+      tags: [clients]
+      summary: List clients
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 25
+      responses:
+        "200":
+          description: List of clients
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientListResponse"
+
+    post:
+      operationId: createClient
+      tags: [clients]
+      summary: Create client
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateClientRequest"
+      responses:
+        "201":
+          description: Client created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+
+  /clients/{id}:
+    get:
+      operationId: getClient
+      tags: [clients]
+      summary: Get client by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Client details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      operationId: updateClient
+      tags: [clients]
+      summary: Update client
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateClientRequest"
+      responses:
+        "200":
+          description: Client updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+
+    delete:
+      operationId: deleteClient
+      tags: [clients]
+      summary: Delete client
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Client deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /jobs:
+    get:
+      operationId: listJobs
+      tags: [jobs]
+      summary: List jobs
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [scheduled, in_progress, complete, cancelled]
+        - name: assigned_user_id
+          in: query
+          schema:
+            type: integer
+        - name: client_id
+          in: query
+          schema:
+            type: integer
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: List of jobs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobListResponse"
+
+    post:
+      operationId: createJob
+      tags: [jobs]
+      summary: Create job
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateJobRequest"
+      responses:
+        "201":
+          description: Job created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
+  /jobs/{id}:
+    get:
+      operationId: getJob
+      tags: [jobs]
+      summary: Get job by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Job details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      operationId: updateJob
+      tags: [jobs]
+      summary: Update job
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateJobRequest"
+      responses:
+        "200":
+          description: Job updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
+    delete:
+      operationId: deleteJob
+      tags: [jobs]
+      summary: Delete job
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Job deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /jobs/{id}/complete:
+    post:
+      operationId: completeJob
+      tags: [jobs]
+      summary: Mark job as complete (requires after photos)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Job completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /jobs/{id}/photos:
+    get:
+      operationId: getJobPhotos
+      tags: [photos]
+      summary: Get job photos
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Job photos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhotoListResponse"
+
+    post:
+      operationId: uploadJobPhoto
+      tags: [photos]
+      summary: Upload job photo
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadPhotoRequest"
+      responses:
+        "201":
+          description: Photo uploaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Photo"
+
+  /timeclock:
+    get:
+      operationId: listTimeclock
+      tags: [timeclock]
+      summary: List time clock entries
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: query
+          schema:
+            type: integer
+        - name: job_id
+          in: query
+          schema:
+            type: integer
+        - name: flagged
+          in: query
+          schema:
+            type: boolean
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Time clock entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimeclockListResponse"
+
+  /timeclock/clock-in:
+    post:
+      operationId: clockIn
+      tags: [timeclock]
+      summary: Clock in to a job
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClockInRequest"
+      responses:
+        "201":
+          description: Clock in recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimeclockEntry"
+
+  /timeclock/{id}/clock-out:
+    post:
+      operationId: clockOut
+      tags: [timeclock]
+      summary: Clock out from a job
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClockOutRequest"
+      responses:
+        "200":
+          description: Clock out recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimeclockEntry"
+
+  /invoices:
+    get:
+      operationId: listInvoices
+      tags: [invoices]
+      summary: List invoices
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, sent, paid, overdue]
+        - name: client_id
+          in: query
+          schema:
+            type: integer
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 25
+      responses:
+        "200":
+          description: List of invoices
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceListResponse"
+
+    post:
+      operationId: createInvoice
+      tags: [invoices]
+      summary: Create invoice
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInvoiceRequest"
+      responses:
+        "201":
+          description: Invoice created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+
+  /invoices/{id}:
+    get:
+      operationId: getInvoice
+      tags: [invoices]
+      summary: Get invoice by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Invoice details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      operationId: updateInvoice
+      tags: [invoices]
+      summary: Update invoice
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateInvoiceRequest"
+      responses:
+        "200":
+          description: Invoice updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+
+  /invoices/{id}/send:
+    post:
+      operationId: sendInvoice
+      tags: [invoices]
+      summary: Send invoice to client
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Invoice sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+
+  /scorecards:
+    get:
+      operationId: listScorecards
+      tags: [scorecards]
+      summary: List scorecards
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: query
+          schema:
+            type: integer
+        - name: client_id
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of scorecards
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScorecardListResponse"
+
+    post:
+      operationId: createScorecard
+      tags: [scorecards]
+      summary: Create scorecard
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateScorecardRequest"
+      responses:
+        "201":
+          description: Scorecard created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Scorecard"
+
+  /payroll/summary:
+    get:
+      operationId: getPayrollSummary
+      tags: [payroll]
+      summary: Get payroll summary for a pay period
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: pay_period_start
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: pay_period_end
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Payroll summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayrollSummaryResponse"
+
+  /loyalty/settings:
+    get:
+      operationId: getLoyaltySettings
+      tags: [loyalty]
+      summary: Get loyalty program settings
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Loyalty settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoyaltySettings"
+
+    put:
+      operationId: updateLoyaltySettings
+      tags: [loyalty]
+      summary: Update loyalty program settings
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoyaltySettings"
+      responses:
+        "200":
+          description: Loyalty settings updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoyaltySettings"
+
+  /loyalty/points/{clientId}:
+    get:
+      operationId: getClientLoyaltyPoints
+      tags: [loyalty]
+      summary: Get client loyalty points and history
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Client loyalty points
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientLoyaltyResponse"
+
+  /dashboard/metrics:
+    get:
+      operationId: getDashboardMetrics
+      tags: [dashboard]
+      summary: Get dashboard metrics
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [today, week, month, year]
+            default: week
+      responses:
+        "200":
+          description: Dashboard metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardMetrics"
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +994,1261 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - error
+        - message
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+        - success
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+      required:
+        - email
+        - password
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserProfile"
+      required:
+        - token
+        - user
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        role:
+          type: string
+          enum: [owner, admin, office, technician, super_admin]
+        company_id:
+          type: integer
+        avatar_url:
+          type: string
+          nullable: true
+      required:
+        - id
+        - email
+        - first_name
+        - last_name
+        - role
+        - company_id
+
+    Company:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+        logo_url:
+          type: string
+          nullable: true
+        subscription_status:
+          type: string
+          enum: [active, past_due, canceled, trialing]
+        plan:
+          type: string
+          enum: [starter, growth, enterprise]
+        employee_count:
+          type: integer
+        pay_cadence:
+          type: string
+          enum: [weekly, biweekly, semimonthly]
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - slug
+        - subscription_status
+        - plan
+        - employee_count
+        - pay_cadence
+        - created_at
+
+    UpdateCompanyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        logo_url:
+          type: string
+          nullable: true
+        pay_cadence:
+          type: string
+          enum: [weekly, biweekly, semimonthly]
+        geo_fence_threshold_ft:
+          type: integer
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        role:
+          type: string
+          enum: [owner, admin, office, technician]
+        pay_rate:
+          type: number
+          nullable: true
+        pay_type:
+          type: string
+          enum: [hourly, per_job, fee_split]
+          nullable: true
+        is_active:
+          type: boolean
+        hire_date:
+          type: string
+          format: date
+          nullable: true
+        avatar_url:
+          type: string
+          nullable: true
+        productivity_pct:
+          type: number
+          nullable: true
+      required:
+        - id
+        - email
+        - first_name
+        - last_name
+        - role
+        - is_active
+
+    UserDetail:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          properties:
+            phone:
+              type: string
+              nullable: true
+            address:
+              type: string
+              nullable: true
+            dob:
+              type: string
+              format: date
+              nullable: true
+            skills:
+              type: array
+              items:
+                type: string
+            allowed_hours_per_week:
+              type: number
+              nullable: true
+            recent_jobs:
+              type: array
+              items:
+                $ref: "#/components/schemas/JobSummary"
+            scorecard_avg:
+              type: number
+              nullable: true
+            total_jobs:
+              type: integer
+
+    UserListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+      required:
+        - data
+        - total
+        - page
+        - limit
+
+    CreateUserRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        first_name:
+          type: string
+        last_name:
+          type: string
+        role:
+          type: string
+          enum: [admin, office, technician]
+        pay_rate:
+          type: number
+          nullable: true
+        pay_type:
+          type: string
+          enum: [hourly, per_job, fee_split]
+          nullable: true
+        hire_date:
+          type: string
+          format: date
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+      required:
+        - email
+        - first_name
+        - last_name
+        - role
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+        last_name:
+          type: string
+        role:
+          type: string
+          enum: [admin, office, technician]
+        pay_rate:
+          type: number
+          nullable: true
+        pay_type:
+          type: string
+          enum: [hourly, per_job, fee_split]
+          nullable: true
+        is_active:
+          type: boolean
+        hire_date:
+          type: string
+          format: date
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        skills:
+          type: array
+          items:
+            type: string
+
+    Client:
+      type: object
+      properties:
+        id:
+          type: integer
+        first_name:
+          type: string
+        last_name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        zip:
+          type: string
+          nullable: true
+        loyalty_points:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - first_name
+        - last_name
+        - loyalty_points
+        - created_at
+
+    ClientDetail:
+      allOf:
+        - $ref: "#/components/schemas/Client"
+        - type: object
+          properties:
+            notes:
+              type: string
+              nullable: true
+            lat:
+              type: number
+              nullable: true
+            lng:
+              type: number
+              nullable: true
+            recent_jobs:
+              type: array
+              items:
+                $ref: "#/components/schemas/JobSummary"
+            total_jobs:
+              type: integer
+            total_revenue:
+              type: number
+            last_service_date:
+              type: string
+              format: date
+              nullable: true
+            assigned_cleaner:
+              $ref: "#/components/schemas/User"
+              nullable: true
+
+    ClientListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Client"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+      required:
+        - data
+        - total
+        - page
+        - limit
+
+    CreateClientRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+        last_name:
+          type: string
+        email:
+          type: string
+          format: email
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        zip:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+      required:
+        - first_name
+        - last_name
+
+    UpdateClientRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+        last_name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        zip:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+
+    Job:
+      type: object
+      properties:
+        id:
+          type: integer
+        client_id:
+          type: integer
+        client_name:
+          type: string
+        assigned_user_id:
+          type: integer
+          nullable: true
+        assigned_user_name:
+          type: string
+          nullable: true
+        service_type:
+          type: string
+          enum: [standard_clean, deep_clean, move_out, recurring, post_construction, move_in, office_cleaning, common_areas, retail_store, medical_office, ppm_turnover, post_event]
+        status:
+          type: string
+          enum: [scheduled, in_progress, complete, cancelled]
+        scheduled_date:
+          type: string
+          format: date
+        scheduled_time:
+          type: string
+          nullable: true
+        frequency:
+          type: string
+          enum: [weekly, biweekly, every_3_weeks, monthly, on_demand]
+        base_fee:
+          type: number
+        allowed_hours:
+          type: number
+          nullable: true
+        actual_hours:
+          type: number
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        before_photo_count:
+          type: integer
+        after_photo_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - client_id
+        - client_name
+        - service_type
+        - status
+        - scheduled_date
+        - frequency
+        - base_fee
+        - before_photo_count
+        - after_photo_count
+        - created_at
+
+    JobDetail:
+      allOf:
+        - $ref: "#/components/schemas/Job"
+        - type: object
+          properties:
+            client:
+              $ref: "#/components/schemas/Client"
+            assigned_user:
+              $ref: "#/components/schemas/User"
+              nullable: true
+            photos:
+              type: array
+              items:
+                $ref: "#/components/schemas/Photo"
+            timeclock_entries:
+              type: array
+              items:
+                $ref: "#/components/schemas/TimeclockEntry"
+            invoice:
+              $ref: "#/components/schemas/Invoice"
+              nullable: true
+            checklist_items:
+              type: array
+              items:
+                $ref: "#/components/schemas/ChecklistItem"
+
+    JobSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        service_type:
+          type: string
+        status:
+          type: string
+        scheduled_date:
+          type: string
+          format: date
+        client_name:
+          type: string
+        base_fee:
+          type: number
+      required:
+        - id
+        - service_type
+        - status
+        - scheduled_date
+        - client_name
+        - base_fee
+
+    JobListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Job"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+      required:
+        - data
+        - total
+        - page
+        - limit
+
+    CreateJobRequest:
+      type: object
+      properties:
+        client_id:
+          type: integer
+        assigned_user_id:
+          type: integer
+          nullable: true
+        service_type:
+          type: string
+          enum: [standard_clean, deep_clean, move_out, recurring, post_construction, move_in, office_cleaning, common_areas, retail_store, medical_office, ppm_turnover, post_event]
+        scheduled_date:
+          type: string
+          format: date
+        scheduled_time:
+          type: string
+          nullable: true
+        frequency:
+          type: string
+          enum: [weekly, biweekly, every_3_weeks, monthly, on_demand]
+        base_fee:
+          type: number
+        allowed_hours:
+          type: number
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+      required:
+        - client_id
+        - service_type
+        - scheduled_date
+        - frequency
+        - base_fee
+
+    UpdateJobRequest:
+      type: object
+      properties:
+        assigned_user_id:
+          type: integer
+          nullable: true
+        service_type:
+          type: string
+          enum: [standard_clean, deep_clean, move_out, recurring, post_construction, move_in, office_cleaning, common_areas, retail_store, medical_office, ppm_turnover, post_event]
+        status:
+          type: string
+          enum: [scheduled, in_progress, complete, cancelled]
+        scheduled_date:
+          type: string
+          format: date
+        scheduled_time:
+          type: string
+          nullable: true
+        frequency:
+          type: string
+          enum: [weekly, biweekly, every_3_weeks, monthly, on_demand]
+        base_fee:
+          type: number
+        allowed_hours:
+          type: number
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+
+    Photo:
+      type: object
+      properties:
+        id:
+          type: integer
+        job_id:
+          type: integer
+        photo_type:
+          type: string
+          enum: [before, after]
+        url:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        lat:
+          type: number
+          nullable: true
+        lng:
+          type: number
+          nullable: true
+      required:
+        - id
+        - job_id
+        - photo_type
+        - url
+        - timestamp
+
+    PhotoListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Photo"
+        before_count:
+          type: integer
+        after_count:
+          type: integer
+      required:
+        - data
+        - before_count
+        - after_count
+
+    UploadPhotoRequest:
+      type: object
+      properties:
+        photo_type:
+          type: string
+          enum: [before, after]
+        data_url:
+          type: string
+        lat:
+          type: number
+          nullable: true
+        lng:
+          type: number
+          nullable: true
+      required:
+        - photo_type
+        - data_url
+
+    TimeclockEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        job_id:
+          type: integer
+        user_id:
+          type: integer
+        user_name:
+          type: string
+        clock_in_at:
+          type: string
+          format: date-time
+        clock_out_at:
+          type: string
+          format: date-time
+          nullable: true
+        clock_in_lat:
+          type: number
+          nullable: true
+        clock_in_lng:
+          type: number
+          nullable: true
+        clock_out_lat:
+          type: number
+          nullable: true
+        clock_out_lng:
+          type: number
+          nullable: true
+        distance_from_job_ft:
+          type: number
+          nullable: true
+        flagged:
+          type: boolean
+        duration_hours:
+          type: number
+          nullable: true
+      required:
+        - id
+        - job_id
+        - user_id
+        - user_name
+        - clock_in_at
+        - flagged
+
+    TimeclockListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TimeclockEntry"
+        total:
+          type: integer
+      required:
+        - data
+        - total
+
+    ClockInRequest:
+      type: object
+      properties:
+        job_id:
+          type: integer
+        lat:
+          type: number
+          nullable: true
+        lng:
+          type: number
+          nullable: true
+      required:
+        - job_id
+
+    ClockOutRequest:
+      type: object
+      properties:
+        lat:
+          type: number
+          nullable: true
+        lng:
+          type: number
+          nullable: true
+
+    InvoiceLineItem:
+      type: object
+      properties:
+        description:
+          type: string
+        quantity:
+          type: number
+        unit_price:
+          type: number
+        total:
+          type: number
+      required:
+        - description
+        - quantity
+        - unit_price
+        - total
+
+    Invoice:
+      type: object
+      properties:
+        id:
+          type: integer
+        client_id:
+          type: integer
+        client_name:
+          type: string
+        job_id:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [draft, sent, paid, overdue]
+        line_items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvoiceLineItem"
+        subtotal:
+          type: number
+        tips:
+          type: number
+        total:
+          type: number
+        created_at:
+          type: string
+          format: date-time
+        paid_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - id
+        - client_id
+        - client_name
+        - status
+        - line_items
+        - subtotal
+        - tips
+        - total
+        - created_at
+
+    InvoiceListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Invoice"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        stats:
+          type: object
+          properties:
+            total_revenue:
+              type: number
+            total_paid:
+              type: number
+            total_overdue:
+              type: number
+            total_outstanding:
+              type: number
+          required:
+            - total_revenue
+            - total_paid
+            - total_overdue
+            - total_outstanding
+      required:
+        - data
+        - total
+        - page
+        - limit
+
+    CreateInvoiceRequest:
+      type: object
+      properties:
+        client_id:
+          type: integer
+        job_id:
+          type: integer
+          nullable: true
+        line_items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvoiceLineItem"
+        tips:
+          type: number
+      required:
+        - client_id
+        - line_items
+
+    UpdateInvoiceRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [draft, sent, paid, overdue]
+        line_items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvoiceLineItem"
+        tips:
+          type: number
+
+    Scorecard:
+      type: object
+      properties:
+        id:
+          type: integer
+        job_id:
+          type: integer
+        user_id:
+          type: integer
+        user_name:
+          type: string
+        client_id:
+          type: integer
+        client_name:
+          type: string
+        score:
+          type: integer
+          minimum: 0
+          maximum: 4
+        comments:
+          type: string
+          nullable: true
+        excluded:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - job_id
+        - user_id
+        - user_name
+        - client_id
+        - client_name
+        - score
+        - excluded
+        - created_at
+
+    ScorecardListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Scorecard"
+        total:
+          type: integer
+        average_score:
+          type: number
+          nullable: true
+      required:
+        - data
+        - total
+
+    CreateScorecardRequest:
+      type: object
+      properties:
+        job_id:
+          type: integer
+        user_id:
+          type: integer
+        client_id:
+          type: integer
+        score:
+          type: integer
+          minimum: 0
+          maximum: 4
+        comments:
+          type: string
+          nullable: true
+        excluded:
+          type: boolean
+      required:
+        - job_id
+        - user_id
+        - client_id
+        - score
+
+    AdditionalPay:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        amount:
+          type: number
+        type:
+          type: string
+          enum: [tips, sick_pay, holiday_pay, bonus, vacation_pay, compliment, amount_owed]
+        notes:
+          type: string
+          nullable: true
+        job_id:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - user_id
+        - amount
+        - type
+        - created_at
+
+    AdditionalPayListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdditionalPay"
+        total:
+          type: integer
+      required:
+        - data
+        - total
+
+    CreateAdditionalPayRequest:
+      type: object
+      properties:
+        amount:
+          type: number
+        type:
+          type: string
+          enum: [tips, sick_pay, holiday_pay, bonus, vacation_pay, compliment, amount_owed]
+        notes:
+          type: string
+          nullable: true
+        job_id:
+          type: integer
+          nullable: true
+      required:
+        - amount
+        - type
+
+    PayrollEmployee:
+      type: object
+      properties:
+        user_id:
+          type: integer
+        name:
+          type: string
+        pay_type:
+          type: string
+          enum: [hourly, per_job, fee_split]
+        pay_rate:
+          type: number
+        hours_worked:
+          type: number
+        jobs_completed:
+          type: integer
+        base_pay:
+          type: number
+        tips:
+          type: number
+        bonuses:
+          type: number
+        sick_pay:
+          type: number
+        holiday_pay:
+          type: number
+        vacation_pay:
+          type: number
+        deductions:
+          type: number
+        gross_pay:
+          type: number
+      required:
+        - user_id
+        - name
+        - pay_type
+        - pay_rate
+        - hours_worked
+        - jobs_completed
+        - base_pay
+        - tips
+        - bonuses
+        - sick_pay
+        - holiday_pay
+        - vacation_pay
+        - deductions
+        - gross_pay
+
+    PayrollSummaryResponse:
+      type: object
+      properties:
+        pay_period_start:
+          type: string
+          format: date
+        pay_period_end:
+          type: string
+          format: date
+        employees:
+          type: array
+          items:
+            $ref: "#/components/schemas/PayrollEmployee"
+        total_gross:
+          type: number
+        total_hours:
+          type: number
+        total_jobs:
+          type: integer
+      required:
+        - pay_period_start
+        - pay_period_end
+        - employees
+        - total_gross
+        - total_hours
+        - total_jobs
+
+    LoyaltySettings:
+      type: object
+      properties:
+        program_style:
+          type: string
+          enum: [points, punch_card, tiered_vip]
+        pts_per_cleaning:
+          type: integer
+        pts_per_dollar:
+          type: integer
+        referral_pts:
+          type: integer
+        review_pts:
+          type: integer
+        birthday_pts:
+          type: integer
+        autopay_pts:
+          type: integer
+        enabled:
+          type: boolean
+      required:
+        - program_style
+        - pts_per_cleaning
+        - pts_per_dollar
+        - referral_pts
+        - review_pts
+        - birthday_pts
+        - autopay_pts
+        - enabled
+
+    LoyaltyPointLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        points:
+          type: integer
+        action:
+          type: string
+          enum: [earn, redeem]
+        reason:
+          type: string
+        job_id:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - points
+        - action
+        - reason
+        - created_at
+
+    ClientLoyaltyResponse:
+      type: object
+      properties:
+        client_id:
+          type: integer
+        total_points:
+          type: integer
+        lifetime_points:
+          type: integer
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/LoyaltyPointLog"
+      required:
+        - client_id
+        - total_points
+        - lifetime_points
+        - history
+
+    ChecklistItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        label:
+          type: string
+        completed:
+          type: boolean
+        required:
+          type: boolean
+      required:
+        - id
+        - label
+        - completed
+        - required
+
+    DashboardMetrics:
+      type: object
+      properties:
+        period:
+          type: string
+        jobs_scheduled:
+          type: integer
+        jobs_completed:
+          type: integer
+        jobs_in_progress:
+          type: integer
+        jobs_cancelled:
+          type: integer
+        total_revenue:
+          type: number
+        total_tips:
+          type: number
+        active_clients:
+          type: integer
+        active_employees:
+          type: integer
+        avg_job_score:
+          type: number
+          nullable: true
+        flagged_clock_ins:
+          type: integer
+        top_employees:
+          type: array
+          items:
+            type: object
+            properties:
+              user_id:
+                type: integer
+              name:
+                type: string
+              jobs_completed:
+                type: integer
+              avg_score:
+                type: number
+                nullable: true
+            required:
+              - user_id
+              - name
+              - jobs_completed
+        recent_jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/Job"
+      required:
+        - period
+        - jobs_scheduled
+        - jobs_completed
+        - jobs_in_progress
+        - jobs_cancelled
+        - total_revenue
+        - total_tips
+        - active_clients
+        - active_employees
+        - flagged_clock_ins
+        - top_employees
+        - recent_jobs

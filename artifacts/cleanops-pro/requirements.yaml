@@ -1,0 +1,19 @@
+packages:
+  "date-fns": "Human-readable date formatting and manipulation"
+  "recharts": "Dashboard analytics charts and data visualization"
+  "clsx": "Utility for constructing className strings conditionally"
+  "tailwind-merge": "Utility to gracefully merge tailwind classes"
+  "@hookform/resolvers": "Zod validation resolver for React Hook Form"
+  "react-hook-form": "Performant, flexible and extensible forms"
+  "zod": "TypeScript-first schema validation"
+  "lucide-react": "Beautiful and consistent icon set"
+
+images:
+  - path: "artifacts/cleanops-pro/public/images/logo-mark.png"
+    description: "A minimal, flat, geometric logo mark for a modern commercial cleaning SaaS platform, teal and white, dark background"
+    aspect_ratio: "1:1"
+
+notes:
+  - Using generated Orval hooks from @workspace/api-client-react
+  - Force dark mode theme per design requirements
+  - Authentication token stored in localStorage and passed via hook options
