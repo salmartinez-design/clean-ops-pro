@@ -72,14 +72,14 @@
   --border-sub: #1A1A1A;
 
   /* === BRAND (overridden by JS on login) === */
-  --brand:      #C53030;
-  --brand-rgb:  197, 48, 48;
-  --brand-dim:  rgba(197, 48, 48, 0.15);
-  --brand-soft: rgba(197, 48, 48, 0.08);
+  --brand:      #00C9A7;
+  --brand-rgb:  0, 201, 167;
+  --brand-dim:  rgba(0, 201, 167, 0.15);
+  --brand-soft: rgba(0, 201, 167, 0.08);
 
   /* === LEGACY ALIASES === */
-  --tenant-color:     #C53030;
-  --tenant-color-rgb: 197, 48, 48;
+  --tenant-color:     #00C9A7;
+  --tenant-color-rgb: 0, 201, 167;
   --background:       var(--bg-base);
   --foreground:       #F0EDE8;
 

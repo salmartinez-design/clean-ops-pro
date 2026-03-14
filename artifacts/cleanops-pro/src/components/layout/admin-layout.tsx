@@ -26,10 +26,10 @@ function applyAdminBrand() {
 
 function restoreBrand() {
   const el = document.documentElement;
-  el.style.setProperty("--brand",      "#C53030");
-  el.style.setProperty("--brand-rgb",  "197, 48, 48");
-  el.style.setProperty("--brand-dim",  "rgba(197, 48, 48, 0.15)");
-  el.style.setProperty("--brand-soft", "rgba(197, 48, 48, 0.08)");
+  el.style.setProperty("--brand",      "#00C9A7");
+  el.style.setProperty("--brand-rgb",  "0, 201, 167");
+  el.style.setProperty("--brand-dim",  "rgba(0, 201, 167, 0.15)");
+  el.style.setProperty("--brand-soft", "rgba(0, 201, 167, 0.08)");
 }
 
 function AdminSidebar({ mobile, open, onClose }: { mobile?: boolean; open?: boolean; onClose?: () => void }) {
@@ -37,6 +37,20 @@ function AdminSidebar({ mobile, open, onClose }: { mobile?: boolean; open?: bool
   const logout = useAuthStore(state => state.logout);
   const isImpersonating = useAuthStore(state => state.isImpersonating);
   const exitImpersonation = useAuthStore(state => state.exitImpersonation);
+  const token = useAuthStore(state => state.token);
+
+  let adminUser: { firstName: string; lastName: string; email: string } = { firstName: "Super", lastName: "Admin", email: "admin@cleanopspro.com" };
+  if (token) {
+    try {
+      const p = JSON.parse(atob(token.split(".")[1]));
+      adminUser = {
+        firstName: p.first_name || "Super",
+        lastName: p.last_name || "Admin",
+        email: p.email || "admin@cleanopspro.com",
+      };
+    } catch { /* empty */ }
+  }
+  const initials = `${adminUser.firstName[0] || "S"}${adminUser.lastName[0] || "A"}`.toUpperCase();
 
   const content = (
     <div style={{
@@ -125,10 +139,10 @@ function AdminSidebar({ mobile, open, onClose }: { mobile?: boolean; open?: bool
             backgroundColor: `rgba(${PURPLE_RGB}, 0.15)`, color: PURPLE,
             display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: "11px", fontWeight: 700, flexShrink: 0,
-          }}>SA</div>
+          }}>{initials}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: "12px", fontWeight: 500, color: "#F0EDE8", margin: 0 }}>Super Admin</p>
-            <p style={{ fontSize: "11px", color: "#4A4845", margin: 0 }}>admin@cleanopspro.com</p>
+            <p style={{ fontSize: "12px", fontWeight: 500, color: "#F0EDE8", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{adminUser.firstName} {adminUser.lastName}</p>
+            <p style={{ fontSize: "11px", color: "#4A4845", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{adminUser.email}</p>
           </div>
           <button
             onClick={logout}
