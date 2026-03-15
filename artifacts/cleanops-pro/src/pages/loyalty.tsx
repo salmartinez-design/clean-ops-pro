@@ -33,13 +33,13 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
       onClick={() => onChange(!on)}
       style={{
         width: '40px', height: '22px', borderRadius: '11px',
-        backgroundColor: on ? 'var(--brand)' : '#222222',
+        backgroundColor: on ? 'var(--brand)' : '#E5E2DC',
         border: 'none', cursor: 'pointer', position: 'relative',
         transition: 'background-color 0.2s', flexShrink: 0,
       }}
     >
       <div style={{
-        width: '16px', height: '16px', borderRadius: '50%', backgroundColor: '#F0EDE8',
+        width: '16px', height: '16px', borderRadius: '50%', backgroundColor: '#FFFFFF',
         position: 'absolute', top: '3px', left: on ? '21px' : '3px',
         transition: 'left 0.2s',
       }} />
@@ -81,8 +81,8 @@ export default function LoyaltyPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
         {/* Header */}
         <div>
-          <h1 style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: '42px', color: '#F0EDE8', margin: 0, lineHeight: 1.1 }}>Loyalty Program</h1>
-          <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 300, fontSize: '13px', color: '#7A7873', marginTop: '6px' }}>Configure your CleanRewards program style, earn rules, and rewards.</p>
+          <h1 style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: '42px', color: '#1A1917', margin: 0, lineHeight: 1.1 }}>Loyalty Program</h1>
+          <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 300, fontSize: '13px', color: '#6B7280', marginTop: '6px' }}>Configure your CleanRewards program style, earn rules, and rewards.</p>
         </div>
 
         {/* Section 1: Program Style */}
@@ -96,15 +96,15 @@ export default function LoyaltyPage() {
                 style={{
                   padding: '20px',
                   borderRadius: '10px',
-                  border: `2px solid ${programStyle === style.id ? 'var(--brand)' : '#222222'}`,
-                  backgroundColor: programStyle === style.id ? 'rgba(var(--tenant-color-rgb), 0.08)' : '#161616',
+                  border: `2px solid ${programStyle === style.id ? 'var(--brand)' : '#E5E2DC'}`,
+                  backgroundColor: programStyle === style.id ? 'rgba(var(--brand-rgb), 0.06)' : '#FFFFFF',
                   textAlign: 'left',
                   cursor: 'pointer',
                   transition: 'all 0.15s',
                 }}
               >
-                <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: '16px', color: programStyle === style.id ? 'var(--brand)' : '#F0EDE8', margin: '0 0 6px 0' }}>{style.label}</p>
-                <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 300, fontSize: '12px', color: '#7A7873', margin: 0 }}>{style.desc}</p>
+                <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: '16px', color: programStyle === style.id ? 'var(--brand)' : '#1A1917', margin: '0 0 6px 0' }}>{style.label}</p>
+                <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 300, fontSize: '12px', color: '#6B7280', margin: 0 }}>{style.desc}</p>
               </button>
             ))}
           </div>
@@ -113,12 +113,12 @@ export default function LoyaltyPage() {
         {/* Section 2: Earn Rules */}
         <div>
           <SectionTitle>Earn Rules</SectionTitle>
-          <div style={{ backgroundColor: '#161616', border: '1px solid #252525', borderRadius: '8px', overflow: 'hidden', marginTop: '12px' }}>
+          <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E2DC', borderRadius: '8px', overflow: 'hidden', marginTop: '12px' }}>
             {EARN_RULES.map((rule, i) => (
-              <div key={rule.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: i < EARN_RULES.length - 1 ? '1px solid #252525' : 'none' }}>
+              <div key={rule.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: i < EARN_RULES.length - 1 ? '1px solid #EEECE7' : 'none' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <Toggle on={earnToggles[rule.id]} onChange={v => setEarnToggles(prev => ({ ...prev, [rule.id]: v }))} />
-                  <span style={{ fontSize: '13px', fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 300, color: earnToggles[rule.id] ? '#F0EDE8' : '#7A7873' }}>{rule.label}</span>
+                  <span style={{ fontSize: '13px', fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 300, color: earnToggles[rule.id] ? '#1A1917' : '#9E9B94' }}>{rule.label}</span>
                 </div>
                 {rule.type === 'slider' ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -130,7 +130,7 @@ export default function LoyaltyPage() {
                     />
                   </div>
                 ) : (
-                  <span style={{ backgroundColor: 'rgba(var(--tenant-color-rgb), 0.15)', color: 'var(--brand)', padding: '3px 10px', borderRadius: '4px', fontSize: '12px', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                  <span style={{ backgroundColor: 'var(--brand-dim)', color: 'var(--brand)', padding: '3px 10px', borderRadius: '4px', fontSize: '12px', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
                     {rule.pts} pts
                   </span>
                 )}
@@ -142,14 +142,14 @@ export default function LoyaltyPage() {
         {/* Section 3: Rewards */}
         <div>
           <SectionTitle>Rewards</SectionTitle>
-          <div style={{ backgroundColor: '#161616', border: '1px solid #252525', borderRadius: '8px', overflow: 'hidden', marginTop: '12px' }}>
+          <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E2DC', borderRadius: '8px', overflow: 'hidden', marginTop: '12px' }}>
             {REWARDS.map((reward, i) => (
-              <div key={reward.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: i < REWARDS.length - 1 ? '1px solid #252525' : 'none' }}>
+              <div key={reward.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: i < REWARDS.length - 1 ? '1px solid #EEECE7' : 'none' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <Toggle on={rewardToggles[reward.id]} onChange={v => setRewardToggles(prev => ({ ...prev, [reward.id]: v }))} />
-                  <span style={{ fontSize: '13px', fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 300, color: rewardToggles[reward.id] ? '#F0EDE8' : '#7A7873' }}>{reward.label}</span>
+                  <span style={{ fontSize: '13px', fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 300, color: rewardToggles[reward.id] ? '#1A1917' : '#9E9B94' }}>{reward.label}</span>
                 </div>
-                <span style={{ backgroundColor: '#1A1A1A', border: '1px solid #252525', color: '#7A7873', padding: '3px 12px', borderRadius: '4px', fontSize: '12px', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                <span style={{ backgroundColor: '#F7F6F3', border: '1px solid #EEECE7', color: '#6B7280', padding: '3px 12px', borderRadius: '4px', fontSize: '12px', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
                   {reward.pts.toLocaleString()} pts
                 </span>
               </div>
@@ -162,7 +162,7 @@ export default function LoyaltyPage() {
           <button
             onClick={handleSave}
             disabled={updateSettings.isPending}
-            style={{ padding: '10px 28px', backgroundColor: 'var(--brand)', color: '#0D0D0D', borderRadius: '6px', fontSize: '13px', fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 400, border: 'none', cursor: 'pointer', opacity: updateSettings.isPending ? 0.7 : 1 }}
+            style={{ padding: '10px 28px', backgroundColor: 'var(--brand)', color: '#FFFFFF', borderRadius: '6px', fontSize: '13px', fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, border: 'none', cursor: 'pointer', opacity: updateSettings.isPending ? 0.7 : 1 }}
           >
             {updateSettings.isPending ? 'Saving...' : 'Save Loyalty Settings'}
           </button>
@@ -174,6 +174,6 @@ export default function LoyaltyPage() {
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h2 style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: '22px', color: '#F0EDE8', margin: 0 }}>{children}</h2>
+    <h2 style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: '22px', color: '#1A1917', margin: 0 }}>{children}</h2>
   );
 }

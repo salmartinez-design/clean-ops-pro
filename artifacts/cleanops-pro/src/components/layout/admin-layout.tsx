@@ -20,16 +20,16 @@ function applyAdminBrand() {
   const el = document.documentElement;
   el.style.setProperty("--brand",      PURPLE);
   el.style.setProperty("--brand-rgb",  PURPLE_RGB);
-  el.style.setProperty("--brand-dim",  `rgba(${PURPLE_RGB}, 0.15)`);
-  el.style.setProperty("--brand-soft", `rgba(${PURPLE_RGB}, 0.08)`);
+  el.style.setProperty("--brand-dim",  `rgba(${PURPLE_RGB}, 0.12)`);
+  el.style.setProperty("--brand-soft", `rgba(${PURPLE_RGB}, 0.07)`);
 }
 
 function restoreBrand() {
   const el = document.documentElement;
   el.style.setProperty("--brand",      "#00C9A7");
   el.style.setProperty("--brand-rgb",  "0, 201, 167");
-  el.style.setProperty("--brand-dim",  "rgba(0, 201, 167, 0.15)");
-  el.style.setProperty("--brand-soft", "rgba(0, 201, 167, 0.08)");
+  el.style.setProperty("--brand-dim",  "rgba(0, 201, 167, 0.12)");
+  el.style.setProperty("--brand-soft", "rgba(0, 201, 167, 0.07)");
 }
 
 function AdminSidebar({ mobile, open, onClose }: { mobile?: boolean; open?: boolean; onClose?: () => void }) {
@@ -56,8 +56,8 @@ function AdminSidebar({ mobile, open, onClose }: { mobile?: boolean; open?: bool
     <div style={{
       width: mobile ? 240 : 200,
       minWidth: mobile ? 240 : 200,
-      backgroundColor: "#0F0F14",
-      borderRight: "1px solid #1A1A22",
+      backgroundColor: "#F5F4FF",
+      borderRight: "1px solid #E8E6FF",
       display: "flex",
       flexDirection: "column",
       height: "100%",
@@ -67,28 +67,28 @@ function AdminSidebar({ mobile, open, onClose }: { mobile?: boolean; open?: bool
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
             <Shield size={16} color={PURPLE} strokeWidth={2} />
-            <span style={{ fontSize: "14px", fontWeight: 700, color: "#F0EDE8", letterSpacing: "-0.01em" }}>CleanOps Pro</span>
+            <span style={{ fontSize: "14px", fontWeight: 700, color: "#1A1917", letterSpacing: "-0.01em" }}>CleanOps Pro</span>
           </div>
           <span style={{
             fontSize: "10px", fontWeight: 700, color: PURPLE,
-            backgroundColor: `rgba(${PURPLE_RGB}, 0.15)`,
+            backgroundColor: `rgba(${PURPLE_RGB}, 0.12)`,
             padding: "2px 8px", borderRadius: "4px", letterSpacing: "0.08em",
           }}>
             SUPER ADMIN
           </span>
         </div>
         {mobile && (
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#7A7873", padding: 4 }}>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#6B7280", padding: 4 }}>
             <X size={18} />
           </button>
         )}
       </div>
 
-      <div style={{ borderTop: "1px solid #1A1A22", margin: "0 0 4px" }} />
+      <div style={{ borderTop: "1px solid #E8E6FF", margin: "0 0 4px" }} />
 
       {/* Nav */}
       <nav style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
-        <p style={{ fontSize: "10px", fontWeight: 600, color: "#4A4845", letterSpacing: "0.1em", textTransform: "uppercase", padding: "8px 16px 6px", margin: 0 }}>
+        <p style={{ fontSize: "10px", fontWeight: 600, color: "#9E9B94", letterSpacing: "0.1em", textTransform: "uppercase", padding: "8px 16px 6px", margin: 0 }}>
           Platform
         </p>
         {ADMIN_NAV.map(item => {
@@ -103,11 +103,11 @@ function AdminSidebar({ mobile, open, onClose }: { mobile?: boolean; open?: bool
                   borderRadius: "6px", display: "flex", alignItems: "center",
                   gap: "10px", cursor: "pointer", transition: "all 0.15s",
                   backgroundColor: isActive ? `rgba(${PURPLE_RGB}, 0.12)` : "transparent",
-                  color: isActive ? PURPLE : "#7A7873",
+                  color: isActive ? PURPLE : "#6B7280",
                   fontWeight: isActive ? 500 : 400, fontSize: "13px",
                 }}
-                onMouseEnter={e => { if (!isActive) { e.currentTarget.style.backgroundColor = "#1C1C28"; e.currentTarget.style.color = "#F0EDE8"; } }}
-                onMouseLeave={e => { if (!isActive) { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.color = "#7A7873"; } }}
+                onMouseEnter={e => { if (!isActive) { e.currentTarget.style.backgroundColor = "#EEEDFB"; e.currentTarget.style.color = "#1A1917"; } }}
+                onMouseLeave={e => { if (!isActive) { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.color = "#6B7280"; } }}
               >
                 <Icon size={16} strokeWidth={1.5} style={{ flexShrink: 0 }} />
                 <span>{item.title}</span>
@@ -118,7 +118,7 @@ function AdminSidebar({ mobile, open, onClose }: { mobile?: boolean; open?: bool
       </nav>
 
       {/* Footer */}
-      <div style={{ borderTop: "1px solid #1A1A22", flexShrink: 0 }}>
+      <div style={{ borderTop: "1px solid #E8E6FF", flexShrink: 0 }}>
         {isImpersonating() && (
           <button
             onClick={exitImpersonation}
@@ -126,7 +126,7 @@ function AdminSidebar({ mobile, open, onClose }: { mobile?: boolean; open?: bool
               width: "100%", display: "flex", alignItems: "center", gap: "8px",
               padding: "12px 16px", background: "none", border: "none",
               cursor: "pointer", color: PURPLE, fontSize: "12px", fontWeight: 500,
-              borderBottom: "1px solid #1A1A22",
+              borderBottom: "1px solid #E8E6FF",
             }}
           >
             <ArrowLeft size={14} />
@@ -136,19 +136,19 @@ function AdminSidebar({ mobile, open, onClose }: { mobile?: boolean; open?: bool
         <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: "10px" }}>
           <div style={{
             width: "28px", height: "28px", borderRadius: "50%",
-            backgroundColor: `rgba(${PURPLE_RGB}, 0.15)`, color: PURPLE,
+            backgroundColor: `rgba(${PURPLE_RGB}, 0.12)`, color: PURPLE,
             display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: "11px", fontWeight: 700, flexShrink: 0,
           }}>{initials}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: "12px", fontWeight: 500, color: "#F0EDE8", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{adminUser.firstName} {adminUser.lastName}</p>
-            <p style={{ fontSize: "11px", color: "#4A4845", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{adminUser.email}</p>
+            <p style={{ fontSize: "12px", fontWeight: 500, color: "#1A1917", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{adminUser.firstName} {adminUser.lastName}</p>
+            <p style={{ fontSize: "11px", color: "#6B7280", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{adminUser.email}</p>
           </div>
           <button
             onClick={logout}
-            style={{ background: "none", border: "none", cursor: "pointer", color: "#4A4845", padding: 4 }}
-            onMouseEnter={e => e.currentTarget.style.color = "#F0EDE8"}
-            onMouseLeave={e => e.currentTarget.style.color = "#4A4845"}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "#9E9B94", padding: 4 }}
+            onMouseEnter={e => (e.currentTarget.style.color = "#1A1917")}
+            onMouseLeave={e => (e.currentTarget.style.color = "#9E9B94")}
             title="Sign Out"
           >
             <LogOut size={14} strokeWidth={1.5} />
@@ -165,7 +165,7 @@ function AdminSidebar({ mobile, open, onClose }: { mobile?: boolean; open?: bool
           onClick={onClose}
           style={{
             position: "fixed", inset: 0, zIndex: 40,
-            backgroundColor: "rgba(0,0,0,0.72)", backdropFilter: "blur(2px)",
+            backgroundColor: "rgba(0,0,0,0.4)", backdropFilter: "blur(2px)",
             opacity: open ? 1 : 0, pointerEvents: open ? "auto" : "none",
             transition: "opacity 0.28s ease",
           }}
@@ -215,7 +215,7 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
   }, []);
 
   return (
-    <div style={{ display: "flex", height: "100vh", backgroundColor: "#0A0A0A", overflow: "hidden" }}>
+    <div style={{ display: "flex", height: "100vh", backgroundColor: "#F2F1FE", overflow: "hidden" }}>
       {/* Desktop sidebar */}
       {!isMobile && <AdminSidebar />}
 
@@ -225,21 +225,21 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {/* Top bar */}
         <div style={{
-          height: "52px", flexShrink: 0, backgroundColor: "#0F0F14",
-          borderBottom: "1px solid #1A1A22",
+          height: "52px", flexShrink: 0, backgroundColor: "#F5F4FF",
+          borderBottom: "1px solid #E8E6FF",
           display: "flex", alignItems: "center",
           padding: isMobile ? "0 16px" : "0 24px", gap: "12px",
         }}>
           {isMobile && (
             <button
               onClick={() => setDrawerOpen(true)}
-              style={{ background: "none", border: "none", cursor: "pointer", color: "#7A7873", padding: 4, display: "flex" }}
+              style={{ background: "none", border: "none", cursor: "pointer", color: "#6B7280", padding: 4, display: "flex" }}
             >
               <Menu size={20} />
             </button>
           )}
 
-          <h1 style={{ fontSize: "15px", fontWeight: 600, color: "#F0EDE8", margin: 0, flex: 1 }}>{title}</h1>
+          <h1 style={{ fontSize: "15px", fontWeight: 600, color: "#1A1917", margin: 0, flex: 1 }}>{title}</h1>
 
           {/* Super Admin Mode badge */}
           <div style={{

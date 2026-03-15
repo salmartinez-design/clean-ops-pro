@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { AdminLayout } from "@/components/layout/admin-layout";
 import { getAuthHeaders, useAuthStore } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { Edit2, UserCheck, Ban, ChevronDown } from "lucide-react";
+import { Edit2, UserCheck, Ban } from "lucide-react";
 
 const PURPLE = "#7F77DD";
 const PURPLE_RGB = "127, 119, 221";
@@ -34,9 +34,9 @@ function StatusBadge({ status }: { status: string }) {
 
 function PlanBadge({ plan }: { plan: string }) {
   const colors: Record<string, { bg: string; text: string; border: string }> = {
-    starter:    { bg: "#1A1A1A", text: "#7A7873", border: "#333" },
-    growth:     { bg: `rgba(${PURPLE_RGB}, 0.1)`, text: PURPLE, border: `rgba(${PURPLE_RGB}, 0.3)` },
-    enterprise: { bg: "#2A1F0A", text: "#FBBF24", border: "#92400E" },
+    starter:    { bg: "#F3F4F6", text: "#6B7280", border: "#E5E7EB" },
+    growth:     { bg: `rgba(${PURPLE_RGB}, 0.10)`, text: PURPLE, border: `rgba(${PURPLE_RGB}, 0.3)` },
+    enterprise: { bg: "#FEF3C7", text: "#92400E", border: "#FDE68A" },
   };
   const c = colors[plan] || colors.starter;
   return (
@@ -82,19 +82,19 @@ function EditModal({ company, onClose, onSave }: EditModalProps) {
   };
 
   const sel: React.CSSProperties = {
-    width: "100%", height: "38px", backgroundColor: "#1A1A1A",
-    border: "1px solid #2A2A2A", borderRadius: "8px", color: "#F0EDE8",
+    width: "100%", height: "38px", backgroundColor: "#F7F6F3",
+    border: "1px solid #DEDAD4", borderRadius: "8px", color: "#1A1917",
     fontSize: "13px", padding: "0 12px",
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.7)" }}>
-      <div style={{ backgroundColor: "#161616", border: "1px solid #222", borderRadius: "12px", padding: "28px", width: "360px" }}>
-        <p style={{ fontSize: "15px", fontWeight: 600, color: "#F0EDE8", margin: "0 0 20px" }}>Edit {company.name}</p>
+    <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.4)" }}>
+      <div style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: "12px", padding: "28px", width: "360px", boxShadow: "0 20px 40px rgba(0,0,0,0.12)" }}>
+        <p style={{ fontSize: "15px", fontWeight: 600, color: "#1A1917", margin: "0 0 20px" }}>Edit {company.name}</p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <div>
-            <label style={{ fontSize: "11px", fontWeight: 600, color: "#4A4845", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "6px" }}>Plan</label>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "6px" }}>Plan</label>
             <select value={plan} onChange={e => setPlan(e.target.value)} style={sel}>
               <option value="starter">Starter — $49/mo</option>
               <option value="growth">Growth — $149/mo</option>
@@ -103,7 +103,7 @@ function EditModal({ company, onClose, onSave }: EditModalProps) {
           </div>
 
           <div>
-            <label style={{ fontSize: "11px", fontWeight: 600, color: "#4A4845", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "6px" }}>Subscription Status</label>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "6px" }}>Subscription Status</label>
             <select value={status} onChange={e => setStatus(e.target.value)} style={sel}>
               <option value="active">Active</option>
               <option value="trialing">Trialing</option>
@@ -113,16 +113,16 @@ function EditModal({ company, onClose, onSave }: EditModalProps) {
           </div>
 
           <div>
-            <label style={{ fontSize: "11px", fontWeight: 600, color: "#4A4845", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "6px" }}>Brand Color</label>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "6px" }}>Brand Color</label>
             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               <input type="color" value={brandColor} onChange={e => setBrandColor(e.target.value)} style={{ width: "44px", height: "38px", border: "none", borderRadius: "6px", cursor: "pointer", backgroundColor: "transparent" }} />
-              <input type="text" value={brandColor} onChange={e => setBrandColor(e.target.value)} style={{ flex: 1, height: "38px", backgroundColor: "#1A1A1A", border: "1px solid #2A2A2A", borderRadius: "8px", color: "#F0EDE8", fontSize: "13px", padding: "0 12px" }} />
+              <input type="text" value={brandColor} onChange={e => setBrandColor(e.target.value)} style={{ flex: 1, height: "38px", backgroundColor: "#F7F6F3", border: "1px solid #DEDAD4", borderRadius: "8px", color: "#1A1917", fontSize: "13px", padding: "0 12px" }} />
             </div>
           </div>
         </div>
 
         <div style={{ display: "flex", gap: "10px", marginTop: "24px" }}>
-          <button onClick={onClose} style={{ flex: 1, height: "38px", backgroundColor: "#222", border: "none", borderRadius: "8px", color: "#7A7873", fontSize: "13px", cursor: "pointer" }}>Cancel</button>
+          <button onClick={onClose} style={{ flex: 1, height: "38px", backgroundColor: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: "8px", color: "#6B7280", fontSize: "13px", cursor: "pointer" }}>Cancel</button>
           <button onClick={save} disabled={saving} style={{ flex: 1, height: "38px", backgroundColor: PURPLE, border: "none", borderRadius: "8px", color: "#fff", fontSize: "13px", fontWeight: 600, cursor: "pointer", opacity: saving ? 0.7 : 1 }}>
             {saving ? "Saving..." : "Save Changes"}
           </button>
@@ -153,8 +153,7 @@ export default function AdminCompanies() {
   const handleImpersonate = async (company: Company) => {
     try {
       const res = await fetch(`/api/admin/companies/${company.id}/impersonate`, {
-        method: "POST",
-        headers: getAuthHeaders(),
+        method: "POST", headers: getAuthHeaders(),
       });
       const data = await res.json();
       if (data.token) {
@@ -170,8 +169,7 @@ export default function AdminCompanies() {
     if (!confirm(`Suspend ${company.name}? This will deactivate all their users.`)) return;
     try {
       await fetch(`/api/admin/companies/${company.id}/suspend`, {
-        method: "POST",
-        headers: getAuthHeaders(),
+        method: "POST", headers: getAuthHeaders(),
       });
       toast({ title: `${company.name} suspended` });
       fetchCompanies();
@@ -199,9 +197,9 @@ export default function AdminCompanies() {
             style={{
               height: "30px", padding: "0 14px", borderRadius: "6px",
               fontSize: "12px", fontWeight: 500, cursor: "pointer",
-              backgroundColor: filter === f ? `rgba(${PURPLE_RGB}, 0.15)` : "#161616",
-              color: filter === f ? PURPLE : "#7A7873",
-              border: filter === f ? `1px solid rgba(${PURPLE_RGB}, 0.3)` : "1px solid #222",
+              backgroundColor: filter === f ? `rgba(${PURPLE_RGB}, 0.12)` : "#FFFFFF",
+              color: filter === f ? PURPLE : "#6B7280",
+              border: filter === f ? `1px solid rgba(${PURPLE_RGB}, 0.3)` : "1px solid #E5E2DC",
               transition: "all 0.15s",
             }}
           >
@@ -211,37 +209,40 @@ export default function AdminCompanies() {
       </div>
 
       {/* Table */}
-      <div style={{ backgroundColor: "#161616", border: "1px solid #222", borderRadius: "10px", overflow: "hidden" }}>
+      <div style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: "10px", overflow: "hidden" }}>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ borderBottom: "1px solid #222" }}>
+              <tr style={{ borderBottom: "1px solid #EEECE7" }}>
                 {["Company", "Owner Email", "Plan", "Status", "Employees", "MRR", "Joined", "Actions"].map(h => (
-                  <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", fontWeight: 600, color: "#4A4845", textTransform: "uppercase", letterSpacing: "0.06em", whiteSpace: "nowrap" }}>{h}</th>
+                  <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.06em", whiteSpace: "nowrap" }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={8} style={{ padding: "40px", textAlign: "center", color: "#4A4845" }}>Loading...</td></tr>
+                <tr><td colSpan={8} style={{ padding: "40px", textAlign: "center", color: "#6B7280" }}>Loading...</td></tr>
               ) : companies.length === 0 ? (
-                <tr><td colSpan={8} style={{ padding: "40px", textAlign: "center", color: "#4A4845" }}>No companies found.</td></tr>
+                <tr><td colSpan={8} style={{ padding: "40px", textAlign: "center", color: "#6B7280" }}>No companies found.</td></tr>
               ) : companies.map(c => (
-                <tr key={c.id} style={{ borderBottom: "1px solid #1A1A1A" }} onMouseEnter={e => e.currentTarget.style.backgroundColor = "#1C1C1C"} onMouseLeave={e => e.currentTarget.style.backgroundColor = "transparent"}>
+                <tr key={c.id} style={{ borderBottom: "1px solid #F0EEE9", cursor: "default" }}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#F7F6F3")}
+                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
+                >
                   <td style={{ padding: "12px 16px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <div style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: c.brand_color, flexShrink: 0 }} />
-                      <span style={{ fontSize: "13px", fontWeight: 500, color: "#F0EDE8" }}>{c.name}</span>
+                      <span style={{ fontSize: "13px", fontWeight: 500, color: "#1A1917" }}>{c.name}</span>
                     </div>
                   </td>
-                  <td style={{ padding: "12px 16px", fontSize: "12px", color: "#7A7873" }}>{c.owner?.email || "—"}</td>
+                  <td style={{ padding: "12px 16px", fontSize: "12px", color: "#6B7280" }}>{c.owner?.email || "—"}</td>
                   <td style={{ padding: "12px 16px" }}><PlanBadge plan={c.plan} /></td>
                   <td style={{ padding: "12px 16px" }}><StatusBadge status={c.subscription_status} /></td>
-                  <td style={{ padding: "12px 16px", fontSize: "13px", color: "#F0EDE8" }}>{c.employee_count}</td>
-                  <td style={{ padding: "12px 16px", fontSize: "13px", color: "#F0EDE8", fontWeight: 500 }}>
+                  <td style={{ padding: "12px 16px", fontSize: "13px", color: "#1A1917" }}>{c.employee_count}</td>
+                  <td style={{ padding: "12px 16px", fontSize: "13px", color: "#1A1917", fontWeight: 500 }}>
                     {c.mrr > 0 ? `$${c.mrr}` : "—"}
                   </td>
-                  <td style={{ padding: "12px 16px", fontSize: "12px", color: "#7A7873" }}>
+                  <td style={{ padding: "12px 16px", fontSize: "12px", color: "#6B7280" }}>
                     {new Date(c.created_at).toLocaleDateString()}
                   </td>
                   <td style={{ padding: "12px 16px" }}>
@@ -249,7 +250,7 @@ export default function AdminCompanies() {
                       <button
                         onClick={() => handleImpersonate(c)}
                         title="View as Tenant"
-                        style={{ display: "flex", alignItems: "center", gap: "5px", height: "28px", padding: "0 10px", backgroundColor: `rgba(${PURPLE_RGB}, 0.1)`, border: `1px solid rgba(${PURPLE_RGB}, 0.3)`, borderRadius: "6px", color: PURPLE, fontSize: "11px", fontWeight: 600, cursor: "pointer" }}
+                        style={{ display: "flex", alignItems: "center", gap: "5px", height: "28px", padding: "0 10px", backgroundColor: `rgba(${PURPLE_RGB}, 0.08)`, border: `1px solid rgba(${PURPLE_RGB}, 0.25)`, borderRadius: "6px", color: PURPLE, fontSize: "11px", fontWeight: 600, cursor: "pointer" }}
                       >
                         <UserCheck size={12} />
                         View as Tenant
@@ -257,14 +258,14 @@ export default function AdminCompanies() {
                       <button
                         onClick={() => setEditingCompany(c)}
                         title="Edit"
-                        style={{ width: "28px", height: "28px", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#1A1A1A", border: "1px solid #2A2A2A", borderRadius: "6px", color: "#7A7873", cursor: "pointer" }}
+                        style={{ width: "28px", height: "28px", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: "6px", color: "#6B7280", cursor: "pointer" }}
                       >
                         <Edit2 size={13} />
                       </button>
                       <button
                         onClick={() => handleSuspend(c)}
                         title="Suspend"
-                        style={{ width: "28px", height: "28px", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#2A0F0F", border: "1px solid #991B1B", borderRadius: "6px", color: "#F87171", cursor: "pointer" }}
+                        style={{ width: "28px", height: "28px", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#FEF2F2", border: "1px solid #FECACA", borderRadius: "6px", color: "#DC2626", cursor: "pointer" }}
                       >
                         <Ban size={13} />
                       </button>
@@ -276,11 +277,11 @@ export default function AdminCompanies() {
           </table>
         </div>
 
-        {/* Table footer */}
-        <div style={{ padding: "12px 16px", borderTop: "1px solid #1A1A1A", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontSize: "12px", color: "#4A4845" }}>{companies.length} companies</span>
-          <span style={{ fontSize: "12px", color: "#4A4845" }}>
-            MRR: <strong style={{ color: "#F0EDE8" }}>${companies.reduce((s, c) => s + c.mrr, 0).toLocaleString()}</strong>
+        {/* Footer */}
+        <div style={{ padding: "12px 16px", borderTop: "1px solid #EEECE7", display: "flex", justifyContent: "space-between", alignItems: "center", backgroundColor: "#F7F6F3" }}>
+          <span style={{ fontSize: "12px", color: "#6B7280" }}>{companies.length} companies</span>
+          <span style={{ fontSize: "12px", color: "#6B7280" }}>
+            MRR: <strong style={{ color: "#1A1917" }}>${companies.reduce((s, c) => s + c.mrr, 0).toLocaleString()}</strong>
           </span>
         </div>
       </div>

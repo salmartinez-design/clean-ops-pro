@@ -13,6 +13,7 @@ import CompanyPage from "@/pages/company";
 import LoyaltyPage from "@/pages/loyalty";
 import PayrollPage from "@/pages/payroll";
 import CleancyclopediaPage from "@/pages/cleancyclopedia";
+import DiscountsPage from "@/pages/discounts";
 import NotFound from "@/pages/not-found";
 
 import AdminDashboard from "@/pages/admin/index";
@@ -40,6 +41,7 @@ function Router() {
       <Route path="/cleancyclopedia" component={CleancyclopediaPage} />
       <Route path="/company" component={CompanyPage} />
       <Route path="/loyalty" component={LoyaltyPage} />
+      <Route path="/discounts" component={DiscountsPage} />
 
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/admin/companies" component={AdminCompanies} />

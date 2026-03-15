@@ -13,10 +13,12 @@ Multi-tenant SaaS platform for residential and commercial cleaning businesses. B
 
 ## Design System
 
-**Fonts:** Playfair Display 700 headings · DM Mono 300/400 body/labels/nav
-**Colors:** #0D0D0D background · #161616 cards · #252525 borders · #E8E0D0 foreground
-**Tenant accent:** `--tenant-color` CSS var (default #00C9A7), set per company via `/company` > Branding
-**No box-shadows** (except 0 0 0 2px focus rings) · No gradients · 6px scrollbars
+**Theme:** Full light theme (Apple/Tesla-grade)
+**Fonts:** Plus Jakarta Sans exclusively (all weights)
+**Colors:** bg-base `#F7F6F3` · bg-card `#FFFFFF` · border `#E5E2DC` · text primary `#1A1917` · text secondary `#6B7280`
+**Brand accent:** `--brand` CSS var (`#5B9BD5` PHES blue) · `--brand-foreground` `#FFFFFF`
+**Admin portal:** purple accent `#7F77DD` · sidebar `#F5F4FF` · main bg `#F2F1FE`
+**No dark backgrounds anywhere** · Subtle box-shadows on cards · 6px scrollbars
 
 ## Pages
 
@@ -27,6 +29,9 @@ Multi-tenant SaaS platform for residential and commercial cleaning businesses. B
 - `/invoices` — Stat cards, tabbed filter, invoice table with status badges
 - `/company` — General settings + Branding tab (live color picker, logo URL, sidebar preview)
 - `/loyalty` — Program style selector, earn rules with toggles/slider, rewards toggle list
+- `/discounts` — Discount code management (percentage/fixed, scope, expiry, active toggle); API: GET/POST/PATCH/DELETE /api/discounts
+- `/payroll` — Payroll export and period management
+- `/cleancyclopedia` — Training library for employees
 
 ## Tenant Branding
 

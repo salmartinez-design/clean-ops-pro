@@ -24,7 +24,7 @@ export default function PayrollPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         {/* Controls */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-          <button style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', border: '1px solid #222222', borderRadius: '8px', backgroundColor: 'transparent', color: '#7A7873', fontSize: '13px', cursor: 'pointer' }}>
+          <button style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', border: '1px solid #E5E2DC', borderRadius: '8px', backgroundColor: 'transparent', color: '#6B7280', fontSize: '13px', cursor: 'pointer' }}>
             <Calendar size={14} strokeWidth={1.5} />
             Current Period
           </button>
@@ -40,7 +40,7 @@ export default function PayrollPage() {
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a'); a.href = url; a.download = 'payroll.csv'; a.click();
             }}
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', backgroundColor: 'var(--brand)', color: '#0A0A0A', borderRadius: '8px', fontSize: '13px', fontWeight: 600, border: 'none', cursor: 'pointer' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', backgroundColor: 'var(--brand)', color: '#FFFFFF', borderRadius: '8px', fontSize: '13px', fontWeight: 600, border: 'none', cursor: 'pointer' }}>
             <Download size={14} strokeWidth={1.5} />
             Export CSV
           </button>
@@ -53,36 +53,36 @@ export default function PayrollPage() {
             { label: 'Total Hours (Est.)', value: `${billableEmployees.length * 40} hrs` },
             { label: 'Employees Paid', value: billableEmployees.length },
           ].map(c => (
-            <div key={c.label} style={{ backgroundColor: '#161616', border: '1px solid #222222', borderRadius: '10px', padding: '20px' }}>
-              <p style={{ fontSize: '11px', fontWeight: 500, color: '#4A4845', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 12px 0' }}>{c.label}</p>
-              <p style={{ fontSize: '22px', fontWeight: 700, color: '#F0EDE8', margin: 0 }}>{c.value}</p>
+            <div key={c.label} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E2DC', borderRadius: '10px', padding: '20px' }}>
+              <p style={{ fontSize: '11px', fontWeight: 500, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 12px 0' }}>{c.label}</p>
+              <p style={{ fontSize: '22px', fontWeight: 700, color: '#1A1917', margin: 0 }}>{c.value}</p>
             </div>
           ))}
         </div>
 
         {/* Employee Payroll Table */}
-        <div style={{ backgroundColor: '#161616', border: '1px solid #222222', borderRadius: '10px', overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid #1A1A1A', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <p style={{ fontSize: '15px', fontWeight: 600, color: '#F0EDE8', margin: 0 }}>Employee Payroll Summary</p>
-            <span style={{ fontSize: '12px', color: '#7A7873' }}>Current bi-weekly period</span>
+        <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E2DC', borderRadius: '10px', overflow: 'hidden' }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #EEECE7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <p style={{ fontSize: '15px', fontWeight: 600, color: '#1A1917', margin: 0 }}>Employee Payroll Summary</p>
+            <span style={{ fontSize: '12px', color: '#6B7280' }}>Current bi-weekly period</span>
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid #1A1A1A' }}>
+              <tr style={{ borderBottom: '1px solid #EEECE7' }}>
                 {['Employee', 'Role', 'Hours (Est.)', 'Hourly Rate', 'Gross Pay', 'Status'].map(h => (
-                  <th key={h} style={{ padding: '12px 20px', textAlign: 'left', fontSize: '11px', fontWeight: 500, color: '#4A4845', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</th>
+                  <th key={h} style={{ padding: '12px 20px', textAlign: 'left', fontSize: '11px', fontWeight: 500, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#7A7873', fontSize: '13px' }}>Loading payroll data...</td></tr>
+                <tr><td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#6B7280', fontSize: '13px' }}>Loading payroll data...</td></tr>
               ) : billableEmployees.length > 0 ? billableEmployees.map((emp: any) => {
                 const rate = PAY_RATES[emp.role] ?? 18;
                 const gross = rate * 40;
                 return (
-                  <tr key={emp.id} style={{ borderBottom: '1px solid #0F0F0F', cursor: 'default' }}
-                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1C1C1C')}
+                  <tr key={emp.id} style={{ borderBottom: '1px solid #F0EEE9', cursor: 'default' }}
+                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#F7F6F3')}
                     onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
                   >
                     <td style={{ padding: '14px 20px' }}>
@@ -91,8 +91,8 @@ export default function PayrollPage() {
                           {emp.first_name?.[0]}{emp.last_name?.[0]}
                         </div>
                         <div>
-                          <p style={{ fontSize: '13px', fontWeight: 600, color: '#F0EDE8', margin: 0 }}>{emp.first_name} {emp.last_name}</p>
-                          <p style={{ fontSize: '12px', color: '#7A7873', margin: 0 }}>{emp.email}</p>
+                          <p style={{ fontSize: '13px', fontWeight: 600, color: '#1A1917', margin: 0 }}>{emp.first_name} {emp.last_name}</p>
+                          <p style={{ fontSize: '12px', color: '#6B7280', margin: 0 }}>{emp.email}</p>
                         </div>
                       </div>
                     </td>
@@ -101,16 +101,16 @@ export default function PayrollPage() {
                         {emp.role}
                       </span>
                     </td>
-                    <td style={{ padding: '14px 20px', fontSize: '13px', fontWeight: 500, color: '#F0EDE8' }}>40</td>
-                    <td style={{ padding: '14px 20px', fontSize: '13px', fontWeight: 500, color: '#F0EDE8' }}>${rate}/hr</td>
-                    <td style={{ padding: '14px 20px', fontSize: '22px', fontWeight: 700, color: '#F0EDE8' }}>${gross.toFixed(2)}</td>
+                    <td style={{ padding: '14px 20px', fontSize: '13px', fontWeight: 500, color: '#1A1917' }}>40</td>
+                    <td style={{ padding: '14px 20px', fontSize: '13px', fontWeight: 500, color: '#1A1917' }}>${rate}/hr</td>
+                    <td style={{ padding: '14px 20px', fontSize: '22px', fontWeight: 700, color: '#1A1917' }}>${gross.toFixed(2)}</td>
                     <td style={{ padding: '14px 20px' }}>
-                      <span style={{ background: '#0F2A1A', color: '#4ADE80', border: '1px solid #166534', display: 'inline-flex', alignItems: 'center', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Ready</span>
+                      <span style={{ background: '#DCFCE7', color: '#166534', border: '1px solid #BBF7D0', display: 'inline-flex', alignItems: 'center', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Ready</span>
                     </td>
                   </tr>
                 );
               }) : (
-                <tr><td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#7A7873', fontSize: '13px' }}>No employees found.</td></tr>
+                <tr><td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#6B7280', fontSize: '13px' }}>No employees found.</td></tr>
               )}
             </tbody>
           </table>

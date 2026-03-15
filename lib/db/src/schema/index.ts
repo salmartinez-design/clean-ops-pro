@@ -10,3 +10,4 @@ export * from "./additional_pay";
 export * from "./loyalty";
 export * from "./audit_log";
 export * from "./articles";
+export * from "./discounts";

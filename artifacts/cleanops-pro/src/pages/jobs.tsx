@@ -17,10 +17,10 @@ import { useQueryClient } from "@tanstack/react-query";
 
 const FREQ_COLORS: Record<string, string> = {
   weekly:    'var(--brand)',
-  biweekly:  '#60A5FA',
-  triweekly: '#FBBF24',
-  monthly:   '#A78BFA',
-  on_demand: '#4A4845',
+  biweekly:  '#3B82F6',
+  triweekly: '#F59E0B',
+  monthly:   '#8B5CF6',
+  on_demand: '#C0BDB6',
 };
 
 const createJobSchema = z.object({
@@ -32,18 +32,6 @@ const createJobSchema = z.object({
 });
 
 type TabId = ListJobsStatus | 'all';
-
-const BTN_PRIMARY: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: '8px',
-  padding: '8px 16px', backgroundColor: 'var(--brand)', color: '#0A0A0A',
-  borderRadius: '8px', fontSize: '13px', fontWeight: 600, border: 'none', cursor: 'pointer',
-};
-
-const FORM_LABEL: React.CSSProperties = {
-  fontSize: '11px', fontWeight: 500, color: '#4A4845',
-  textTransform: 'uppercase', letterSpacing: '0.06em',
-  display: 'block', marginBottom: '6px',
-};
 
 export default function JobsPage() {
   const [activeTab, setActiveTab] = useState<TabId>('all');
@@ -71,7 +59,7 @@ export default function JobsPage() {
         {/* Controls row */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
           {/* Tab switcher */}
-          <div style={{ display: 'flex', gap: '4px', backgroundColor: '#111111', border: '1px solid #222222', borderRadius: '8px', padding: '4px' }}>
+          <div style={{ display: 'flex', gap: '4px', backgroundColor: '#FFFFFF', border: '1px solid #E5E2DC', borderRadius: '8px', padding: '4px' }}>
             {tabs.map(tab => {
               const isActive = activeTab === tab.id;
               return (
@@ -82,11 +70,11 @@ export default function JobsPage() {
                     padding: '6px 16px', borderRadius: '6px', cursor: 'pointer',
                     fontSize: '13px', fontWeight: isActive ? 600 : 400, border: 'none',
                     backgroundColor: isActive ? 'var(--brand)' : 'transparent',
-                    color: isActive ? '#0A0A0A' : '#7A7873',
+                    color: isActive ? '#FFFFFF' : '#6B7280',
                     transition: 'all 0.15s',
                   }}
-                  onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = '#F0EDE8'; }}
-                  onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = '#7A7873'; }}
+                  onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = '#1A1917'; }}
+                  onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = '#6B7280'; }}
                 >
                   {tab.label}
                 </button>
@@ -97,12 +85,12 @@ export default function JobsPage() {
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             {/* Search */}
             <div style={{ position: 'relative' }}>
-              <Search size={14} strokeWidth={1.5} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#4A4845', pointerEvents: 'none' }} />
+              <Search size={14} strokeWidth={1.5} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#9E9B94', pointerEvents: 'none' }} />
               <input
                 placeholder="Search jobs..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                style={{ paddingLeft: '36px', paddingRight: '12px', height: '36px', width: '220px', backgroundColor: '#1A1A1A', border: '1px solid #2A2A2A', borderRadius: '8px', color: '#F0EDE8', fontSize: '13px', outline: 'none' }}
+                style={{ paddingLeft: '36px', paddingRight: '12px', height: '36px', width: '220px', backgroundColor: '#FFFFFF', border: '1px solid #E5E2DC', borderRadius: '8px', color: '#1A1917', fontSize: '13px', outline: 'none' }}
               />
             </div>
             <CreateJobDialog />
@@ -113,13 +101,13 @@ export default function JobsPage() {
         {isLoading ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
             {[1,2,3,4,5,6].map(i => (
-              <div key={i} style={{ height: '200px', borderRadius: '10px', backgroundColor: '#161616', border: '1px solid #222222' }} />
+              <div key={i} style={{ height: '200px', borderRadius: '10px', backgroundColor: '#FFFFFF', border: '1px solid #E5E2DC' }} />
             ))}
           </div>
         ) : jobs.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '64px 0', border: '1px dashed #222222', borderRadius: '10px' }}>
-            <p style={{ fontSize: '15px', fontWeight: 500, color: '#F0EDE8', margin: '0 0 6px 0' }}>No jobs found</p>
-            <p style={{ fontSize: '13px', color: '#7A7873', margin: 0 }}>Try adjusting your filters.</p>
+          <div style={{ textAlign: 'center', padding: '64px 0', border: '1px dashed #E5E2DC', borderRadius: '10px' }}>
+            <p style={{ fontSize: '15px', fontWeight: 500, color: '#1A1917', margin: '0 0 6px 0' }}>No jobs found</p>
+            <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>Try adjusting your filters.</p>
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
@@ -132,12 +120,12 @@ export default function JobsPage() {
 }
 
 function JobCard({ job }: { job: any }) {
-  const freqColor = FREQ_COLORS[job.frequency] || '#4A4845';
+  const freqColor = FREQ_COLORS[job.frequency] || '#C0BDB6';
   return (
     <div
       style={{
-        backgroundColor: '#161616',
-        border: '1px solid #222222',
+        backgroundColor: '#FFFFFF',
+        border: '1px solid #E5E2DC',
         borderLeft: `3px solid ${freqColor}`,
         borderRadius: '10px',
         padding: '18px',
@@ -145,26 +133,28 @@ function JobCard({ job }: { job: any }) {
         transition: 'all 0.18s',
       }}
       onMouseEnter={e => {
-        e.currentTarget.style.borderTopColor = 'rgba(var(--brand-rgb), 0.5)';
-        e.currentTarget.style.borderRightColor = 'rgba(var(--brand-rgb), 0.5)';
-        e.currentTarget.style.borderBottomColor = 'rgba(var(--brand-rgb), 0.5)';
+        e.currentTarget.style.borderTopColor = 'rgba(var(--brand-rgb), 0.4)';
+        e.currentTarget.style.borderRightColor = 'rgba(var(--brand-rgb), 0.4)';
+        e.currentTarget.style.borderBottomColor = 'rgba(var(--brand-rgb), 0.4)';
         e.currentTarget.style.transform = 'translateY(-1px)';
+        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.06)';
       }}
       onMouseLeave={e => {
-        e.currentTarget.style.borderTopColor = '#222222';
-        e.currentTarget.style.borderRightColor = '#222222';
-        e.currentTarget.style.borderBottomColor = '#222222';
+        e.currentTarget.style.borderTopColor = '#E5E2DC';
+        e.currentTarget.style.borderRightColor = '#E5E2DC';
+        e.currentTarget.style.borderBottomColor = '#E5E2DC';
         e.currentTarget.style.transform = 'translateY(0)';
+        e.currentTarget.style.boxShadow = 'none';
       }}
     >
       {/* Top row: status + price */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <StatusBadge status={job.status} />
-        <span style={{ fontSize: '20px', fontWeight: 700, color: '#F0EDE8' }}>${job.base_fee}</span>
+        <span style={{ fontSize: '20px', fontWeight: 700, color: '#1A1917' }}>${job.base_fee}</span>
       </div>
 
       {/* Client + service */}
-      <p style={{ fontSize: '17px', fontWeight: 700, color: '#F0EDE8', margin: '10px 0 2px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <p style={{ fontSize: '17px', fontWeight: 700, color: '#1A1917', margin: '10px 0 2px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {job.client_name}
       </p>
       <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--brand)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px 0' }}>
@@ -173,27 +163,27 @@ function JobCard({ job }: { job: any }) {
 
       {/* Details */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#7A7873' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#6B7280' }}>
           <Clock size={12} strokeWidth={1.5} />
           <span style={{ fontSize: '12px' }}>{new Date(job.scheduled_date).toLocaleDateString()}{job.scheduled_time ? ` · ${job.scheduled_time}` : ''}</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#7A7873' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#6B7280' }}>
           <MapPin size={12} strokeWidth={1.5} />
           <span style={{ fontSize: '12px', textTransform: 'capitalize' }}>{job.frequency?.replace('_', ' ')} cleaning</span>
         </div>
       </div>
 
       {/* Footer */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '12px', borderTop: '1px solid #1A1A1A' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '12px', borderTop: '1px solid #EEECE7' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: 'var(--brand-dim)', color: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 600, flexShrink: 0 }}>
             {job.assigned_user_name ? job.assigned_user_name[0] : '?'}
           </div>
-          <span style={{ fontSize: '12px', color: '#7A7873', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '110px' }}>
+          <span style={{ fontSize: '12px', color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '110px' }}>
             {job.assigned_user_name || 'Unassigned'}
           </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#4A4845' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#9E9B94' }}>
           <Camera size={11} strokeWidth={1.5} />
           <span style={{ fontSize: '11px' }}>{job.before_photo_count}B / {job.after_photo_count}A</span>
         </div>
@@ -227,29 +217,29 @@ function CreateJobDialog() {
     });
   };
 
-  const LABEL: React.CSSProperties = { fontSize: '11px', fontWeight: 500, color: '#4A4845', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: '6px' };
+  const LABEL: React.CSSProperties = { fontSize: '11px', fontWeight: 500, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: '6px' };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', backgroundColor: 'var(--brand)', color: '#0A0A0A', borderRadius: '8px', fontSize: '13px', fontWeight: 600, border: 'none', cursor: 'pointer' }}>
+        <button style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', backgroundColor: 'var(--brand)', color: '#FFFFFF', borderRadius: '8px', fontSize: '13px', fontWeight: 600, border: 'none', cursor: 'pointer' }}>
           <Plus size={14} strokeWidth={2} /> New Job
         </button>
       </DialogTrigger>
-      <DialogContent style={{ backgroundColor: '#161616', border: '1px solid #222222', maxWidth: '500px' }}>
+      <DialogContent style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E2DC', maxWidth: '500px' }}>
         <DialogHeader>
-          <DialogTitle style={{ fontSize: '15px', fontWeight: 600, color: '#F0EDE8' }}>Schedule New Job</DialogTitle>
+          <DialogTitle style={{ fontSize: '15px', fontWeight: 600, color: '#1A1917' }}>Schedule New Job</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingTop: '8px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
               <label style={LABEL}>Client ID</label>
-              <Input type="number" style={{ backgroundColor: '#1A1A1A', borderColor: '#2A2A2A', fontSize: '13px', color: '#F0EDE8' }} {...register("client_id")} />
-              {errors.client_id && <p style={{ fontSize: '11px', color: '#F87171', marginTop: '4px' }}>{errors.client_id.message}</p>}
+              <Input type="number" style={{ backgroundColor: '#F7F6F3', borderColor: '#DEDAD4', fontSize: '13px', color: '#1A1917' }} {...register("client_id")} />
+              {errors.client_id && <p style={{ fontSize: '11px', color: '#DC2626', marginTop: '4px' }}>{errors.client_id.message}</p>}
             </div>
             <div>
               <label style={LABEL}>Base Fee ($)</label>
-              <Input type="number" style={{ backgroundColor: '#1A1A1A', borderColor: '#2A2A2A', fontSize: '13px', color: '#F0EDE8' }} {...register("base_fee")} />
+              <Input type="number" style={{ backgroundColor: '#F7F6F3', borderColor: '#DEDAD4', fontSize: '13px', color: '#1A1917' }} {...register("base_fee")} />
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -257,8 +247,8 @@ function CreateJobDialog() {
               <label style={LABEL}>Service Type</label>
               <Controller name="service_type" control={control} render={({ field }) => (
                 <Select onValueChange={field.onChange} defaultValue={field.value}>
-                  <SelectTrigger style={{ backgroundColor: '#1A1A1A', borderColor: '#2A2A2A', color: '#F0EDE8', fontSize: '13px' }}><SelectValue /></SelectTrigger>
-                  <SelectContent style={{ backgroundColor: '#1A1A1A', borderColor: '#2A2A2A' }}>
+                  <SelectTrigger style={{ backgroundColor: '#F7F6F3', borderColor: '#DEDAD4', color: '#1A1917', fontSize: '13px' }}><SelectValue /></SelectTrigger>
+                  <SelectContent style={{ backgroundColor: '#FFFFFF', borderColor: '#E5E2DC' }}>
                     <SelectItem value="standard_clean">Standard Clean</SelectItem>
                     <SelectItem value="deep_clean">Deep Clean</SelectItem>
                     <SelectItem value="move_out">Move Out</SelectItem>
@@ -272,8 +262,8 @@ function CreateJobDialog() {
               <label style={LABEL}>Frequency</label>
               <Controller name="frequency" control={control} render={({ field }) => (
                 <Select onValueChange={field.onChange} defaultValue={field.value}>
-                  <SelectTrigger style={{ backgroundColor: '#1A1A1A', borderColor: '#2A2A2A', color: '#F0EDE8', fontSize: '13px' }}><SelectValue /></SelectTrigger>
-                  <SelectContent style={{ backgroundColor: '#1A1A1A', borderColor: '#2A2A2A' }}>
+                  <SelectTrigger style={{ backgroundColor: '#F7F6F3', borderColor: '#DEDAD4', color: '#1A1917', fontSize: '13px' }}><SelectValue /></SelectTrigger>
+                  <SelectContent style={{ backgroundColor: '#FFFFFF', borderColor: '#E5E2DC' }}>
                     <SelectItem value="weekly">Weekly</SelectItem>
                     <SelectItem value="biweekly">Bi-weekly</SelectItem>
                     <SelectItem value="monthly">Monthly</SelectItem>
@@ -285,11 +275,11 @@ function CreateJobDialog() {
           </div>
           <div>
             <label style={LABEL}>Date</label>
-            <Input type="date" style={{ backgroundColor: '#1A1A1A', borderColor: '#2A2A2A', fontSize: '13px', color: '#F0EDE8' }} {...register("scheduled_date")} />
+            <Input type="date" style={{ backgroundColor: '#F7F6F3', borderColor: '#DEDAD4', fontSize: '13px', color: '#1A1917' }} {...register("scheduled_date")} />
           </div>
           <DialogFooter style={{ paddingTop: '8px' }}>
-            <button type="button" onClick={() => setOpen(false)} style={{ padding: '8px 16px', border: '1px solid #222222', borderRadius: '8px', backgroundColor: 'transparent', color: '#7A7873', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
-            <button type="submit" disabled={createJob.isPending} style={{ padding: '8px 20px', backgroundColor: 'var(--brand)', color: '#0A0A0A', borderRadius: '8px', fontSize: '13px', fontWeight: 600, border: 'none', cursor: 'pointer', opacity: createJob.isPending ? 0.7 : 1 }}>
+            <button type="button" onClick={() => setOpen(false)} style={{ padding: '8px 16px', border: '1px solid #E5E2DC', borderRadius: '8px', backgroundColor: 'transparent', color: '#6B7280', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
+            <button type="submit" disabled={createJob.isPending} style={{ padding: '8px 20px', backgroundColor: 'var(--brand)', color: '#FFFFFF', borderRadius: '8px', fontSize: '13px', fontWeight: 600, border: 'none', cursor: 'pointer', opacity: createJob.isPending ? 0.7 : 1 }}>
               {createJob.isPending ? "Creating..." : "Schedule Job"}
             </button>
           </DialogFooter>

@@ -1,4 +1,4 @@
-import { Home, Briefcase, Users, UsersRound, FileText, DollarSign, BookOpen, Star, Settings, LogOut, LayoutDashboard, X } from "lucide-react";
+import { Home, Briefcase, Users, UsersRound, FileText, DollarSign, BookOpen, Star, Settings, LogOut, LayoutDashboard, X, Tag } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useAuthStore } from "@/lib/auth";
 import { useTenantBrand } from "@/lib/tenant-brand";
@@ -24,8 +24,9 @@ const NAV_SECTIONS = [
   {
     label: "Configuration",
     items: [
-      { title: "Loyalty",  url: "/loyalty",  icon: Star },
-      { title: "Company",  url: "/company",  icon: Settings },
+      { title: "Loyalty",    url: "/loyalty",    icon: Star },
+      { title: "Discounts",  url: "/discounts",  icon: Tag },
+      { title: "Company",    url: "/company",    icon: Settings },
     ],
   },
 ];
@@ -63,8 +64,8 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
     <div style={{
       width: mobile ? 264 : 216,
       minWidth: mobile ? 264 : 216,
-      backgroundColor: '#111111',
-      borderRight: '1px solid #1A1A1A',
+      backgroundColor: '#FFFFFF',
+      borderRight: '1px solid #EEECE7',
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
@@ -75,36 +76,36 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
         <div>
           {logoUrl ? (
             <div>
-              <div style={{ backgroundColor: '#FFFFFF', borderRadius: '6px', padding: '4px 8px', display: 'inline-block', marginBottom: '6px' }}>
+              <div style={{ backgroundColor: '#F7F6F3', borderRadius: '6px', padding: '4px 8px', display: 'inline-block', marginBottom: '6px', border: '1px solid #EEECE7' }}>
                 <img src={logoUrl} alt={companyName} style={{ height: '26px', width: 'auto', objectFit: 'contain', objectPosition: 'left', display: 'block' }} />
               </div>
-              <p style={{ fontSize: '11px', fontWeight: 500, color: '#4A4845', letterSpacing: '0.06em', margin: 0 }}>CleanOps Pro</p>
+              <p style={{ fontSize: '11px', fontWeight: 500, color: '#9E9B94', letterSpacing: '0.06em', margin: 0 }}>CleanOps Pro</p>
             </div>
           ) : (
             <div>
-              <p style={{ fontSize: '15px', fontWeight: 600, color: '#F0EDE8', margin: '0 0 4px 0' }}>{companyName}</p>
-              <p style={{ fontSize: '11px', fontWeight: 500, color: '#4A4845', letterSpacing: '0.06em', margin: 0 }}>CleanOps Pro</p>
+              <p style={{ fontSize: '15px', fontWeight: 600, color: '#1A1917', margin: '0 0 4px 0' }}>{companyName}</p>
+              <p style={{ fontSize: '11px', fontWeight: 500, color: '#9E9B94', letterSpacing: '0.06em', margin: 0 }}>CleanOps Pro</p>
             </div>
           )}
         </div>
         {mobile && (
           <button
             onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7A7873', padding: 4, display: 'flex', alignItems: 'center' }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280', padding: 4, display: 'flex', alignItems: 'center' }}
           >
             <X size={18} />
           </button>
         )}
       </div>
 
-      <div style={{ borderTop: '1px solid #1A1A1A', margin: '0 0 4px 0' }} />
+      <div style={{ borderTop: '1px solid #EEECE7', margin: '0 0 4px 0' }} />
 
       {/* Nav */}
       <nav style={{ flex: 1, overflowY: 'auto', paddingBottom: '8px' }}>
         {NAV_SECTIONS.map(section => (
           <div key={section.label}>
             <p style={{
-              fontSize: '10px', fontWeight: 600, color: '#4A4845',
+              fontSize: '10px', fontWeight: 600, color: '#9E9B94',
               letterSpacing: '0.1em', textTransform: 'uppercase',
               padding: '16px 16px 6px', margin: 0,
             }}>
@@ -127,21 +128,21 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
                       cursor: 'pointer',
                       transition: 'all 0.15s',
                       backgroundColor: isActive ? 'var(--brand-soft)' : 'transparent',
-                      color: isActive ? 'var(--brand)' : '#7A7873',
+                      color: isActive ? 'var(--brand)' : '#6B7280',
                       fontWeight: isActive ? 500 : 400,
                       fontSize: '13px',
                       fontFamily: "'Plus Jakarta Sans', sans-serif",
                     }}
                     onMouseEnter={e => {
                       if (!isActive) {
-                        e.currentTarget.style.backgroundColor = '#1C1C1C';
-                        e.currentTarget.style.color = '#F0EDE8';
+                        e.currentTarget.style.backgroundColor = '#F0EEE9';
+                        e.currentTarget.style.color = '#1A1917';
                       }
                     }}
                     onMouseLeave={e => {
                       if (!isActive) {
                         e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = '#7A7873';
+                        e.currentTarget.style.color = '#6B7280';
                       }
                     }}
                   >
@@ -156,7 +157,7 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
       </nav>
 
       {/* Footer — User */}
-      <div style={{ borderTop: '1px solid #1A1A1A', flexShrink: 0 }}>
+      <div style={{ borderTop: '1px solid #EEECE7', flexShrink: 0 }}>
         <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
             width: '28px', height: '28px', borderRadius: '50%',
@@ -167,7 +168,7 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
             {initials}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: '12px', fontWeight: 500, color: '#F0EDE8', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <p style={{ fontSize: '12px', fontWeight: 500, color: '#1A1917', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {userInfo?.firstName} {userInfo?.lastName}
             </p>
             <span style={{
@@ -180,9 +181,9 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
           </div>
           <button
             onClick={logout}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4A4845', padding: '4px', borderRadius: '4px', display: 'flex', flexShrink: 0 }}
-            onMouseEnter={e => (e.currentTarget.style.color = '#F0EDE8')}
-            onMouseLeave={e => (e.currentTarget.style.color = '#4A4845')}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9E9B94', padding: '4px', borderRadius: '4px', display: 'flex', flexShrink: 0 }}
+            onMouseEnter={e => (e.currentTarget.style.color = '#1A1917')}
+            onMouseLeave={e => (e.currentTarget.style.color = '#9E9B94')}
             title="Sign Out"
           >
             <LogOut size={14} strokeWidth={1.5} />
@@ -200,7 +201,7 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
           onClick={onClose}
           style={{
             position: 'fixed', inset: 0, zIndex: 40,
-            backgroundColor: 'rgba(0,0,0,0.72)',
+            backgroundColor: 'rgba(0,0,0,0.4)',
             backdropFilter: 'blur(2px)',
             opacity: open ? 1 : 0,
             pointerEvents: open ? 'auto' : 'none',

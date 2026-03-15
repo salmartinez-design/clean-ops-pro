@@ -23,8 +23,8 @@ interface Article {
 const CATEGORIES = ["General", "Safety", "Equipment", "Chemicals", "Procedures", "Training", "Compliance", "Tips"];
 
 const inp: React.CSSProperties = {
-  width: "100%", backgroundColor: "#1A1A1A", border: "1px solid #2A2A2A",
-  borderRadius: "8px", color: "#F0EDE8", fontSize: "13px", padding: "10px 12px",
+  width: "100%", backgroundColor: "#F7F6F3", border: "1px solid #DEDAD4",
+  borderRadius: "8px", color: "#1A1917", fontSize: "13px", padding: "10px 12px",
   fontFamily: "'Plus Jakarta Sans', sans-serif",
 };
 
@@ -76,22 +76,22 @@ function ArticleEditor({ article, onClose, onSaved }: ArticleEditorProps) {
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "flex-start", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.75)", overflowY: "auto", padding: "32px 16px" }}>
-      <div style={{ backgroundColor: "#161616", border: "1px solid #222", borderRadius: "12px", width: "100%", maxWidth: "720px", padding: "28px" }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "flex-start", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.5)", overflowY: "auto", padding: "32px 16px" }}>
+      <div style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: "12px", width: "100%", maxWidth: "720px", padding: "28px", boxShadow: "0 20px 40px rgba(0,0,0,0.12)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
-          <p style={{ fontSize: "15px", fontWeight: 600, color: "#F0EDE8", margin: 0 }}>
+          <p style={{ fontSize: "15px", fontWeight: 600, color: "#1A1917", margin: 0 }}>
             {article ? "Edit Article" : "New Article"}
           </p>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#4A4845", fontSize: "20px", lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#9E9B94", fontSize: "20px", lineHeight: 1 }}>×</button>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
           <div>
-            <label style={{ fontSize: "11px", fontWeight: 600, color: "#4A4845", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "6px" }}>Slug *</label>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "6px" }}>Slug *</label>
             <input value={slug} onChange={e => setSlug(e.target.value)} placeholder="how-to-remove-grout" style={inp} />
           </div>
           <div>
-            <label style={{ fontSize: "11px", fontWeight: 600, color: "#4A4845", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "6px" }}>Category</label>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "6px" }}>Category</label>
             <select value={category} onChange={e => setCategory(e.target.value)} style={{ ...inp, height: "38px" }}>
               {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -99,7 +99,7 @@ function ArticleEditor({ article, onClose, onSaved }: ArticleEditorProps) {
         </div>
 
         {/* Language tabs */}
-        <div style={{ display: "flex", gap: "8px", marginBottom: "16px", borderBottom: "1px solid #222", paddingBottom: "12px" }}>
+        <div style={{ display: "flex", gap: "8px", marginBottom: "16px", borderBottom: "1px solid #E5E2DC", paddingBottom: "12px" }}>
           {(["en", "es"] as const).map(lang => (
             <button
               key={lang}
@@ -107,9 +107,9 @@ function ArticleEditor({ article, onClose, onSaved }: ArticleEditorProps) {
               style={{
                 height: "30px", padding: "0 16px", borderRadius: "6px",
                 fontSize: "12px", fontWeight: 600, cursor: "pointer",
-                backgroundColor: tab === lang ? `rgba(${PURPLE_RGB}, 0.15)` : "#1A1A1A",
-                color: tab === lang ? PURPLE : "#7A7873",
-                border: tab === lang ? `1px solid rgba(${PURPLE_RGB}, 0.3)` : "1px solid #2A2A2A",
+                backgroundColor: tab === lang ? `rgba(${PURPLE_RGB}, 0.10)` : "#F7F6F3",
+                color: tab === lang ? PURPLE : "#6B7280",
+                border: tab === lang ? `1px solid rgba(${PURPLE_RGB}, 0.3)` : "1px solid #E5E2DC",
               }}
             >
               {lang === "en" ? "🇺🇸 English" : "🇲🇽 Español"}
@@ -120,11 +120,11 @@ function ArticleEditor({ article, onClose, onSaved }: ArticleEditorProps) {
         {tab === "en" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             <div>
-              <label style={{ fontSize: "11px", fontWeight: 600, color: "#4A4845", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "6px" }}>Title (English) *</label>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "6px" }}>Title (English) *</label>
               <input value={titleEn} onChange={e => { setTitleEn(e.target.value); if (!article && !slug) setSlug(autoSlug(e.target.value)); }} placeholder="Article title in English" style={inp} />
             </div>
             <div>
-              <label style={{ fontSize: "11px", fontWeight: 600, color: "#4A4845", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "6px" }}>Content (English)</label>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "6px" }}>Content (English)</label>
               <textarea value={contentEn} onChange={e => setContentEn(e.target.value)} rows={12} placeholder="Write article content here..." style={{ ...inp, resize: "vertical" }} />
             </div>
           </div>
@@ -133,11 +133,11 @@ function ArticleEditor({ article, onClose, onSaved }: ArticleEditorProps) {
         {tab === "es" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             <div>
-              <label style={{ fontSize: "11px", fontWeight: 600, color: "#4A4845", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "6px" }}>Title (Español)</label>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "6px" }}>Title (Español)</label>
               <input value={titleEs} onChange={e => setTitleEs(e.target.value)} placeholder="Título del artículo en español" style={inp} />
             </div>
             <div>
-              <label style={{ fontSize: "11px", fontWeight: 600, color: "#4A4845", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "6px" }}>Contenido (Español)</label>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "6px" }}>Contenido (Español)</label>
               <textarea value={contentEs} onChange={e => setContentEs(e.target.value)} rows={12} placeholder="Escribe el contenido del artículo aquí..." style={{ ...inp, resize: "vertical" }} />
             </div>
           </div>
@@ -149,7 +149,7 @@ function ArticleEditor({ article, onClose, onSaved }: ArticleEditorProps) {
               onClick={() => setPublished(!published)}
               style={{
                 width: "36px", height: "20px", borderRadius: "10px", position: "relative",
-                backgroundColor: published ? PURPLE : "#2A2A2A",
+                backgroundColor: published ? PURPLE : "#E5E2DC",
                 transition: "background-color 0.2s", cursor: "pointer",
               }}
             >
@@ -160,11 +160,11 @@ function ArticleEditor({ article, onClose, onSaved }: ArticleEditorProps) {
                 transition: "left 0.2s",
               }} />
             </div>
-            <span style={{ fontSize: "13px", color: "#F0EDE8" }}>{published ? "Published" : "Draft"}</span>
+            <span style={{ fontSize: "13px", color: "#1A1917" }}>{published ? "Published" : "Draft"}</span>
           </label>
 
           <div style={{ display: "flex", gap: "10px" }}>
-            <button onClick={onClose} style={{ height: "38px", padding: "0 20px", backgroundColor: "#222", border: "none", borderRadius: "8px", color: "#7A7873", fontSize: "13px", cursor: "pointer" }}>
+            <button onClick={onClose} style={{ height: "38px", padding: "0 20px", backgroundColor: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: "8px", color: "#6B7280", fontSize: "13px", cursor: "pointer" }}>
               Cancel
             </button>
             <button onClick={save} disabled={saving} style={{ height: "38px", padding: "0 24px", backgroundColor: PURPLE, border: "none", borderRadius: "8px", color: "#fff", fontSize: "13px", fontWeight: 600, cursor: "pointer", opacity: saving ? 0.7 : 1 }}>
@@ -222,8 +222,8 @@ export default function AdminCleancyclopedia() {
     !search || a.title_en.toLowerCase().includes(search.toLowerCase()) || (a.category || "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const published = articles.filter(a => a.published).length;
-  const drafts = articles.length - published;
+  const publishedCount = articles.filter(a => a.published).length;
+  const drafts = articles.length - publishedCount;
 
   return (
     <AdminLayout title="Cleancyclopedia Management">
@@ -238,13 +238,13 @@ export default function AdminCleancyclopedia() {
       {/* Header controls */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
         <div style={{ display: "flex", gap: "16px" }}>
-          <span style={{ fontSize: "13px", color: "#7A7873" }}>
-            <strong style={{ color: "#F0EDE8" }}>{articles.length}</strong> articles
+          <span style={{ fontSize: "13px", color: "#6B7280" }}>
+            <strong style={{ color: "#1A1917" }}>{articles.length}</strong> articles
           </span>
-          <span style={{ fontSize: "13px", color: "#4ADE80" }}>
-            <strong>{published}</strong> published
+          <span style={{ fontSize: "13px", color: "#16A34A" }}>
+            <strong>{publishedCount}</strong> published
           </span>
-          <span style={{ fontSize: "13px", color: "#7A7873" }}>
+          <span style={{ fontSize: "13px", color: "#6B7280" }}>
             <strong>{drafts}</strong> drafts
           </span>
         </div>
@@ -253,7 +253,7 @@ export default function AdminCleancyclopedia() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search articles..."
-            style={{ height: "34px", backgroundColor: "#161616", border: "1px solid #222", borderRadius: "8px", color: "#F0EDE8", fontSize: "12px", padding: "0 12px", width: "200px" }}
+            style={{ height: "34px", backgroundColor: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: "8px", color: "#1A1917", fontSize: "12px", padding: "0 12px", width: "200px" }}
           />
           <button
             onClick={() => setEditing(null)}
@@ -266,12 +266,12 @@ export default function AdminCleancyclopedia() {
       </div>
 
       {/* Articles list */}
-      <div style={{ backgroundColor: "#161616", border: "1px solid #222", borderRadius: "10px", overflow: "hidden" }}>
+      <div style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: "10px", overflow: "hidden" }}>
         {loading ? (
-          <div style={{ padding: "60px", textAlign: "center", color: "#4A4845" }}>Loading articles...</div>
+          <div style={{ padding: "60px", textAlign: "center", color: "#6B7280" }}>Loading articles...</div>
         ) : filtered.length === 0 ? (
           <div style={{ padding: "60px", textAlign: "center" }}>
-            <p style={{ color: "#4A4845", margin: "0 0 16px" }}>{search ? "No articles match your search." : "No articles yet."}</p>
+            <p style={{ color: "#6B7280", margin: "0 0 16px" }}>{search ? "No articles match your search." : "No articles yet."}</p>
             {!search && (
               <button onClick={() => setEditing(null)} style={{ display: "inline-flex", alignItems: "center", gap: "6px", height: "38px", padding: "0 20px", backgroundColor: PURPLE, border: "none", borderRadius: "8px", color: "#fff", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}>
                 <Plus size={14} /> Create First Article
@@ -284,23 +284,24 @@ export default function AdminCleancyclopedia() {
               key={article.id}
               style={{
                 padding: "16px", display: "flex", alignItems: "center", gap: "16px",
-                borderBottom: idx < filtered.length - 1 ? "1px solid #1A1A1A" : "none",
+                borderBottom: idx < filtered.length - 1 ? "1px solid #EEECE7" : "none",
+                cursor: "default",
               }}
-              onMouseEnter={e => e.currentTarget.style.backgroundColor = "#1C1C1C"}
-              onMouseLeave={e => e.currentTarget.style.backgroundColor = "transparent"}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#F7F6F3")}
+              onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
             >
               {/* Status dot */}
-              <div style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: article.published ? "#4ADE80" : "#4A4845", flexShrink: 0 }} />
+              <div style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: article.published ? "#16A34A" : "#DEDAD4", flexShrink: 0 }} />
 
               {/* Content */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "2px" }}>
-                  <span style={{ fontSize: "13px", fontWeight: 500, color: "#F0EDE8" }}>{article.title_en}</span>
-                  {article.title_es && <span style={{ fontSize: "10px", backgroundColor: "#1A1A1A", border: "1px solid #2A2A2A", borderRadius: "4px", padding: "1px 6px", color: "#7A7873" }}>ES</span>}
+                  <span style={{ fontSize: "13px", fontWeight: 500, color: "#1A1917" }}>{article.title_en}</span>
+                  {article.title_es && <span style={{ fontSize: "10px", backgroundColor: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: "4px", padding: "1px 6px", color: "#6B7280" }}>ES</span>}
                 </div>
                 <div style={{ display: "flex", gap: "12px" }}>
-                  {article.category && <span style={{ fontSize: "11px", color: "#4A4845" }}>{article.category}</span>}
-                  <span style={{ fontSize: "11px", color: "#4A4845" }}>/{article.slug}</span>
+                  {article.category && <span style={{ fontSize: "11px", color: "#9E9B94" }}>{article.category}</span>}
+                  <span style={{ fontSize: "11px", color: "#9E9B94" }}>/{article.slug}</span>
                 </div>
               </div>
 
@@ -309,21 +310,21 @@ export default function AdminCleancyclopedia() {
                 <button
                   onClick={() => handleTogglePublish(article)}
                   title={article.published ? "Unpublish" : "Publish"}
-                  style={{ width: "30px", height: "30px", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: article.published ? "#0F2A1A" : "#1A1A1A", border: `1px solid ${article.published ? "#166534" : "#2A2A2A"}`, borderRadius: "6px", color: article.published ? "#4ADE80" : "#4A4845", cursor: "pointer" }}
+                  style={{ width: "30px", height: "30px", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: article.published ? "#F0FDF4" : "#F7F6F3", border: `1px solid ${article.published ? "#BBF7D0" : "#E5E2DC"}`, borderRadius: "6px", color: article.published ? "#16A34A" : "#9E9B94", cursor: "pointer" }}
                 >
                   {article.published ? <Globe size={13} /> : <EyeOff size={13} />}
                 </button>
                 <button
                   onClick={() => setEditing(article)}
                   title="Edit"
-                  style={{ width: "30px", height: "30px", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: `rgba(${PURPLE_RGB}, 0.1)`, border: `1px solid rgba(${PURPLE_RGB}, 0.3)`, borderRadius: "6px", color: PURPLE, cursor: "pointer" }}
+                  style={{ width: "30px", height: "30px", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: `rgba(${PURPLE_RGB}, 0.08)`, border: `1px solid rgba(${PURPLE_RGB}, 0.25)`, borderRadius: "6px", color: PURPLE, cursor: "pointer" }}
                 >
                   <Edit2 size={13} />
                 </button>
                 <button
                   onClick={() => handleDelete(article)}
                   title="Delete"
-                  style={{ width: "30px", height: "30px", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#2A0F0F", border: "1px solid #991B1B", borderRadius: "6px", color: "#F87171", cursor: "pointer" }}
+                  style={{ width: "30px", height: "30px", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#FEF2F2", border: "1px solid #FECACA", borderRadius: "6px", color: "#DC2626", cursor: "pointer" }}
                 >
                   <Trash2 size={13} />
                 </button>

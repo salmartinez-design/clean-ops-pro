@@ -20,7 +20,6 @@ export default function Login() {
   const setToken = useAuthStore(state => state.setToken);
   const { toast } = useToast();
 
-  // If already logged in, go to correct portal
   useEffect(() => {
     if (token) {
       try {
@@ -35,7 +34,7 @@ export default function Login() {
       }
     }
   }, [token, setLocation]);
-  
+
   const { register, handleSubmit, formState: { errors } } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" }
@@ -63,51 +62,74 @@ export default function Login() {
     );
   };
 
-  const F: React.CSSProperties = {
+  const INP: React.CSSProperties = {
     width: '100%', height: '44px',
-    backgroundColor: '#1A1A1A', border: '1px solid #2A2A2A',
-    borderRadius: '8px', color: '#F0EDE8',
+    backgroundColor: '#F7F6F3', border: '1px solid #DEDAD4',
+    borderRadius: '8px', color: '#1A1917',
     fontSize: '13px', padding: '0 14px', outline: 'none',
+    fontFamily: "'Plus Jakarta Sans', sans-serif",
+    transition: 'border-color 0.15s',
   };
 
   return (
-    <div style={{ minHeight: '100vh', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0A0A0A', padding: '16px' }}>
-      {/* Glow blobs */}
-      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
-        <div style={{ position: 'absolute', top: '-20%', right: '-10%', width: '50%', height: '50%', borderRadius: '50%', background: 'rgba(197,48,48,0.12)', filter: 'blur(120px)' }} />
-        <div style={{ position: 'absolute', bottom: '-20%', left: '-10%', width: '40%', height: '40%', borderRadius: '50%', background: 'rgba(197,48,48,0.06)', filter: 'blur(80px)' }} />
-      </div>
-
-      <div style={{ position: 'relative', width: '100%', maxWidth: '420px', backgroundColor: '#161616', border: '1px solid #222222', borderRadius: '16px', padding: '36px 32px' }}>
+    <div style={{
+      minHeight: '100vh', width: '100%',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      backgroundColor: '#F7F6F3', padding: '16px',
+      fontFamily: "'Plus Jakarta Sans', sans-serif",
+    }}>
+      <div style={{ position: 'relative', width: '100%', maxWidth: '400px', backgroundColor: '#FFFFFF', border: '1px solid #E5E2DC', borderRadius: '16px', padding: '40px 36px', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
         {/* Brand */}
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div style={{ backgroundColor: '#FFFFFF', borderRadius: '10px', padding: '8px 14px', marginBottom: '18px', display: 'inline-block' }}>
-            <img src="/phes-logo.jpeg" alt="PHES Cleaning LLC" style={{ height: '48px', width: 'auto', objectFit: 'contain', display: 'block' }} />
+        <div style={{ textAlign: 'center', marginBottom: '36px' }}>
+          <div style={{ backgroundColor: '#F7F6F3', borderRadius: '10px', padding: '10px 18px', marginBottom: '18px', display: 'inline-block', border: '1px solid #EEECE7' }}>
+            <img src="/phes-logo.jpeg" alt="PHES Cleaning LLC" style={{ height: '44px', width: 'auto', objectFit: 'contain', display: 'block' }} />
           </div>
-          <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#F0EDE8', margin: '0 0 6px 0', letterSpacing: '-0.02em' }}>CleanOps Pro</h1>
-          <p style={{ fontSize: '13px', color: '#7A7873', margin: 0 }}>Sign in to your workspace</p>
+          <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#1A1917', margin: '0 0 6px 0', letterSpacing: '-0.02em' }}>CleanOps Pro</h1>
+          <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>Sign in to your workspace</p>
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
           <div>
-            <label style={{ fontSize: '11px', fontWeight: 500, color: '#4A4845', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: '6px' }}>Email Address</label>
-            <input type="email" placeholder="owner@phescleaning.com" style={F} {...register("email")} />
-            {errors.email && <p style={{ fontSize: '11px', color: '#F87171', marginTop: '4px' }}>{errors.email.message}</p>}
+            <label style={{ fontSize: '11px', fontWeight: 600, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: '6px' }}>Email Address</label>
+            <input
+              type="email"
+              placeholder="owner@phescleaning.com"
+              style={INP}
+              onFocus={e => (e.target.style.borderColor = 'var(--brand)')}
+              onBlur={e => (e.target.style.borderColor = '#DEDAD4')}
+              {...register("email")}
+            />
+            {errors.email && <p style={{ fontSize: '11px', color: '#DC2626', marginTop: '4px' }}>{errors.email.message}</p>}
           </div>
 
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <label style={{ fontSize: '11px', fontWeight: 500, color: '#4A4845', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Password</label>
+              <label style={{ fontSize: '11px', fontWeight: 600, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Password</label>
               <a href="#" style={{ fontSize: '12px', color: 'var(--brand)', textDecoration: 'none' }}>Forgot password?</a>
             </div>
-            <input type="password" placeholder="••••••••" style={F} {...register("password")} />
-            {errors.password && <p style={{ fontSize: '11px', color: '#F87171', marginTop: '4px' }}>{errors.password.message}</p>}
+            <input
+              type="password"
+              placeholder="••••••••"
+              style={INP}
+              onFocus={e => (e.target.style.borderColor = 'var(--brand)')}
+              onBlur={e => (e.target.style.borderColor = '#DEDAD4')}
+              {...register("password")}
+            />
+            {errors.password && <p style={{ fontSize: '11px', color: '#DC2626', marginTop: '4px' }}>{errors.password.message}</p>}
           </div>
 
           <button
             type="submit"
             disabled={loginMutation.isPending}
-            style={{ width: '100%', height: '44px', backgroundColor: 'var(--brand)', color: '#0A0A0A', borderRadius: '8px', fontSize: '15px', fontWeight: 600, border: 'none', cursor: loginMutation.isPending ? 'wait' : 'pointer', opacity: loginMutation.isPending ? 0.7 : 1, marginTop: '4px' }}
+            style={{
+              width: '100%', height: '44px',
+              backgroundColor: 'var(--brand)', color: '#FFFFFF',
+              borderRadius: '8px', fontSize: '14px', fontWeight: 600,
+              border: 'none', cursor: loginMutation.isPending ? 'wait' : 'pointer',
+              opacity: loginMutation.isPending ? 0.7 : 1, marginTop: '6px',
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              transition: 'opacity 0.15s',
+            }}
           >
             {loginMutation.isPending ? "Signing in..." : "Sign In"}
           </button>

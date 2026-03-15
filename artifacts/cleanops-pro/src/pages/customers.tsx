@@ -18,9 +18,9 @@ export default function CustomersPage() {
 
   const TH: React.CSSProperties = {
     padding: '12px 16px', textAlign: 'left',
-    fontSize: '11px', fontWeight: 500, color: '#4A4845',
+    fontSize: '11px', fontWeight: 500, color: '#9E9B94',
     textTransform: 'uppercase', letterSpacing: '0.06em',
-    borderBottom: '1px solid #1A1A1A',
+    borderBottom: '1px solid #EEECE7',
   };
 
   return (
@@ -30,27 +30,27 @@ export default function CustomersPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <div style={{ position: 'relative' }}>
-              <Search size={14} strokeWidth={1.5} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#4A4845', pointerEvents: 'none' }} />
+              <Search size={14} strokeWidth={1.5} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#9E9B94', pointerEvents: 'none' }} />
               <input
                 placeholder="Search clients..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                style={{ paddingLeft: '36px', paddingRight: '12px', height: '36px', width: '280px', backgroundColor: '#1A1A1A', border: '1px solid #2A2A2A', borderRadius: '8px', color: '#F0EDE8', fontSize: '13px', outline: 'none' }}
+                style={{ paddingLeft: '36px', paddingRight: '12px', height: '36px', width: '280px', backgroundColor: '#FFFFFF', border: '1px solid #E5E2DC', borderRadius: '8px', color: '#1A1917', fontSize: '13px', outline: 'none' }}
               />
             </div>
             {selected.length > 0 && (
-              <button style={{ padding: '7px 14px', border: '1px solid #222222', borderRadius: '8px', backgroundColor: 'transparent', color: '#7A7873', fontSize: '13px', cursor: 'pointer' }}>
+              <button style={{ padding: '7px 14px', border: '1px solid #E5E2DC', borderRadius: '8px', backgroundColor: 'transparent', color: '#6B7280', fontSize: '13px', cursor: 'pointer' }}>
                 Batch Actions ({selected.length})
               </button>
             )}
           </div>
-          <button style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', backgroundColor: 'var(--brand)', color: '#0A0A0A', borderRadius: '8px', fontSize: '13px', fontWeight: 600, border: 'none', cursor: 'pointer' }}>
+          <button style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', backgroundColor: 'var(--brand)', color: '#FFFFFF', borderRadius: '8px', fontSize: '13px', fontWeight: 600, border: 'none', cursor: 'pointer' }}>
             <Plus size={14} strokeWidth={2} /> Add Client
           </button>
         </div>
 
         {/* Table */}
-        <div style={{ backgroundColor: '#161616', border: '1px solid #222222', borderRadius: '10px', overflow: 'hidden' }}>
+        <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E2DC', borderRadius: '10px', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
@@ -62,37 +62,37 @@ export default function CustomersPage() {
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={6} style={{ padding: '32px', textAlign: 'center', color: '#7A7873', fontSize: '13px' }}>Loading clients...</td></tr>
+                <tr><td colSpan={6} style={{ padding: '32px', textAlign: 'center', color: '#6B7280', fontSize: '13px' }}>Loading clients...</td></tr>
               ) : clients.map(client => {
                 const isSelected = selected.includes(client.id);
                 const rewardReady = client.loyalty_points > 100;
                 return (
                   <tr
                     key={client.id}
-                    style={{ borderBottom: '1px solid #0F0F0F', backgroundColor: isSelected ? 'rgba(var(--brand-rgb), 0.06)' : 'transparent', cursor: 'default' }}
-                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.backgroundColor = '#1C1C1C'; }}
+                    style={{ borderBottom: '1px solid #F0EEE9', backgroundColor: isSelected ? 'rgba(var(--brand-rgb), 0.05)' : 'transparent', cursor: 'default' }}
+                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.backgroundColor = '#F7F6F3'; }}
                     onMouseLeave={e => { if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent'; }}
                   >
                     <td style={{ padding: '14px 16px' }}>
                       <button
                         onClick={() => toggleSelect(client.id)}
-                        style={{ width: '16px', height: '16px', borderRadius: '50%', border: `1px solid ${isSelected ? 'var(--brand)' : '#333'}`, backgroundColor: isSelected ? 'var(--brand)' : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        style={{ width: '16px', height: '16px', borderRadius: '50%', border: `1px solid ${isSelected ? 'var(--brand)' : '#DEDAD4'}`, backgroundColor: isSelected ? 'var(--brand)' : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       >
-                        {isSelected && <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#0A0A0A' }} />}
+                        {isSelected && <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#FFFFFF' }} />}
                       </button>
                     </td>
                     <td style={{ padding: '14px 16px' }}>
-                      <p style={{ fontSize: '13px', fontWeight: 600, color: '#F0EDE8', margin: 0 }}>{client.first_name} {client.last_name}</p>
-                      <p style={{ fontSize: '11px', color: '#4A4845', margin: 0 }}>CL-{client.id.toString().padStart(4, '0')}</p>
+                      <p style={{ fontSize: '13px', fontWeight: 600, color: '#1A1917', margin: 0 }}>{client.first_name} {client.last_name}</p>
+                      <p style={{ fontSize: '11px', color: '#9E9B94', margin: 0 }}>CL-{client.id.toString().padStart(4, '0')}</p>
                     </td>
                     <td style={{ padding: '14px 16px' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        {client.phone && <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#7A7873' }}><Phone size={11} strokeWidth={1.5} />{client.phone}</div>}
-                        {client.email && <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#7A7873' }}><Mail size={11} strokeWidth={1.5} />{client.email}</div>}
+                        {client.phone && <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#6B7280' }}><Phone size={11} strokeWidth={1.5} />{client.phone}</div>}
+                        {client.email && <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#6B7280' }}><Mail size={11} strokeWidth={1.5} />{client.email}</div>}
                       </div>
                     </td>
                     <td style={{ padding: '14px 16px', maxWidth: '180px' }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', color: '#7A7873', fontSize: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', color: '#6B7280', fontSize: '12px' }}>
                         <MapPin size={12} strokeWidth={1.5} style={{ marginTop: '2px', flexShrink: 0 }} />
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.address || 'No address'}, {client.city}</span>
                       </div>
@@ -109,7 +109,7 @@ export default function CustomersPage() {
                       </div>
                     </td>
                     <td style={{ padding: '14px 16px' }}>
-                      <span style={{ background: '#0F2A1A', color: '#4ADE80', border: '1px solid #166534', display: 'inline-flex', alignItems: 'center', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Active</span>
+                      <span style={{ background: '#DCFCE7', color: '#166534', border: '1px solid #BBF7D0', display: 'inline-flex', alignItems: 'center', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Active</span>
                     </td>
                   </tr>
                 );
