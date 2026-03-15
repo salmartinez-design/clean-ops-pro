@@ -6,11 +6,12 @@ import { applyTenantColor } from "@/lib/tenant-brand";
 import { useToast } from "@/hooks/use-toast";
 import { Upload, X, ImageIcon } from "lucide-react";
 
-type Tab = 'general' | 'branding' | 'integrations' | 'payroll';
+type Tab = 'general' | 'branding' | 'integrations' | 'payroll' | 'notifications';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'general', label: 'General' },
   { id: 'branding', label: 'Branding' },
+  { id: 'notifications', label: 'Notifications' },
   { id: 'integrations', label: 'Integrations' },
   { id: 'payroll', label: 'Payroll Options' },
 ];
@@ -53,6 +54,7 @@ export default function CompanyPage() {
 
         {activeTab === 'branding' && <BrandingTab />}
         {activeTab === 'general' && <GeneralTab />}
+        {activeTab === 'notifications' && <NotificationsTab />}
         {activeTab === 'integrations' && <PlaceholderTab title="Integrations" desc="Connect QuickBooks, Stripe, and other services." />}
         {activeTab === 'payroll' && <PlaceholderTab title="Payroll Options" desc="Configure pay cadence and export settings." />}
       </div>
@@ -379,6 +381,225 @@ function PlaceholderTab({ title, desc }: { title: string; desc: string }) {
     <div style={{ padding: '48px 0', textAlign: 'center', border: '1px dashed #E5E2DC', borderRadius: '8px' }}>
       <h3 style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: '24px', color: '#1A1917', margin: '0 0 8px 0' }}>{title}</h3>
       <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 300, fontSize: '13px', color: '#6B7280', margin: 0 }}>{desc}</p>
+    </div>
+  );
+}
+
+const API = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+const TRIGGER_LABELS: Record<string, string> = {
+  job_scheduled: "Job Scheduled",
+  job_reminder_24h: "Job Reminder (24h before)",
+  job_complete: "Job Completed",
+  invoice_sent: "Invoice Sent",
+  employee_clock_in: "Employee Clock In",
+  payment_received: "Payment Received",
+};
+
+const CHANNEL_ICONS: Record<string, string> = {
+  email: "📧", sms: "💬", in_app: "🔔",
+};
+
+const VARIABLES_HELP = [
+  "{{client_name}}", "{{service_type}}", "{{date}}", "{{time}}",
+  "{{company_name}}", "{{employee_name}}", "{{amount}}", "{{invoice_number}}",
+];
+
+function NotificationsTab() {
+  const { toast } = useToast();
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [logs, setLogs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editBody, setEditBody] = useState("");
+  const [editSubject, setEditSubject] = useState("");
+  const [showLog, setShowLog] = useState(false);
+  const [testing, setTesting] = useState<number | null>(null);
+  const [saving, setSaving] = useState<number | null>(null);
+
+  async function load() {
+    try {
+      const [t, l] = await Promise.all([
+        fetch(`${API}/api/notifications/templates`, { headers: getAuthHeaders() }).then(r => r.json()),
+        fetch(`${API}/api/notifications/log`, { headers: getAuthHeaders() }).then(r => r.json()),
+      ]);
+      setTemplates(t.data || []);
+      setLogs(l.data || []);
+    } catch {}
+    finally { setLoading(false); }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function toggle(id: number, is_active: boolean) {
+    const tmpl = templates.find(t => t.id === id);
+    if (!tmpl) return;
+    setTemplates(prev => prev.map(t => t.id === id ? { ...t, is_active } : t));
+    try {
+      await fetch(`${API}/api/notifications/templates/${id}`, {
+        method: "PATCH",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active, subject: tmpl.subject, body: tmpl.body }),
+      });
+      toast({ title: `Notification ${is_active ? "enabled" : "disabled"}` });
+    } catch {
+      toast({ title: "Failed to update", variant: "destructive" });
+      load();
+    }
+  }
+
+  async function save(id: number) {
+    setSaving(id);
+    try {
+      const tmpl = templates.find(t => t.id === id)!;
+      await fetch(`${API}/api/notifications/templates/${id}`, {
+        method: "PATCH",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: tmpl.is_active, subject: editSubject, body: editBody }),
+      });
+      setTemplates(prev => prev.map(t => t.id === id ? { ...t, subject: editSubject, body: editBody } : t));
+      toast({ title: "Template saved ✓" });
+      setEditingId(null);
+    } catch { toast({ title: "Failed to save", variant: "destructive" }); }
+    finally { setSaving(null); }
+  }
+
+  async function testNotification(id: number) {
+    setTesting(id);
+    try {
+      const r = await fetch(`${API}/api/notifications/templates/${id}/test`, {
+        method: "POST", headers: getAuthHeaders(),
+      });
+      const d = await r.json();
+      toast({ title: "Test sent!", description: d.message });
+      load();
+    } catch { toast({ title: "Test failed", variant: "destructive" }); }
+    finally { setTesting(null); }
+  }
+
+  function startEdit(tmpl: any) {
+    setEditingId(tmpl.id);
+    setEditBody(tmpl.body);
+    setEditSubject(tmpl.subject || "");
+  }
+
+  const FF = "'Plus Jakarta Sans', sans-serif";
+  const CARD: React.CSSProperties = { background: '#fff', border: '1px solid #E5E2DC', borderRadius: 12, padding: '18px 20px', marginBottom: 12 };
+
+  if (loading) return <div style={{ padding: '40px 0', textAlign: 'center', color: '#9E9B94', fontFamily: FF }}>Loading…</div>;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, fontFamily: FF }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <div>
+          <p style={{ fontSize: 14, fontWeight: 700, color: '#1A1917', margin: '0 0 4px' }}>Notification Triggers</p>
+          <p style={{ fontSize: 12, color: '#9E9B94', margin: 0 }}>Configure automatic messages sent to clients and staff</p>
+        </div>
+        <button onClick={() => setShowLog(!showLog)}
+          style={{ fontSize: 12, fontWeight: 600, color: 'var(--brand, #5B9BD5)', background: '#EBF4FF', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontFamily: FF }}>
+          {showLog ? "Hide Log" : "📋 View Log"} {logs.length > 0 && `(${logs.length})`}
+        </button>
+      </div>
+
+      {showLog && (
+        <div style={{ ...CARD, marginBottom: 20 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1917', margin: '0 0 12px' }}>Recent Notification Log</p>
+          {logs.length === 0 && <p style={{ fontSize: 12, color: '#9E9B94', margin: 0 }}>No notifications sent yet.</p>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 240, overflowY: 'auto' }}>
+            {logs.map(l => (
+              <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 10px', background: '#F7F6F3', borderRadius: 6, alignItems: 'center' }}>
+                <div>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#1A1917' }}>{TRIGGER_LABELS[l.trigger] || l.trigger}</span>
+                  <span style={{ fontSize: 11, color: '#9E9B94', marginLeft: 8 }}>{CHANNEL_ICONS[l.channel] || l.channel} → {l.recipient}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, color: l.status === 'test_sent' ? '#7C3AED' : '#16A34A', fontWeight: 600 }}>{l.status}</span>
+                  <span style={{ fontSize: 10, color: '#9E9B94' }}>{new Date(l.sent_at).toLocaleString()}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {templates.map(tmpl => (
+        <div key={tmpl.id} style={{ ...CARD, borderLeft: `3px solid ${tmpl.is_active ? 'var(--brand, #5B9BD5)' : '#E5E2DC'}` }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: editingId === tmpl.id ? 14 : 0 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span style={{ fontSize: 16 }}>{CHANNEL_ICONS[tmpl.channel]}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#1A1917' }}>{TRIGGER_LABELS[tmpl.trigger] || tmpl.trigger}</span>
+                <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#9E9B94', background: '#F3F4F6', padding: '2px 7px', borderRadius: 4 }}>{tmpl.channel}</span>
+              </div>
+              {editingId !== tmpl.id && (
+                <p style={{ fontSize: 12, color: '#6B7280', margin: 0, lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                  {tmpl.subject ? <><strong>{tmpl.subject}</strong> — </> : ""}{tmpl.body}
+                </p>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, flexShrink: 0 }}>
+              <button
+                onClick={() => toggle(tmpl.id, !tmpl.is_active)}
+                style={{
+                  width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+                  background: tmpl.is_active ? 'var(--brand, #5B9BD5)' : '#E5E2DC', position: 'relative', transition: 'background 0.2s',
+                }}>
+                <div style={{
+                  width: 18, height: 18, borderRadius: 9, background: '#fff',
+                  position: 'absolute', top: 3, left: tmpl.is_active ? 23 : 3,
+                  transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+                }}/>
+              </button>
+              <div style={{ display: 'flex', gap: 5 }}>
+                <button onClick={() => editingId === tmpl.id ? setEditingId(null) : startEdit(tmpl)}
+                  style={{ fontSize: 11, color: 'var(--brand, #5B9BD5)', background: '#EBF4FF', border: 'none', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontFamily: FF, fontWeight: 600 }}>
+                  {editingId === tmpl.id ? "Cancel" : "Edit"}
+                </button>
+                <button onClick={() => testNotification(tmpl.id)} disabled={testing === tmpl.id}
+                  style={{ fontSize: 11, color: '#6B7280', background: '#F3F4F6', border: 'none', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontFamily: FF }}>
+                  {testing === tmpl.id ? "…" : "Test"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {editingId === tmpl.id && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {tmpl.channel === 'email' && (
+                <div>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: '#9E9B94', margin: '0 0 5px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Subject Line</p>
+                  <input value={editSubject} onChange={e => setEditSubject(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #E5E2DC', borderRadius: 7, fontSize: 13, fontFamily: FF, outline: 'none', boxSizing: 'border-box' }}/>
+                </div>
+              )}
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 700, color: '#9E9B94', margin: '0 0 5px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Message Body</p>
+                <textarea value={editBody} onChange={e => setEditBody(e.target.value)}
+                  style={{ width: '100%', height: 120, padding: '10px 12px', border: '1px solid #E5E2DC', borderRadius: 7, fontSize: 12, fontFamily: FF, outline: 'none', resize: 'vertical', boxSizing: 'border-box', lineHeight: 1.5 }}/>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
+                <span style={{ fontSize: 10, color: '#9E9B94', alignSelf: 'center', marginRight: 2 }}>Variables:</span>
+                {VARIABLES_HELP.map(v => (
+                  <button key={v} onClick={() => setEditBody(b => b + v)}
+                    style={{ fontSize: 10, color: '#7C3AED', background: '#EDE9FE', border: 'none', borderRadius: 4, padding: '2px 7px', cursor: 'pointer', fontFamily: FF }}>
+                    {v}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button onClick={() => setEditingId(null)}
+                  style={{ padding: '7px 14px', border: '1px solid #E5E2DC', borderRadius: 7, background: '#fff', fontSize: 12, cursor: 'pointer', fontFamily: FF }}>
+                  Cancel
+                </button>
+                <button onClick={() => save(tmpl.id)} disabled={saving === tmpl.id}
+                  style={{ padding: '7px 16px', border: 'none', borderRadius: 7, background: 'var(--brand, #5B9BD5)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: FF }}>
+                  {saving === tmpl.id ? "Saving…" : "Save Template"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

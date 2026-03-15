@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { getAuthHeaders, useAuthStore } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
+import { JobWizard } from "@/components/job-wizard";
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   useDraggable, useDroppable, type DragEndEvent, type DragStartEvent,
@@ -178,6 +179,7 @@ function QuickPanel({ job, employees, onClose, onUpdate }: {
   const token = useAuthStore(s => s.token)!;
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const sc = STATUS_COLORS[job.status] || STATUS_COLORS.scheduled;
   const assignedEmp = employees.find(e => e.id === job.assigned_user_id);
   const endMins = timeToMins(job.scheduled_time) + job.duration_minutes;
@@ -190,6 +192,36 @@ function QuickPanel({ job, employees, onClose, onUpdate }: {
       onUpdate(); onClose();
     } catch { toast({ title: "Error", variant: "destructive" }); }
     finally { setBusy(false); }
+  }
+
+  async function duplicateJob() {
+    setDuplicating(true);
+    try {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const newDate = tomorrow.toISOString().split("T")[0];
+      const r = await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/jobs`, {
+        method: "POST",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: job.client_id,
+          service_type: job.service_type,
+          scheduled_date: newDate,
+          scheduled_time: job.scheduled_time,
+          duration_minutes: job.duration_minutes,
+          base_fee: job.amount,
+          frequency: job.frequency,
+          notes: job.notes,
+          assigned_user_id: job.assigned_user_id || undefined,
+          status: "scheduled",
+        }),
+      });
+      if (!r.ok) throw new Error("Failed to duplicate");
+      toast({ title: "Job duplicated for tomorrow ✓" });
+      onUpdate(); onClose();
+    } catch {
+      toast({ title: "Could not duplicate job", variant: "destructive" });
+    } finally { setDuplicating(false); }
   }
 
   return (
@@ -273,11 +305,11 @@ function QuickPanel({ job, employees, onClose, onUpdate }: {
             cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif",
           }}>{busy ? "..." : "Mark Complete"}</button>
         )}
-        <a href={`/jobs/${job.id}/edit`} style={{
+        <button onClick={duplicateJob} disabled={duplicating} style={{
           flex: 1, minWidth: 80, padding: "8px 12px", border: "1px solid #E5E2DC", borderRadius: 8,
-          color: "#1A1917", fontSize: 12, fontWeight: 600, textAlign: "center",
-          backgroundColor: "#FFFFFF", textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center",
-        }}>Edit Job</a>
+          color: "#6B7280", fontSize: 12, fontWeight: 600, backgroundColor: "#FFFFFF",
+          cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif",
+        }}>📋 {duplicating ? "Duplicating…" : "Duplicate"}</button>
       </div>
     </div>
   );
@@ -847,94 +879,7 @@ export default function JobsPage() {
         </>
       )}
 
-      {/* New Job Dialog */}
-      <Dialog open={newJobOpen} onOpenChange={setNewJobOpen}>
-        <DialogContent style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", maxWidth: 520 }}>
-          <DialogHeader>
-            <DialogTitle style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>New Job</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit(onCreateJob)} style={{ display: "flex", flexDirection: "column", gap: 14, paddingTop: 8 }}>
-            <div>
-              <label style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", display: "block", marginBottom: 4 }}>Client *</label>
-              <Controller name="client_id" control={control} render={({ field }) => (
-                <Select onValueChange={field.onChange} value={String(field.value || "")}>
-                  <SelectTrigger style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}><SelectValue placeholder="Select client..." /></SelectTrigger>
-                  <SelectContent>
-                    {clients.map((c: any) => <SelectItem key={c.id} value={String(c.id)}>{c.first_name} {c.last_name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              )} />
-              {errors.client_id && <p style={{ fontSize: 11, color: "#EF4444", margin: "2px 0 0" }}>{errors.client_id.message}</p>}
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div>
-                <label style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", display: "block", marginBottom: 4 }}>Service Type *</label>
-                <Controller name="service_type" control={control} render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}><SelectValue placeholder="Select..." /></SelectTrigger>
-                    <SelectContent>
-                      {["standard_clean","deep_clean","move_out","recurring_maintenance","post_construction"].map(s => (
-                        <SelectItem key={s} value={s}>{fmtService(s)}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )} />
-              </div>
-              <div>
-                <label style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", display: "block", marginBottom: 4 }}>Frequency *</label>
-                <Controller name="frequency" control={control} render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {["weekly","biweekly","monthly","on_demand"].map(f => (
-                        <SelectItem key={f} value={f}>{f.replace("_"," ")}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )} />
-              </div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div>
-                <label style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", display: "block", marginBottom: 4 }}>Date *</label>
-                <Input type="date" {...register("scheduled_date")} style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }} />
-              </div>
-              <div>
-                <label style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", display: "block", marginBottom: 4 }}>Time</label>
-                <Input type="time" {...register("scheduled_time")} style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }} />
-              </div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div>
-                <label style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", display: "block", marginBottom: 4 }}>Base Fee ($)</label>
-                <Input type="number" step="0.01" {...register("base_fee")} style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }} />
-              </div>
-              <div>
-                <label style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", display: "block", marginBottom: 4 }}>Duration (hrs)</label>
-                <Input type="number" step="0.5" placeholder="2.0" {...register("allowed_hours")} style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }} />
-              </div>
-            </div>
-            <div>
-              <label style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", display: "block", marginBottom: 4 }}>Assign To</label>
-              <Controller name="assigned_user_id" control={control} render={({ field }) => (
-                <Select onValueChange={field.onChange} value={String(field.value || "")}>
-                  <SelectTrigger style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}><SelectValue placeholder="Unassigned" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0">Unassigned</SelectItem>
-                    {users.map((u: any) => <SelectItem key={u.id} value={String(u.id)}>{u.first_name} {u.last_name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              )} />
-            </div>
-            <DialogFooter>
-              <button type="button" onClick={() => setNewJobOpen(false)} style={{ padding: "8px 18px", border: "1px solid #E5E2DC", borderRadius: 8, backgroundColor: "#FFFFFF", cursor: "pointer", fontSize: 13, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Cancel</button>
-              <button type="submit" disabled={isSubmitting} style={{ padding: "8px 18px", backgroundColor: "var(--brand)", color: "#FFFFFF", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-                {isSubmitting ? "Creating..." : "Create Job"}
-              </button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <JobWizard open={newJobOpen} onClose={() => setNewJobOpen(false)} onCreated={load} />
     </DashboardLayout>
   );
 }

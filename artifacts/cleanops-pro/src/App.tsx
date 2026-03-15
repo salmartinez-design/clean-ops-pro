@@ -20,6 +20,7 @@ import MyJobsPage from "@/pages/my-jobs";
 import ClockMonitorPage from "@/pages/clock-monitor";
 import PortalLoginPage from "@/pages/portal/login";
 import PortalDashboardPage from "@/pages/portal/dashboard";
+import InsightsPage from "@/pages/reports/insights";
 import NotFound from "@/pages/not-found";
 
 import AdminDashboard from "@/pages/admin/index";
@@ -52,6 +53,8 @@ function Router() {
       <Route path="/loyalty" component={LoyaltyPage} />
       <Route path="/discounts" component={DiscountsPage} />
       <Route path="/my-jobs" component={MyJobsPage} />
+
+      <Route path="/reports/insights" component={InsightsPage} />
 
       <Route path="/portal/:slug/login" component={PortalLoginPage} />
       <Route path="/portal/:slug/dashboard" component={PortalDashboardPage} />

@@ -15,3 +15,5 @@ export * from "./availability";
 export * from "./contact_tickets";
 export * from "./employee_notes";
 export * from "./client_ratings";
+export * from "./messages";
+export * from "./notification_templates";

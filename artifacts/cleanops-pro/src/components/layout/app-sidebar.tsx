@@ -1,4 +1,4 @@
-import { Home, Briefcase, Users, UsersRound, FileText, DollarSign, BookOpen, Star, Settings, LogOut, LayoutDashboard, X, Tag, ClipboardList, Clock } from "lucide-react";
+import { Home, Briefcase, Users, UsersRound, FileText, DollarSign, BookOpen, Star, Settings, LogOut, LayoutDashboard, X, Tag, ClipboardList, Clock, TrendingUp } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useAuthStore } from "@/lib/auth";
 import { useTenantBrand } from "@/lib/tenant-brand";
@@ -21,6 +21,7 @@ const NAV_SECTIONS = [
     label: "Tools",
     items: [
       { title: "Cleancyclopedia", url: "/cleancyclopedia", icon: BookOpen },
+      { title: "Insights",        url: "/reports/insights", icon: TrendingUp, roles: ["owner", "admin"] },
     ],
   },
   {

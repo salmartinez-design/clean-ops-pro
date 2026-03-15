@@ -24,13 +24,14 @@ Multi-tenant SaaS platform for residential and commercial cleaning businesses (P
 ## Pages
 
 ### Admin/Owner Dashboard
-- `/dashboard` — Metrics, revenue chart, top employees, recent jobs
-- `/jobs` — Job grid with frequency-color left borders + status bottom borders, Create Job dialog
+- `/dashboard` — Smart Dashboard: Today at a Glance status bar (auto-refresh 60s), Revenue progress vs daily goal, Alerts panel with dismiss/action, Employee Status Board, revenue chart, recent jobs
+- `/jobs` — Dispatch board with 3-step Job Creation Wizard (Client search+history → Service type grid+time pills+auto-price → Employee assign), Duplicate Job button on job panel
 - `/employees` — Table with SVG productivity rings, role badges, score + Send Invite button
 - `/employees/:id` — 11-tab employee profile (Information, Tags & Skills, Attendance, Availability, User Account, Contacts, Scorecards, Additional Pay, Contact Tickets, Jobs, Notes)
 - `/customers` — Client table with loyalty points display, batch selection
 - `/invoices` — Stat cards, tabbed filter, invoice table with status badges
-- `/company` — General settings + Branding tab (live color picker, logo URL, sidebar preview)
+- `/company` — General + Branding + **Notifications** tab (6 trigger templates, toggle on/off, edit body+subject, variable tokens, test button, activity log) + Integrations + Payroll Options
+- `/reports/insights` — Performance Insights: top performers with star ratings, employee concern alerts, client churn risk, revenue by service type bar chart
 - `/loyalty` — Program style selector, earn rules with toggles/slider, rewards toggle list
 - `/discounts` — Discount code management (percentage/fixed, scope, expiry, active toggle)
 - `/payroll` — Payroll export and period management
@@ -46,6 +47,29 @@ Multi-tenant SaaS platform for residential and commercial cleaning businesses (P
 ### Auth Pages
 - `/login` — Staff login
 - `/accept-invite?token=xxx` — Employee invite acceptance + password set
+
+## Platform Features (MaidCentral-Beating)
+
+### Global Search
+- Triggered by pressing "/" or clicking the magnifier icon in the top bar
+- Searches across: clients (name/email/phone/address), jobs (service type/status/date/client), employees (name/email), invoices (client/status)
+- Results grouped by type; click any result navigates directly to that record
+- API: `GET /api/search?q=term`
+
+### Team Chat
+- Slide-in panel (320px from right) triggered by the chat icon in the top bar
+- Channels: #general, #dispatch + direct messages; polls every 10 seconds
+- Unread badge on the top-bar chat icon
+- API: `GET /api/messages?channel=`, `POST /api/messages`, `PATCH /api/messages/:id/read`
+
+### Keyboard Shortcuts
+- Press "?" to show the full shortcut overlay
+- Active shortcuts: / = Search, N = New Job, E = Employees, D = Dashboard, C = Customers, I = Invoices, P = Payroll, ? = Help
+- Implemented as a custom hook (`useKeyboardShortcuts`) + overlay component (`keyboard-shortcuts.tsx`)
+
+### PWA Support
+- `manifest.json` with name, icons, theme_color (#5B9BD5), display: standalone
+- Linked in index.html with Apple meta tags for "Add to Home Screen"
 
 ## Employee Profile — 11 Tabs
 

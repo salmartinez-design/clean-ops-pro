@@ -16,6 +16,10 @@ import adminRouter from "./admin.js";
 import discountsRouter from "./discounts.js";
 import dispatchRouter from "./dispatch.js";
 import portalRouter from "./portal.js";
+import searchRouter from "./search.js";
+import messagesRouter from "./messages.js";
+import reportsRouter from "./reports.js";
+import notificationsRouter from "./notifications.js";
 
 const router: IRouter = Router();
 
@@ -36,5 +40,9 @@ router.use("/admin", adminRouter);
 router.use("/discounts", discountsRouter);
 router.use("/dispatch", dispatchRouter);
 router.use("/portal", portalRouter);
+router.use("/search", searchRouter);
+router.use("/messages", messagesRouter);
+router.use("/reports", reportsRouter);
+router.use("/notifications", notificationsRouter);
 
 export default router;
