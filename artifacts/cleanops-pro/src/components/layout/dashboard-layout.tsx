@@ -14,6 +14,7 @@ import {
 interface DashboardLayoutProps {
   children: ReactNode;
   title?: string;
+  fullBleed?: boolean;
 }
 
 const ROUTE_TITLES: Record<string, string> = {
@@ -37,7 +38,7 @@ const BOTTOM_TABS = [
   { href: '/payroll',   icon: DollarSign,      label: 'Payroll' },
 ];
 
-export function DashboardLayout({ children, title }: DashboardLayoutProps) {
+export function DashboardLayout({ children, title, fullBleed }: DashboardLayoutProps) {
   const token = useAuthStore(state => state.token);
   const setToken = useAuthStore(state => state.setToken);
   const [location, setLocation] = useLocation();
@@ -205,11 +206,17 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
           </div>
         </header>
 
-        <main style={{ flex: 1, overflowY: 'auto', padding: '28px 28px', backgroundColor: '#F7F6F3' }}>
-          <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+        {fullBleed ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {children}
           </div>
-        </main>
+        ) : (
+          <main style={{ flex: 1, overflowY: 'auto', padding: '28px 28px', backgroundColor: '#F7F6F3' }}>
+            <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+              {children}
+            </div>
+          </main>
+        )}
       </div>
     </div>
   );

@@ -13,6 +13,7 @@ import loyaltyRouter from "./loyalty.js";
 import dashboardRouter from "./dashboard.js";
 import adminRouter from "./admin.js";
 import discountsRouter from "./discounts.js";
+import dispatchRouter from "./dispatch.js";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use("/loyalty", loyaltyRouter);
 router.use("/dashboard", dashboardRouter);
 router.use("/admin", adminRouter);
 router.use("/discounts", discountsRouter);
+router.use("/dispatch", dispatchRouter);
 
 export default router;
