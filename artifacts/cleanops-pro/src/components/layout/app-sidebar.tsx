@@ -1,59 +1,48 @@
 import {
-  Home, Briefcase, Users, UsersRound, FileText, DollarSign, BookOpen, Star,
-  Settings, LogOut, LayoutDashboard, X, Tag, ClipboardList, Clock, TrendingUp,
-  BarChart2, ChevronDown, ChevronRight, ReceiptText, Calendar, UserCheck,
-  AlertTriangle, Activity, Clipboard, LayoutList, Banknote,
+  LogOut, X, LayoutDashboard, CalendarDays, ClipboardList, Clock,
+  Briefcase, Users, UserCheck, FileText, DollarSign,
+  BarChart2, TrendingUp, ArrowUpCircle, Tag,
+  BookOpen, Star, Settings,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useAuthStore } from "@/lib/auth";
 import { useTenantBrand } from "@/lib/tenant-brand";
-import { useState } from "react";
-
-const REPORT_ITEMS = [
-  { title: "Reports Home",          url: "/reports",                    icon: BarChart2 },
-  { title: "Performance Insights",  url: "/reports/insights",           icon: TrendingUp },
-  { title: "Revenue Summary",       url: "/reports/revenue",            icon: DollarSign },
-  { title: "Payroll Summary",       url: "/reports/payroll",            icon: Banknote },
-  { title: "Payroll % Revenue",     url: "/reports/payroll-to-revenue", icon: Activity },
-  { title: "Employee Stats",        url: "/reports/employee-stats",     icon: UserCheck },
-  { title: "Tips Report",           url: "/reports/tips",               icon: Star },
-  { title: "Accounts Receivable",   url: "/reports/receivables",        icon: ReceiptText },
-  { title: "Job Costing",           url: "/reports/job-costing",        icon: Clipboard },
-  { title: "Schedule Efficiency",   url: "/reports/efficiency",         icon: Calendar },
-  { title: "Week in Review",        url: "/reports/week-review",        icon: LayoutList },
-  { title: "Scorecards",            url: "/reports/scorecards",         icon: ClipboardList },
-  { title: "Cancellations",         url: "/reports/cancellations",      icon: AlertTriangle },
-  { title: "Contact Tickets",       url: "/reports/contact-tickets",    icon: FileText },
-  { title: "Hot Sheet",             url: "/reports/hot-sheet",          icon: Home },
-  { title: "First Time In",         url: "/reports/first-time",         icon: Users },
-];
 
 const NAV_SECTIONS = [
   {
-    label: "Operations",
+    label: "Today",
     items: [
-      { title: "Dashboard",      url: "/dashboard",        icon: LayoutDashboard },
-      { title: "My Jobs",        url: "/my-jobs",           icon: ClipboardList },
-      { title: "Jobs",           url: "/jobs",              icon: Briefcase },
-      { title: "Employees",      url: "/employees",         icon: Users },
-      { title: "Clock Monitor",  url: "/employees/clocks",  icon: Clock, roles: ["owner", "admin"] },
-      { title: "Customers",      url: "/customers",         icon: UsersRound },
-      { title: "Invoices",       url: "/invoices",          icon: FileText },
-      { title: "Payroll",        url: "/payroll",           icon: DollarSign, roles: ["owner", "admin"] },
+      { title: "Dashboard",      url: "/dashboard",       icon: LayoutDashboard },
+      { title: "Dispatch Board", url: "/jobs",             icon: CalendarDays },
+      { title: "My Jobs",        url: "/my-jobs",          icon: ClipboardList },
+      { title: "Clock Monitor",  url: "/employees/clocks", icon: Clock, roles: ["owner", "admin"] },
+    ],
+  },
+  {
+    label: "Manage",
+    items: [
+      { title: "Jobs",       url: "/jobs",       icon: Briefcase },
+      { title: "Customers",  url: "/customers",  icon: Users },
+      { title: "Employees",  url: "/employees",  icon: UserCheck },
+      { title: "Invoices",   url: "/invoices",   icon: FileText },
+      { title: "Payroll",    url: "/payroll",    icon: DollarSign, roles: ["owner", "admin"] },
+    ],
+  },
+  {
+    label: "Grow",
+    items: [
+      { title: "Reports",      url: "/reports",           icon: BarChart2,      roles: ["owner", "admin", "office"] },
+      { title: "Core KPIs",    url: "/reports/insights",  icon: TrendingUp,     roles: ["owner", "admin", "office"] },
+      { title: "Rate Increase", url: "/discounts",        icon: ArrowUpCircle,  roles: ["owner", "admin"] },
+      { title: "Discounts",    url: "/discounts",          icon: Tag,            roles: ["owner", "admin"] },
     ],
   },
   {
     label: "Tools",
     items: [
       { title: "Cleancyclopedia", url: "/cleancyclopedia", icon: BookOpen },
-    ],
-  },
-  {
-    label: "Configuration",
-    items: [
-      { title: "Loyalty",    url: "/loyalty",    icon: Star,     roles: ["owner", "admin"] },
-      { title: "Discounts",  url: "/discounts",  icon: Tag,      roles: ["owner", "admin"] },
-      { title: "Company",    url: "/company",    icon: Settings, roles: ["owner", "admin"] },
+      { title: "Loyalty",         url: "/loyalty",          icon: Star,     roles: ["owner", "admin"] },
+      { title: "Company",         url: "/company",           icon: Settings, roles: ["owner", "admin"] },
     ],
   },
 ];
@@ -68,7 +57,6 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
   const [location] = useLocation();
   const logout = useAuthStore(state => state.logout);
   const { logoUrl, companyName } = useTenantBrand();
-  const [reportsOpen, setReportsOpen] = useState(location.startsWith("/reports"));
 
   const token = useAuthStore(state => state.token);
   let userInfo: { email: string; role: string; firstName: string; lastName: string } | null = null;
@@ -88,23 +76,24 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
     ? `${userInfo.firstName[0] || ''}${userInfo.lastName[0] || ''}`.toUpperCase()
     : '??';
 
-  const isReportActive = location.startsWith("/reports");
-  const isAdminRole = userInfo && ["owner", "admin", "office"].includes(userInfo.role);
+  const isActive = (url: string) =>
+    url === '/dashboard' ? location === url : location === url || location.startsWith(url + '/');
 
   const navItemStyle = (active: boolean): React.CSSProperties => ({
-    height: '34px',
+    height: 38,
     padding: '0 12px',
     margin: '1px 8px',
-    borderRadius: '6px',
+    borderRadius: 8,
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
+    gap: 10,
     cursor: 'pointer',
-    transition: 'all 0.15s',
+    transition: 'all 0.12s',
     backgroundColor: active ? 'var(--brand-soft)' : 'transparent',
-    color: active ? 'var(--brand)' : '#6B7280',
-    fontWeight: active ? 500 : 400,
-    fontSize: '13px',
+    borderLeft: active ? '3px solid var(--brand)' : '3px solid transparent',
+    color: active ? 'var(--brand)' : '#6B6860',
+    fontWeight: active ? 600 : 500,
+    fontSize: 13,
     fontFamily: "'Plus Jakarta Sans', sans-serif",
     textDecoration: 'none',
   });
@@ -120,117 +109,84 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
       height: '100%',
       overflow: 'hidden',
     }}>
-      {/* Top — Logo */}
-      <div style={{ padding: '18px 16px 12px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
+      {/* Logo */}
+      <div style={{ height: 56, padding: '0 16px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #EEECE7' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, overflow: 'hidden' }}>
           {logoUrl ? (
-            <div>
-              <div style={{ backgroundColor: '#F7F6F3', borderRadius: '6px', padding: '4px 8px', display: 'inline-block', marginBottom: '6px', border: '1px solid #EEECE7' }}>
-                <img src={logoUrl} alt={companyName} style={{ height: '26px', width: 'auto', objectFit: 'contain', objectPosition: 'left', display: 'block' }} />
-              </div>
-              <p style={{ fontSize: '11px', fontWeight: 500, color: '#9E9B94', letterSpacing: '0.06em', margin: 0 }}>CleanOps Pro</p>
-            </div>
+            <img src={logoUrl} alt={companyName} style={{ height: 28, width: 'auto', objectFit: 'contain', flexShrink: 0 }} />
           ) : (
-            <div>
-              <p style={{ fontSize: '15px', fontWeight: 600, color: '#1A1917', margin: '0 0 4px 0' }}>{companyName}</p>
-              <p style={{ fontSize: '11px', fontWeight: 500, color: '#9E9B94', letterSpacing: '0.06em', margin: 0 }}>CleanOps Pro</p>
+            <div style={{ width: 28, height: 28, borderRadius: 7, backgroundColor: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <span style={{ fontSize: 12, fontWeight: 800, color: '#FFFFFF', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                {(companyName?.[0] || 'C').toUpperCase()}
+              </span>
             </div>
           )}
+          <div style={{ overflow: 'hidden' }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1917', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{companyName}</p>
+            <p style={{ fontSize: 10, fontWeight: 500, color: '#9E9B94', margin: 0, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>CleanOps Pro</p>
+          </div>
         </div>
         {mobile && (
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280', padding: 4, display: 'flex', alignItems: 'center' }}>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9E9B94', padding: 4, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
             <X size={18} />
           </button>
         )}
       </div>
 
-      <div style={{ borderTop: '1px solid #EEECE7', margin: '0 0 4px 0' }} />
-
       {/* Nav */}
-      <nav style={{ flex: 1, overflowY: 'auto', paddingBottom: '8px' }}>
+      <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 0 12px' }}>
         {NAV_SECTIONS.map(section => (
           <div key={section.label}>
-            <p style={{ fontSize: '10px', fontWeight: 600, color: '#9E9B94', letterSpacing: '0.1em', textTransform: 'uppercase', padding: '16px 16px 6px', margin: 0 }}>
+            <p style={{
+              fontSize: 10, fontWeight: 600, color: '#9E9B94', letterSpacing: '0.08em',
+              textTransform: 'uppercase', padding: '20px 0 6px 16px', margin: 0,
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+            }}>
               {section.label}
             </p>
-            {section.items.filter(item => !item.roles || (userInfo && item.roles.includes(userInfo.role))).map(item => {
-              const isActive = location === item.url || (item.url !== '/dashboard' && location.startsWith(item.url));
-              const Icon = item.icon;
-              return (
-                <Link key={item.url} href={item.url}>
-                  <div
-                    style={navItemStyle(isActive)}
-                    onMouseEnter={e => { if (!isActive) { e.currentTarget.style.backgroundColor = '#F0EEE9'; e.currentTarget.style.color = '#1A1917'; } }}
-                    onMouseLeave={e => { if (!isActive) { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#6B7280'; } }}
-                  >
-                    <Icon size={15} style={{ flexShrink: 0 }} />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</span>
-                  </div>
-                </Link>
-              );
-            })}
+            {section.items
+              .filter(item => !item.roles || (userInfo && item.roles.includes(userInfo.role)))
+              .map(item => {
+                const active = isActive(item.url);
+                const Icon = item.icon;
+                return (
+                  <Link key={item.title + item.url} href={item.url} onClick={mobile ? onClose : undefined}>
+                    <div
+                      style={navItemStyle(active)}
+                      onMouseEnter={e => {
+                        if (!active) {
+                          e.currentTarget.style.backgroundColor = '#F0EEE9';
+                          e.currentTarget.style.color = '#1A1917';
+                        }
+                      }}
+                      onMouseLeave={e => {
+                        if (!active) {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                          e.currentTarget.style.color = '#6B6860';
+                        }
+                      }}
+                    >
+                      <Icon size={16} style={{ flexShrink: 0, color: 'inherit' }} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</span>
+                    </div>
+                  </Link>
+                );
+              })}
           </div>
         ))}
-
-        {/* Reports section — collapsible, admin/office only */}
-        {isAdminRole && (
-          <div>
-            <p style={{ fontSize: '10px', fontWeight: 600, color: '#9E9B94', letterSpacing: '0.1em', textTransform: 'uppercase', padding: '16px 16px 6px', margin: 0 }}>Reports</p>
-            <button
-              onClick={() => setReportsOpen(p => !p)}
-              style={{
-                ...navItemStyle(isReportActive),
-                width: 'calc(100% - 16px)',
-                background: isReportActive ? 'var(--brand-soft)' : 'transparent',
-                border: 'none',
-                justifyContent: 'space-between',
-              }}
-              onMouseEnter={e => { if (!isReportActive) { e.currentTarget.style.backgroundColor = '#F0EEE9'; e.currentTarget.style.color = '#1A1917'; } }}
-              onMouseLeave={e => { if (!isReportActive) { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#6B7280'; } }}
-            >
-              <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <BarChart2 size={15} style={{ flexShrink: 0 }} />
-                <span>All Reports</span>
-              </span>
-              {reportsOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-            </button>
-
-            {reportsOpen && REPORT_ITEMS.map(item => {
-              const isActive = location === item.url;
-              const Icon = item.icon;
-              return (
-                <Link key={item.url} href={item.url}>
-                  <div
-                    style={{
-                      ...navItemStyle(isActive),
-                      paddingLeft: '28px',
-                      height: '30px',
-                      fontSize: '12px',
-                    }}
-                    onMouseEnter={e => { if (!isActive) { e.currentTarget.style.backgroundColor = '#F0EEE9'; e.currentTarget.style.color = '#1A1917'; } }}
-                    onMouseLeave={e => { if (!isActive) { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#6B7280'; } }}
-                  >
-                    <Icon size={13} style={{ flexShrink: 0 }} />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</span>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        )}
       </nav>
 
       <div style={{ borderTop: '1px solid #EEECE7' }} />
       {/* User footer */}
       <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ width: 30, height: 30, borderRadius: '50%', backgroundColor: 'var(--brand-soft)', color: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, flexShrink: 0 }}>
+        <div style={{ width: 30, height: 30, borderRadius: '50%', backgroundColor: 'var(--brand-soft)', color: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
           {initials}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ margin: 0, fontSize: '12px', fontWeight: 600, color: '#1A1917', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#1A1917', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
             {userInfo?.firstName} {userInfo?.lastName}
           </p>
-          <p style={{ margin: 0, fontSize: '10px', color: '#9E9B94', textTransform: 'capitalize' }}>{userInfo?.role}</p>
+          <p style={{ margin: 0, fontSize: 10, color: '#9E9B94', textTransform: 'capitalize', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{userInfo?.role}</p>
         </div>
         <button
           onClick={() => logout()}

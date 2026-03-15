@@ -329,4 +329,135 @@ router.get("/today", requireAuth, async (req, res) => {
   }
 });
 
+router.get("/kpis", requireAuth, async (req, res) => {
+  try {
+    const companyId = req.auth!.companyId!;
+    const now = new Date();
+    const todayStr = now.toISOString().split("T")[0];
+
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthStartStr = monthStart.toISOString().split("T")[0];
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    const lastMonthStartStr = lastMonthStart.toISOString().split("T")[0];
+    const lastMonthEndStr = lastMonthEnd.toISOString().split("T")[0];
+
+    const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const weekStartStr = weekStart.toISOString().split("T")[0];
+    const prevWeekStart = new Date(weekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const prevWeekStartStr = prevWeekStart.toISOString().split("T")[0];
+
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split("T")[0];
+
+    const [
+      weekRev, prevWeekRev,
+      monthRev, lastMonthRev,
+      monthJobs,
+      avgScore,
+      activeClients,
+      atRiskClients,
+      unassignedToday,
+      flaggedToday,
+      overdueInvoices,
+      completeNotInvoiced,
+    ] = await Promise.all([
+      // Week revenue
+      db.select({ total: sum(invoicesTable.total) }).from(invoicesTable)
+        .where(and(eq(invoicesTable.company_id, companyId), eq(invoicesTable.status, "paid"), gte(invoicesTable.created_at, weekStart))),
+      // Previous week revenue
+      db.select({ total: sum(invoicesTable.total) }).from(invoicesTable)
+        .where(and(eq(invoicesTable.company_id, companyId), eq(invoicesTable.status, "paid"), gte(invoicesTable.created_at, prevWeekStart), lt(invoicesTable.created_at, weekStart))),
+      // Month revenue
+      db.select({ total: sum(invoicesTable.total) }).from(invoicesTable)
+        .where(and(eq(invoicesTable.company_id, companyId), eq(invoicesTable.status, "paid"), gte(invoicesTable.created_at, monthStart))),
+      // Last month revenue
+      db.select({ total: sum(invoicesTable.total) }).from(invoicesTable)
+        .where(and(eq(invoicesTable.company_id, companyId), eq(invoicesTable.status, "paid"), gte(invoicesTable.created_at, lastMonthStart), lte(invoicesTable.created_at, lastMonthEnd))),
+      // Month jobs (for avg bill)
+      db.select({ count: count(), fee_sum: sum(jobsTable.base_fee) }).from(jobsTable)
+        .where(and(eq(jobsTable.company_id, companyId), eq(jobsTable.status, "complete"), gte(jobsTable.scheduled_date, monthStartStr))),
+      // Avg quality score (last 30 days)
+      db.select({ avg: avg(scorecardsTable.score) }).from(scorecardsTable)
+        .where(and(eq(scorecardsTable.company_id, companyId), eq(scorecardsTable.excluded, false), gte(scorecardsTable.created_at, thirtyDaysAgo))),
+      // Active clients
+      db.select({ count: count() }).from(clientsTable).where(eq(clientsTable.company_id, companyId)),
+      // Clients at risk: no job booked in 30 days
+      db.select({ count: count() }).from(clientsTable)
+        .where(and(eq(clientsTable.company_id, companyId)))
+        .then(async () => {
+          const scheduled = await db.select({ client_id: jobsTable.client_id }).from(jobsTable)
+            .where(and(eq(jobsTable.company_id, companyId), gte(jobsTable.scheduled_date, thirtyDaysAgoStr)));
+          const activeClientIds = new Set(scheduled.map(j => j.client_id));
+          const allC = await db.select({ id: clientsTable.id }).from(clientsTable).where(eq(clientsTable.company_id, companyId));
+          return [{ count: allC.filter(c => !activeClientIds.has(c.id)).length }];
+        }),
+      // Unassigned jobs today
+      db.select({ count: count() }).from(jobsTable)
+        .where(and(eq(jobsTable.company_id, companyId), eq(jobsTable.scheduled_date, todayStr), isNull(jobsTable.assigned_user_id))),
+      // Flagged clock-ins today
+      db.select({ count: count() }).from(timeclockTable)
+        .where(and(eq(timeclockTable.company_id, companyId), eq(timeclockTable.flagged, true), gte(timeclockTable.clock_in_at, new Date(todayStr)))),
+      // Overdue invoices
+      db.select({ count: count() }).from(invoicesTable)
+        .where(and(eq(invoicesTable.company_id, companyId), eq(invoicesTable.status, "overdue"))),
+      // Jobs complete but not invoiced
+      db.select({ count: count() }).from(jobsTable)
+        .where(and(eq(jobsTable.company_id, companyId), eq(jobsTable.status, "complete")))
+        .then(async () => {
+          const completedJobIds = await db.select({ id: jobsTable.id }).from(jobsTable)
+            .where(and(eq(jobsTable.company_id, companyId), eq(jobsTable.status, "complete"), gte(jobsTable.scheduled_date, monthStartStr)));
+          const invoicedJobIds = await db.select({ job_id: invoicesTable.job_id }).from(invoicesTable)
+            .where(and(eq(invoicesTable.company_id, companyId), isNotNull(invoicesTable.job_id)));
+          const invoicedSet = new Set(invoicedJobIds.map(i => i.job_id));
+          return [{ count: completedJobIds.filter(j => !invoicedSet.has(j.id)).length }];
+        }),
+    ]);
+
+    const weekRevNum = parseFloat(weekRev[0]?.total || "0");
+    const prevWeekRevNum = parseFloat(prevWeekRev[0]?.total || "0");
+    const weekDelta = prevWeekRevNum > 0 ? Math.round(((weekRevNum - prevWeekRevNum) / prevWeekRevNum) * 100) : null;
+
+    const monthRevNum = parseFloat(monthRev[0]?.total || "0");
+    const lastMonthRevNum = parseFloat(lastMonthRev[0]?.total || "0");
+    const monthDelta = lastMonthRevNum > 0 ? Math.round(((monthRevNum - lastMonthRevNum) / lastMonthRevNum) * 100) : null;
+
+    const jobCount = Number(monthJobs[0]?.count || 0);
+    const feeSum = parseFloat(monthJobs[0]?.fee_sum || "0");
+    const avgBill = jobCount > 0 ? feeSum / jobCount : 0;
+
+    const qualityScore = avgScore[0]?.avg ? Math.round(parseFloat(avgScore[0].avg) * 25) : null;
+
+    const atRisk = Number((atRiskClients as any)[0]?.count || 0);
+    const unassigned = Number(unassignedToday[0]?.count || 0);
+    const flagged = Number(flaggedToday[0]?.count || 0);
+    const overdue = Number(overdueInvoices[0]?.count || 0);
+    const notInvoiced = Number((completeNotInvoiced as any)[0]?.count || 0);
+
+    // Build action items
+    type ActionItem = { level: 'red' | 'amber' | 'blue'; text: string; action: string };
+    const actions: ActionItem[] = [];
+    if (flagged > 0) actions.push({ level: 'red', text: `${flagged} flagged clock-in${flagged > 1 ? 's' : ''} need review`, action: '/employees/clocks' });
+    if (unassigned > 0) actions.push({ level: 'red', text: `${unassigned} job${unassigned > 1 ? 's' : ''} today ${unassigned > 1 ? 'are' : 'is'} unassigned`, action: '/jobs' });
+    if (overdue > 0) actions.push({ level: 'red', text: `${overdue} invoice${overdue > 1 ? 's' : ''} overdue — review immediately`, action: '/invoices' });
+    if (notInvoiced > 0) actions.push({ level: 'amber', text: `${notInvoiced} completed job${notInvoiced > 1 ? 's' : ''} this month not yet invoiced`, action: '/invoices' });
+    if (atRisk > 0) actions.push({ level: 'amber', text: `${atRisk} client${atRisk > 1 ? 's' : ''} with no booking in 30+ days`, action: '/customers' });
+
+    return res.json({
+      week_revenue: weekRevNum,
+      week_delta: weekDelta,
+      month_revenue: monthRevNum,
+      month_delta: monthDelta,
+      avg_bill: avgBill,
+      active_clients: Number(activeClients[0]?.count || 0),
+      quality_score: qualityScore,
+      clients_at_risk: atRisk,
+      action_items: actions.slice(0, 5),
+    });
+  } catch (err) {
+    console.error("Dashboard kpis error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 export default router;
