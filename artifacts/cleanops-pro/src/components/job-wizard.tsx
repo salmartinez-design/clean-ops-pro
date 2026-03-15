@@ -1,18 +1,19 @@
 import { useState, useEffect, useRef } from "react";
 import { getAuthHeaders } from "@/lib/auth";
-import { X, ChevronRight, ChevronLeft, Search, Check, Clock, User, Calendar } from "lucide-react";
+import { X, ChevronRight, ChevronLeft, Search, Check, Clock, User, Calendar, Sparkles, Zap, ArrowRightCircle, Home, RefreshCw, Wrench, Building2, LayoutGrid } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-const SERVICE_TYPES = [
-  { value: "standard_clean",   label: "Standard Clean",      price: 120, icon: "🧹", duration: 120 },
-  { value: "deep_clean",       label: "Deep Clean",          price: 220, icon: "✨", duration: 180 },
-  { value: "move_out",         label: "Move Out",            price: 300, icon: "📦", duration: 240 },
-  { value: "move_in",          label: "Move In",             price: 280, icon: "🏠", duration: 240 },
-  { value: "recurring",        label: "Recurring",           price: 95,  icon: "🔁", duration: 90 },
-  { value: "post_construction",label: "Post-Construction",   price: 450, icon: "🏗️", duration: 300 },
-  { value: "office_cleaning",  label: "Office Cleaning",     price: 200, icon: "🏢", duration: 150 },
-  { value: "common_areas",     label: "Common Areas",        price: 150, icon: "🛗", duration: 120 },
+const SERVICE_TYPES: { value: string; label: string; price: number; icon: LucideIcon; duration: number }[] = [
+  { value: "standard_clean",    label: "Standard Clean",    price: 120, icon: Sparkles,         duration: 120 },
+  { value: "deep_clean",        label: "Deep Clean",        price: 220, icon: Zap,              duration: 180 },
+  { value: "move_out",          label: "Move Out",          price: 300, icon: ArrowRightCircle, duration: 240 },
+  { value: "move_in",           label: "Move In",           price: 280, icon: Home,             duration: 240 },
+  { value: "recurring",         label: "Recurring",         price: 95,  icon: RefreshCw,        duration: 90  },
+  { value: "post_construction", label: "Post-Construction", price: 450, icon: Wrench,           duration: 300 },
+  { value: "office_cleaning",   label: "Office Cleaning",   price: 200, icon: Building2,        duration: 150 },
+  { value: "common_areas",      label: "Common Areas",      price: 150, icon: LayoutGrid,       duration: 120 },
 ];
 
 const TIME_OPTIONS = [
@@ -280,7 +281,9 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
                   {SERVICE_TYPES.map(svc => (
                     <button key={svc.value} onClick={() => setServiceType(svc.value)}
                       style={{ padding: "12px 8px", border: `2px solid ${serviceType === svc.value ? "var(--brand, #5B9BD5)" : "#E5E2DC"}`, borderRadius: 10, background: serviceType === svc.value ? "#EBF4FF" : "#fff", cursor: "pointer", textAlign: "center", fontFamily: "inherit", transition: "all 0.15s" }}>
-                      <p style={{ fontSize: 20, margin: "0 0 4px" }}>{svc.icon}</p>
+                      <div style={{ display: "flex", justifyContent: "center", marginBottom: 4 }}>
+                        <svc.icon size={18} color={serviceType === svc.value ? "var(--brand, #5B9BD5)" : "#6B7280"}/>
+                      </div>
                       <p style={{ fontSize: 10, fontWeight: 600, color: serviceType === svc.value ? "var(--brand, #5B9BD5)" : "#6B7280", margin: 0, lineHeight: 1.3 }}>{svc.label}</p>
                     </button>
                   ))}
@@ -400,7 +403,7 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
                 </div>
               </div>
 
-              {error && <p style={{ fontSize: 12, color: "#DC2626", background: "#FEE2E2", borderRadius: 6, padding: "8px 12px", margin: 0 }}>⚠️ {error}</p>}
+              {error && <p style={{ fontSize: 12, color: "#DC2626", background: "#FEE2E2", borderRadius: 6, padding: "8px 12px", margin: 0 }}>{error}</p>}
             </div>
           )}
         </div>
@@ -423,7 +426,7 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
             </button>
             : <button onClick={submit} disabled={submitting}
               style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 22px", border: "none", borderRadius: 8, background: submitting ? "#9E9B94" : "var(--brand, #5B9BD5)", cursor: submitting ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700, color: "#fff", fontFamily: "inherit" }}>
-              {submitting ? "Creating…" : "✓ Create Job"}
+              {submitting ? "Creating…" : "Create Job"}
             </button>
           }
         </div>

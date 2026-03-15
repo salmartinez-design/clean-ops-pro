@@ -20,6 +20,7 @@ import searchRouter from "./search.js";
 import messagesRouter from "./messages.js";
 import reportsRouter from "./reports.js";
 import notificationsRouter from "./notifications.js";
+import jobSmsRouter from "./job-sms.js";
 
 const router: IRouter = Router();
 
@@ -30,6 +31,7 @@ router.use("/users", employeeExtendedRouter);
 router.use("/users", usersRouter);
 router.use("/clients", clientsRouter);
 router.use("/jobs", jobsRouter);
+router.use("/jobs", jobSmsRouter);
 router.use("/timeclock", timeclockRouter);
 router.use("/invoices", invoicesRouter);
 router.use("/scorecards", scorecardsRouter);

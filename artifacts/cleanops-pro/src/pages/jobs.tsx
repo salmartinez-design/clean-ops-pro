@@ -217,7 +217,7 @@ function QuickPanel({ job, employees, onClose, onUpdate }: {
         }),
       });
       if (!r.ok) throw new Error("Failed to duplicate");
-      toast({ title: "Job duplicated for tomorrow ✓" });
+      toast({ title: "Job duplicated for tomorrow" });
       onUpdate(); onClose();
     } catch {
       toast({ title: "Could not duplicate job", variant: "destructive" });
@@ -276,7 +276,7 @@ function QuickPanel({ job, employees, onClose, onUpdate }: {
             )}
             {job.clock_entry.distance_from_job_ft !== null && (
               <KV label="Distance at clock-in"
-                value={`${Math.round(job.clock_entry.distance_from_job_ft)} ft ${job.clock_entry.is_flagged ? "⚑" : ""}`}
+                value={`${Math.round(job.clock_entry.distance_from_job_ft)} ft${job.clock_entry.is_flagged ? " (flagged)" : ""}`}
                 valueColor={job.clock_entry.is_flagged ? "#EF4444" : undefined}
               />
             )}
@@ -309,7 +309,7 @@ function QuickPanel({ job, employees, onClose, onUpdate }: {
           flex: 1, minWidth: 80, padding: "8px 12px", border: "1px solid #E5E2DC", borderRadius: 8,
           color: "#6B7280", fontSize: 12, fontWeight: 600, backgroundColor: "#FFFFFF",
           cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif",
-        }}>📋 {duplicating ? "Duplicating…" : "Duplicate"}</button>
+        }}>{duplicating ? "Duplicating…" : "Duplicate"}</button>
       </div>
     </div>
   );
@@ -797,7 +797,7 @@ export default function JobsPage() {
                   )}
                 </div>
                 {data.unassigned_jobs.length === 0 ? (
-                  <div style={{ fontSize: 12, color: "#9E9B94", textAlign: "center", padding: "12px 0" }}>All jobs assigned ✓</div>
+                  <div style={{ fontSize: 12, color: "#9E9B94", textAlign: "center", padding: "12px 0" }}>All jobs assigned</div>
                 ) : (
                   data.unassigned_jobs.map(j => <UnassignedCard key={j.id} job={j} onClick={setSelectedJob} />)
                 )}

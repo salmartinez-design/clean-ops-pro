@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, pgEnum, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -28,6 +28,11 @@ export const companiesTable = pgTable("companies", {
   pay_cadence: payCadenceEnum("pay_cadence").notNull().default("biweekly"),
   geo_fence_threshold_ft: integer("geo_fence_threshold_ft").notNull().default(500),
   brand_color: text("brand_color").notNull().default("#00C9A7"),
+  sms_on_my_way_enabled: boolean("sms_on_my_way_enabled").notNull().default(true),
+  sms_arrived_enabled: boolean("sms_arrived_enabled").notNull().default(false),
+  sms_paused_enabled: boolean("sms_paused_enabled").notNull().default(false),
+  sms_complete_enabled: boolean("sms_complete_enabled").notNull().default(true),
+  twilio_from_number: text("twilio_from_number"),
   created_at: timestamp("created_at").notNull().defaultNow(),
 });
 

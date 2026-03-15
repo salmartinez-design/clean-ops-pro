@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
+import { AlertTriangle } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -44,7 +45,9 @@ function FlagModal({ entry, onClose, onDismiss }: { entry: Entry; onClose: () =>
       <div onClick={onClose} style={{ position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", backdropFilter: "blur(2px)" }} />
       <div style={{ position: "relative", backgroundColor: "#FFFFFF", borderRadius: 12, padding: 28, maxWidth: 420, width: "90%", boxShadow: "0 8px 40px rgba(0,0,0,0.12)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-          <div style={{ width: 36, height: 36, borderRadius: "50%", backgroundColor: "#FEE2E2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>⚠️</div>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", backgroundColor: "#FEE2E2", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <AlertTriangle size={18} color="#DC2626"/>
+          </div>
           <div>
             <p style={{ fontSize: 15, fontWeight: 700, color: "#1A1917", margin: 0 }}>Geo-fence Flag</p>
             <p style={{ fontSize: 12, color: "#6B7280", margin: 0 }}>Job #{entry.job_id}</p>

@@ -396,14 +396,118 @@ const TRIGGER_LABELS: Record<string, string> = {
   payment_received: "Payment Received",
 };
 
-const CHANNEL_ICONS: Record<string, string> = {
-  email: "📧", sms: "💬", in_app: "🔔",
+const CHANNEL_LABELS: Record<string, string> = {
+  email: "Email", sms: "SMS", in_app: "In-App",
 };
 
 const VARIABLES_HELP = [
   "{{client_name}}", "{{service_type}}", "{{date}}", "{{time}}",
   "{{company_name}}", "{{employee_name}}", "{{amount}}", "{{invoice_number}}",
 ];
+
+const SMS_TOGGLES = [
+  { key: "sms_on_my_way_enabled",  label: "On My Way",  desc: "Sent when employee taps 'On My Way' before arrival" },
+  { key: "sms_arrived_enabled",    label: "Arrived",     desc: "Sent when employee clocks in at the job" },
+  { key: "sms_paused_enabled",     label: "Pause / Resume", desc: "Sent when employee pauses or resumes the job" },
+  { key: "sms_complete_enabled",   label: "Job Complete", desc: "Sent when employee clocks out after completing the job" },
+] as const;
+
+function SmsSmsSettingsCard() {
+  const { toast } = useToast();
+  const FF = "'Plus Jakarta Sans', sans-serif";
+  const [settings, setSettings] = useState<Record<string, boolean>>({
+    sms_on_my_way_enabled: false, sms_arrived_enabled: false,
+    sms_paused_enabled: false, sms_complete_enabled: false,
+  });
+  const [twilioFrom, setTwilioFrom] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API}/api/companies/me`, { headers: getAuthHeaders() })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d) return;
+        const c = d.data ?? d;
+        setSettings({
+          sms_on_my_way_enabled: !!c.sms_on_my_way_enabled,
+          sms_arrived_enabled:   !!c.sms_arrived_enabled,
+          sms_paused_enabled:    !!c.sms_paused_enabled,
+          sms_complete_enabled:  !!c.sms_complete_enabled,
+        });
+        setTwilioFrom(c.twilio_from_number ?? "");
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function saveSmsSettings() {
+    setSaving(true);
+    try {
+      const r = await fetch(`${API}/api/companies/me`, {
+        method: "PATCH",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ ...settings, twilio_from_number: twilioFrom || null }),
+      });
+      if (!r.ok) throw new Error();
+      toast({ title: "SMS settings saved" });
+    } catch { toast({ title: "Failed to save", variant: "destructive" }); }
+    finally { setSaving(false); }
+  }
+
+  if (loading) return null;
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #E5E2DC', borderRadius: 12, padding: '18px 20px', marginBottom: 24, fontFamily: FF }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+        <div>
+          <p style={{ fontSize: 14, fontWeight: 700, color: '#1A1917', margin: '0 0 3px' }}>Job Status SMS</p>
+          <p style={{ fontSize: 12, color: '#9E9B94', margin: 0 }}>Send SMS to clients when job status changes. Requires Twilio.</p>
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+        {SMS_TOGGLES.map(t => (
+          <div key={t.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#F7F6F3', borderRadius: 8 }}>
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 600, color: '#1A1917', margin: '0 0 2px' }}>{t.label}</p>
+              <p style={{ fontSize: 11, color: '#9E9B94', margin: 0 }}>{t.desc}</p>
+            </div>
+            <button
+              onClick={() => setSettings(prev => ({ ...prev, [t.key]: !prev[t.key] }))}
+              style={{
+                width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+                background: settings[t.key] ? 'var(--brand, #5B9BD5)' : '#E5E2DC', position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+              }}>
+              <div style={{
+                width: 18, height: 18, borderRadius: 9, background: '#fff',
+                position: 'absolute', top: 3, left: settings[t.key] ? 23 : 3,
+                transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+              }} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: '#9E9B94', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Twilio From Number</p>
+        <input
+          value={twilioFrom}
+          onChange={e => setTwilioFrom(e.target.value)}
+          placeholder="+15551234567"
+          style={{ width: '100%', padding: '9px 12px', border: '1px solid #E5E2DC', borderRadius: 8, fontSize: 13, fontFamily: FF, outline: 'none', boxSizing: 'border-box' }}
+        />
+        <p style={{ fontSize: 11, color: '#9E9B94', margin: '5px 0 0' }}>Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in environment secrets.</p>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          onClick={saveSmsSettings}
+          disabled={saving}
+          style={{ padding: '8px 18px', border: 'none', borderRadius: 8, background: 'var(--brand, #5B9BD5)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: FF, opacity: saving ? 0.7 : 1 }}
+        >
+          {saving ? "Saving…" : "Save SMS Settings"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function NotificationsTab() {
   const { toast } = useToast();
@@ -458,7 +562,7 @@ function NotificationsTab() {
         body: JSON.stringify({ is_active: tmpl.is_active, subject: editSubject, body: editBody }),
       });
       setTemplates(prev => prev.map(t => t.id === id ? { ...t, subject: editSubject, body: editBody } : t));
-      toast({ title: "Template saved ✓" });
+      toast({ title: "Template saved" });
       setEditingId(null);
     } catch { toast({ title: "Failed to save", variant: "destructive" }); }
     finally { setSaving(null); }
@@ -490,6 +594,7 @@ function NotificationsTab() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, fontFamily: FF }}>
+      <SmsSmsSettingsCard />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
           <p style={{ fontSize: 14, fontWeight: 700, color: '#1A1917', margin: '0 0 4px' }}>Notification Triggers</p>
@@ -497,7 +602,7 @@ function NotificationsTab() {
         </div>
         <button onClick={() => setShowLog(!showLog)}
           style={{ fontSize: 12, fontWeight: 600, color: 'var(--brand, #5B9BD5)', background: '#EBF4FF', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontFamily: FF }}>
-          {showLog ? "Hide Log" : "📋 View Log"} {logs.length > 0 && `(${logs.length})`}
+          {showLog ? "Hide Log" : "View Log"} {logs.length > 0 && `(${logs.length})`}
         </button>
       </div>
 
@@ -510,7 +615,7 @@ function NotificationsTab() {
               <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 10px', background: '#F7F6F3', borderRadius: 6, alignItems: 'center' }}>
                 <div>
                   <span style={{ fontSize: 12, fontWeight: 600, color: '#1A1917' }}>{TRIGGER_LABELS[l.trigger] || l.trigger}</span>
-                  <span style={{ fontSize: 11, color: '#9E9B94', marginLeft: 8 }}>{CHANNEL_ICONS[l.channel] || l.channel} → {l.recipient}</span>
+                  <span style={{ fontSize: 11, color: '#9E9B94', marginLeft: 8 }}>{CHANNEL_LABELS[l.channel] || l.channel} → {l.recipient}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <span style={{ fontSize: 11, color: l.status === 'test_sent' ? '#7C3AED' : '#16A34A', fontWeight: 600 }}>{l.status}</span>
@@ -527,7 +632,7 @@ function NotificationsTab() {
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: editingId === tmpl.id ? 14 : 0 }}>
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span style={{ fontSize: 16 }}>{CHANNEL_ICONS[tmpl.channel]}</span>
+                <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#6B7280' }}>{CHANNEL_LABELS[tmpl.channel] || tmpl.channel}</span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: '#1A1917' }}>{TRIGGER_LABELS[tmpl.trigger] || tmpl.trigger}</span>
                 <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#9E9B94', background: '#F3F4F6', padding: '2px 7px', borderRadius: 4 }}>{tmpl.channel}</span>
               </div>

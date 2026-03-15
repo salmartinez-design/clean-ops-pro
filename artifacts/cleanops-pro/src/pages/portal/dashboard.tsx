@@ -137,7 +137,9 @@ export default function PortalDashboardPage() {
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
             {company?.logo_url
               ? <img src={company.logo_url} alt={company.name} style={{ height:32, objectFit:'contain' }}/>
-              : <div style={{ width:32, height:32, borderRadius:8, background:`${brandColor}20`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>🧹</div>
+              : <div style={{ width:32, height:32, borderRadius:8, background:`${brandColor}20`, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  <span style={{ fontSize:12, fontWeight:800, color:brandColor }}>CP</span>
+                </div>
             }
             <span style={{ fontSize:14, fontWeight:700, color:'#1A1917' }}>{company?.name}</span>
           </div>

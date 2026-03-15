@@ -132,7 +132,7 @@ export function ChatPanel({ onClose, userId }: Props) {
         <>
           <div style={{ flex:1, overflowY:'auto', padding:'12px', display:'flex', flexDirection:'column', gap:10 }}>
             {loading && <p style={{ fontSize:12, color:'#9E9B94', textAlign:'center', margin:'auto 0' }}>Loading…</p>}
-            {!loading && messages.length === 0 && <p style={{ fontSize:12, color:'#9E9B94', textAlign:'center', margin:'auto 0' }}>No messages yet. Say hello! 👋</p>}
+            {!loading && messages.length === 0 && <p style={{ fontSize:12, color:'#9E9B94', textAlign:'center', margin:'auto 0' }}>No messages yet. Start the conversation.</p>}
             {messages.map(m => {
               const isMe = m.sender_id === userId;
               return (

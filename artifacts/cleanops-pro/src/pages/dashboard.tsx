@@ -34,11 +34,11 @@ function ChartTooltip({ active, payload, label }: any) {
   );
 }
 
-const STATUS_CONFIG: Record<string, { color: string; bg: string; label: string; emoji: string }> = {
-  in_progress: { color: '#1D4ED8', bg: '#DBEAFE', label: 'In Progress', emoji: '🟢' },
-  scheduled:   { color: '#6B7280', bg: '#F3F4F6', label: 'Scheduled',   emoji: '📅' },
-  complete:    { color: '#166534', bg: '#DCFCE7', label: 'Complete',     emoji: '✅' },
-  en_route:    { color: '#7C3AED', bg: '#EDE9FE', label: 'En Route',     emoji: '📍' },
+const STATUS_CONFIG: Record<string, { color: string; bg: string; label: string }> = {
+  in_progress: { color: '#1D4ED8', bg: '#DBEAFE', label: 'In Progress' },
+  scheduled:   { color: '#6B7280', bg: '#F3F4F6', label: 'Scheduled'   },
+  complete:    { color: '#166534', bg: '#DCFCE7', label: 'Complete'     },
+  en_route:    { color: '#7C3AED', bg: '#EDE9FE', label: 'En Route'     },
 };
 
 const EMP_STATUS: Record<string, { color: string; bg: string; dot: string }> = {
@@ -165,8 +165,7 @@ export default function Dashboard() {
             </div>
             {alerts.length === 0 && (
               <div style={{ padding: '20px 0', textAlign: 'center' }}>
-                <p style={{ fontSize: 22, margin: '0 0 6px' }}>✅</p>
-                <p style={{ fontSize: 12, color: '#6B7280', margin: 0 }}>All clear — no issues today!</p>
+                <p style={{ fontSize: 12, color: '#6B7280', margin: 0 }}>All clear — no issues today.</p>
               </div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 200, overflowY: 'auto' }}>
@@ -176,7 +175,7 @@ export default function Dashboard() {
                 return (
                   <div key={i} style={{ background: '#FFF7F0', border: '1px solid #FED7AA', borderRadius: 8, padding: '10px 12px' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                      <p style={{ fontSize: 12, color: '#1A1917', margin: '0 0 7px 0', lineHeight: 1.45, flex: 1 }}>⚠️ {a.message}</p>
+                      <p style={{ fontSize: 12, color: '#1A1917', margin: '0 0 7px 0', lineHeight: 1.45, flex: 1 }}>{a.message}</p>
                       <button onClick={() => setDismissedAlerts(p => new Set([...p, realIdx]))}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9E9B94', padding: 0, flexShrink: 0 }}><X size={12}/></button>
                     </div>

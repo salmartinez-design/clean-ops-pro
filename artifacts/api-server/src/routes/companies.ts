@@ -83,6 +83,44 @@ router.put("/me", requireAuth, async (req, res) => {
   }
 });
 
+router.patch("/me", requireAuth, async (req, res) => {
+  try {
+    if (!req.auth!.companyId) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const {
+      name, logo_url, pay_cadence, geo_fence_threshold_ft, brand_color,
+      sms_on_my_way_enabled, sms_arrived_enabled, sms_paused_enabled,
+      sms_complete_enabled, twilio_from_number,
+    } = req.body;
+
+    const patch: Record<string, unknown> = {};
+    if (name !== undefined) patch.name = name;
+    if (logo_url !== undefined) patch.logo_url = logo_url;
+    if (pay_cadence !== undefined) patch.pay_cadence = pay_cadence;
+    if (geo_fence_threshold_ft !== undefined) patch.geo_fence_threshold_ft = geo_fence_threshold_ft;
+    if (brand_color !== undefined) patch.brand_color = brand_color;
+    if (sms_on_my_way_enabled !== undefined) patch.sms_on_my_way_enabled = sms_on_my_way_enabled;
+    if (sms_arrived_enabled !== undefined) patch.sms_arrived_enabled = sms_arrived_enabled;
+    if (sms_paused_enabled !== undefined) patch.sms_paused_enabled = sms_paused_enabled;
+    if (sms_complete_enabled !== undefined) patch.sms_complete_enabled = sms_complete_enabled;
+    if (twilio_from_number !== undefined) patch.twilio_from_number = twilio_from_number;
+
+    if (Object.keys(patch).length === 0) return res.json({ success: true });
+
+    const [updated] = await db
+      .update(companiesTable)
+      .set(patch as any)
+      .where(eq(companiesTable.id, req.auth!.companyId))
+      .returning();
+
+    return res.json({ data: updated });
+  } catch (err) {
+    console.error("PATCH company error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 router.post("/logo", requireAuth, (req, res) => {
   if (!req.auth!.companyId) {
     return res.status(403).json({ error: "Forbidden", message: "No company for this user" });

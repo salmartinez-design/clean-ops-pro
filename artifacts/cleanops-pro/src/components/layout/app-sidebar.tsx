@@ -1,7 +1,32 @@
-import { Home, Briefcase, Users, UsersRound, FileText, DollarSign, BookOpen, Star, Settings, LogOut, LayoutDashboard, X, Tag, ClipboardList, Clock, TrendingUp } from "lucide-react";
+import {
+  Home, Briefcase, Users, UsersRound, FileText, DollarSign, BookOpen, Star,
+  Settings, LogOut, LayoutDashboard, X, Tag, ClipboardList, Clock, TrendingUp,
+  BarChart2, ChevronDown, ChevronRight, ReceiptText, Calendar, UserCheck,
+  AlertTriangle, Activity, Clipboard, LayoutList, Banknote,
+} from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useAuthStore } from "@/lib/auth";
 import { useTenantBrand } from "@/lib/tenant-brand";
+import { useState } from "react";
+
+const REPORT_ITEMS = [
+  { title: "Reports Home",          url: "/reports",                    icon: BarChart2 },
+  { title: "Performance Insights",  url: "/reports/insights",           icon: TrendingUp },
+  { title: "Revenue Summary",       url: "/reports/revenue",            icon: DollarSign },
+  { title: "Payroll Summary",       url: "/reports/payroll",            icon: Banknote },
+  { title: "Payroll % Revenue",     url: "/reports/payroll-to-revenue", icon: Activity },
+  { title: "Employee Stats",        url: "/reports/employee-stats",     icon: UserCheck },
+  { title: "Tips Report",           url: "/reports/tips",               icon: Star },
+  { title: "Accounts Receivable",   url: "/reports/receivables",        icon: ReceiptText },
+  { title: "Job Costing",           url: "/reports/job-costing",        icon: Clipboard },
+  { title: "Schedule Efficiency",   url: "/reports/efficiency",         icon: Calendar },
+  { title: "Week in Review",        url: "/reports/week-review",        icon: LayoutList },
+  { title: "Scorecards",            url: "/reports/scorecards",         icon: ClipboardList },
+  { title: "Cancellations",         url: "/reports/cancellations",      icon: AlertTriangle },
+  { title: "Contact Tickets",       url: "/reports/contact-tickets",    icon: FileText },
+  { title: "Hot Sheet",             url: "/reports/hot-sheet",          icon: Home },
+  { title: "First Time In",         url: "/reports/first-time",         icon: Users },
+];
 
 const NAV_SECTIONS = [
   {
@@ -21,7 +46,6 @@ const NAV_SECTIONS = [
     label: "Tools",
     items: [
       { title: "Cleancyclopedia", url: "/cleancyclopedia", icon: BookOpen },
-      { title: "Insights",        url: "/reports/insights", icon: TrendingUp, roles: ["owner", "admin"] },
     ],
   },
   {
@@ -44,6 +68,7 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
   const [location] = useLocation();
   const logout = useAuthStore(state => state.logout);
   const { logoUrl, companyName } = useTenantBrand();
+  const [reportsOpen, setReportsOpen] = useState(location.startsWith("/reports"));
 
   const token = useAuthStore(state => state.token);
   let userInfo: { email: string; role: string; firstName: string; lastName: string } | null = null;
@@ -63,10 +88,31 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
     ? `${userInfo.firstName[0] || ''}${userInfo.lastName[0] || ''}`.toUpperCase()
     : '??';
 
+  const isReportActive = location.startsWith("/reports");
+  const isAdminRole = userInfo && ["owner", "admin", "office"].includes(userInfo.role);
+
+  const navItemStyle = (active: boolean): React.CSSProperties => ({
+    height: '34px',
+    padding: '0 12px',
+    margin: '1px 8px',
+    borderRadius: '6px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    cursor: 'pointer',
+    transition: 'all 0.15s',
+    backgroundColor: active ? 'var(--brand-soft)' : 'transparent',
+    color: active ? 'var(--brand)' : '#6B7280',
+    fontWeight: active ? 500 : 400,
+    fontSize: '13px',
+    fontFamily: "'Plus Jakarta Sans', sans-serif",
+    textDecoration: 'none',
+  });
+
   const sidebarContent = (
     <div style={{
-      width: mobile ? 264 : 216,
-      minWidth: mobile ? 264 : 216,
+      width: mobile ? 264 : 220,
+      minWidth: mobile ? 264 : 220,
       backgroundColor: '#FFFFFF',
       borderRight: '1px solid #EEECE7',
       display: 'flex',
@@ -74,7 +120,7 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
       height: '100%',
       overflow: 'hidden',
     }}>
-      {/* Top — Logo + close (mobile only) */}
+      {/* Top — Logo */}
       <div style={{ padding: '18px 16px 12px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           {logoUrl ? (
@@ -92,10 +138,7 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
           )}
         </div>
         {mobile && (
-          <button
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280', padding: 4, display: 'flex', alignItems: 'center' }}
-          >
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280', padding: 4, display: 'flex', alignItems: 'center' }}>
             <X size={18} />
           </button>
         )}
@@ -107,11 +150,7 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
       <nav style={{ flex: 1, overflowY: 'auto', paddingBottom: '8px' }}>
         {NAV_SECTIONS.map(section => (
           <div key={section.label}>
-            <p style={{
-              fontSize: '10px', fontWeight: 600, color: '#9E9B94',
-              letterSpacing: '0.1em', textTransform: 'uppercase',
-              padding: '16px 16px 6px', margin: 0,
-            }}>
+            <p style={{ fontSize: '10px', fontWeight: 600, color: '#9E9B94', letterSpacing: '0.1em', textTransform: 'uppercase', padding: '16px 16px 6px', margin: 0 }}>
               {section.label}
             </p>
             {section.items.filter(item => !item.roles || (userInfo && item.roles.includes(userInfo.role))).map(item => {
@@ -120,78 +159,86 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
               return (
                 <Link key={item.url} href={item.url}>
                   <div
-                    style={{
-                      height: '36px',
-                      padding: '0 12px',
-                      margin: '1px 8px',
-                      borderRadius: '6px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s',
-                      backgroundColor: isActive ? 'var(--brand-soft)' : 'transparent',
-                      color: isActive ? 'var(--brand)' : '#6B7280',
-                      fontWeight: isActive ? 500 : 400,
-                      fontSize: '13px',
-                      fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    }}
-                    onMouseEnter={e => {
-                      if (!isActive) {
-                        e.currentTarget.style.backgroundColor = '#F0EEE9';
-                        e.currentTarget.style.color = '#1A1917';
-                      }
-                    }}
-                    onMouseLeave={e => {
-                      if (!isActive) {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = '#6B7280';
-                      }
-                    }}
+                    style={navItemStyle(isActive)}
+                    onMouseEnter={e => { if (!isActive) { e.currentTarget.style.backgroundColor = '#F0EEE9'; e.currentTarget.style.color = '#1A1917'; } }}
+                    onMouseLeave={e => { if (!isActive) { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#6B7280'; } }}
                   >
-                    <Icon size={16} strokeWidth={1.5} style={{ flexShrink: 0 }} />
-                    <span>{item.title}</span>
+                    <Icon size={15} style={{ flexShrink: 0 }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</span>
                   </div>
                 </Link>
               );
             })}
           </div>
         ))}
+
+        {/* Reports section — collapsible, admin/office only */}
+        {isAdminRole && (
+          <div>
+            <p style={{ fontSize: '10px', fontWeight: 600, color: '#9E9B94', letterSpacing: '0.1em', textTransform: 'uppercase', padding: '16px 16px 6px', margin: 0 }}>Reports</p>
+            <button
+              onClick={() => setReportsOpen(p => !p)}
+              style={{
+                ...navItemStyle(isReportActive),
+                width: 'calc(100% - 16px)',
+                background: isReportActive ? 'var(--brand-soft)' : 'transparent',
+                border: 'none',
+                justifyContent: 'space-between',
+              }}
+              onMouseEnter={e => { if (!isReportActive) { e.currentTarget.style.backgroundColor = '#F0EEE9'; e.currentTarget.style.color = '#1A1917'; } }}
+              onMouseLeave={e => { if (!isReportActive) { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#6B7280'; } }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <BarChart2 size={15} style={{ flexShrink: 0 }} />
+                <span>All Reports</span>
+              </span>
+              {reportsOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            </button>
+
+            {reportsOpen && REPORT_ITEMS.map(item => {
+              const isActive = location === item.url;
+              const Icon = item.icon;
+              return (
+                <Link key={item.url} href={item.url}>
+                  <div
+                    style={{
+                      ...navItemStyle(isActive),
+                      paddingLeft: '28px',
+                      height: '30px',
+                      fontSize: '12px',
+                    }}
+                    onMouseEnter={e => { if (!isActive) { e.currentTarget.style.backgroundColor = '#F0EEE9'; e.currentTarget.style.color = '#1A1917'; } }}
+                    onMouseLeave={e => { if (!isActive) { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#6B7280'; } }}
+                  >
+                    <Icon size={13} style={{ flexShrink: 0 }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </nav>
 
-      {/* Footer — User */}
-      <div style={{ borderTop: '1px solid #EEECE7', flexShrink: 0 }}>
-        <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{
-            width: '28px', height: '28px', borderRadius: '50%',
-            backgroundColor: 'var(--brand-dim)', color: 'var(--brand)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '11px', fontWeight: 600, flexShrink: 0,
-          }}>
-            {initials}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: '12px', fontWeight: 500, color: '#1A1917', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {userInfo?.firstName} {userInfo?.lastName}
-            </p>
-            <span style={{
-              fontSize: '10px', fontWeight: 600, textTransform: 'uppercase',
-              color: 'var(--brand)', backgroundColor: 'var(--brand-dim)',
-              padding: '1px 6px', borderRadius: '4px', letterSpacing: '0.05em',
-            }}>
-              {userInfo?.role}
-            </span>
-          </div>
-          <button
-            onClick={logout}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9E9B94', padding: '4px', borderRadius: '4px', display: 'flex', flexShrink: 0 }}
-            onMouseEnter={e => (e.currentTarget.style.color = '#1A1917')}
-            onMouseLeave={e => (e.currentTarget.style.color = '#9E9B94')}
-            title="Sign Out"
-          >
-            <LogOut size={14} strokeWidth={1.5} />
-          </button>
+      <div style={{ borderTop: '1px solid #EEECE7' }} />
+      {/* User footer */}
+      <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 30, height: 30, borderRadius: '50%', backgroundColor: 'var(--brand-soft)', color: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, flexShrink: 0 }}>
+          {initials}
         </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: '12px', fontWeight: 600, color: '#1A1917', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {userInfo?.firstName} {userInfo?.lastName}
+          </p>
+          <p style={{ margin: 0, fontSize: '10px', color: '#9E9B94', textTransform: 'capitalize' }}>{userInfo?.role}</p>
+        </div>
+        <button
+          onClick={() => logout()}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9E9B94', padding: 4, display: 'flex', alignItems: 'center' }}
+          title="Sign out"
+        >
+          <LogOut size={14} />
+        </button>
       </div>
     </div>
   );
@@ -199,27 +246,19 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
   if (mobile) {
     return (
       <>
-        {/* Overlay */}
-        <div
-          onClick={onClose}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 40,
-            backgroundColor: 'rgba(0,0,0,0.4)',
-            backdropFilter: 'blur(2px)',
-            opacity: open ? 1 : 0,
-            pointerEvents: open ? 'auto' : 'none',
-            transition: 'opacity 0.28s ease',
-          }}
-        />
-        {/* Drawer */}
-        <aside style={{
-          position: 'fixed', top: 0, left: 0, bottom: 0,
-          zIndex: 50,
+        {open && (
+          <div
+            style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 40 }}
+            onClick={onClose}
+          />
+        )}
+        <div style={{
+          position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 50,
           transform: open ? 'translateX(0)' : 'translateX(-100%)',
-          transition: 'transform 0.28s cubic-bezier(0.4,0,0.2,1)',
+          transition: 'transform 0.25s ease',
         }}>
           {sidebarContent}
-        </aside>
+        </div>
       </>
     );
   }

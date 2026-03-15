@@ -80,7 +80,7 @@ export default function AcceptInvitePage() {
       <div style={{ minHeight:'100vh', background:'#F7F6F3', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
         <div style={{ background:'#FFFFFF', borderRadius:12, padding:'40px 36px', width:'100%', maxWidth:440, boxShadow:'0 4px 24px rgba(0,0,0,0.08)', textAlign:'center' }}>
           <div style={{ width:48,height:48,borderRadius:24,background:'#FEE2E2',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px' }}>
-            <span style={{ fontSize:20 }}>✗</span>
+            <span style={{ fontSize:14, fontWeight:700, color:'#DC2626' }}>X</span>
           </div>
           <h2 style={{ fontSize:20, fontWeight:700, color:'#1A1917', margin:'0 0 8px 0' }}>Invalid Invite</h2>
           <p style={{ fontSize:14, color:'#6B7280', margin:'0 0 20px 0' }}>{invalid}</p>
@@ -99,7 +99,7 @@ export default function AcceptInvitePage() {
 
         <div style={{ textAlign:'center', marginBottom:28 }}>
           <div style={{ width:52, height:52, borderRadius:12, background:'var(--brand-dim, #EBF4FF)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
-            <span style={{ fontSize:24 }}>🧹</span>
+            <span style={{ fontSize:20, fontWeight:700, color:'var(--brand, #5B9BD5)' }}>C</span>
           </div>
           <h2 style={{ fontSize:22, fontWeight:700, color:'#1A1917', margin:'0 0 6px 0' }}>
             Welcome, {invite?.first_name}!

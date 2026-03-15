@@ -132,12 +132,43 @@ function PhotoGrid({ jobId, type, photos, onUploaded }: {
   );
 }
 
+const EVENT_LABELS: Record<string, string> = { on_my_way: "On My Way", arrived: "Arrived", paused: "Paused", resumed: "Resumed", complete: "Complete" };
+
+function StatusTimeline({ jobId }: { jobId: number }) {
+  const { data } = useQuery({
+    queryKey: ["status-log", jobId],
+    queryFn: async () => {
+      const res = await apiFetch(`/jobs/${jobId}/status-log`);
+      return res.ok ? res.json() : { data: [] };
+    },
+    refetchInterval: 15000,
+  });
+  const logs: { id: number; event: string; sms_sent: boolean; created_at: string; employee: string }[] = data?.data ?? [];
+  if (logs.length === 0) return null;
+  return (
+    <div style={{ borderTop: "1px solid #EEECE7", marginTop: 14, paddingTop: 12 }}>
+      <p style={{ fontSize: 10, fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 8px" }}>Status Updates</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+        {logs.map(l => (
+          <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#6B6860" }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: l.sms_sent ? "#10B981" : "#9E9B94", flexShrink: 0 }} />
+            <span style={{ fontWeight: 600, color: "#1A1917" }}>{EVENT_LABELS[l.event] ?? l.event}</span>
+            <span style={{ color: "#9E9B94", fontSize: 11 }}>{new Date(l.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
+            {l.sms_sent && <span style={{ fontSize: 10, backgroundColor: "#DCFCE7", color: "#166534", borderRadius: 3, padding: "1px 5px", fontWeight: 600 }}>SMS</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function JobCard({ job, onRefresh }: { job: Job; onRefresh: () => void }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [geoLoading, setGeoLoading] = useState(false);
   const [photosBefore, setPhotosBefore] = useState<string[]>([]);
   const [photosAfter, setPhotosAfter] = useState<string[]>([]);
+  const [paused, setPaused] = useState(false);
 
   const entry = job.time_clock_entry;
   const isClockedIn = entry && !entry.clock_out_at;
@@ -201,6 +232,25 @@ function JobCard({ job, onRefresh }: { job: Job; onRefresh: () => void }) {
     },
   });
 
+  const smsMutation = useMutation({
+    mutationFn: async (event: string) => {
+      const res = await apiFetch(`/jobs/${job.id}/sms-status`, { method: "POST", body: JSON.stringify({ event }) });
+      return res.json();
+    },
+    onSuccess: (data, event) => {
+      if (event === "paused") setPaused(true);
+      if (event === "resumed") setPaused(false);
+      qc.invalidateQueries({ queryKey: ["status-log", job.id] });
+      const label = EVENT_LABELS[event] ?? event;
+      if (data.sms_sent) {
+        toast({ title: `${label} — SMS sent to client` });
+      } else {
+        toast({ title: `${label} logged`, description: data.reason || "No SMS (disabled or no phone)" });
+      }
+    },
+    onError: () => toast({ variant: "destructive", title: "Status update failed" }),
+  });
+
   const getLocation = (cb: (lat: number, lng: number) => void) => {
     setGeoLoading(true);
     navigator.geolocation.getCurrentPosition(
@@ -237,11 +287,11 @@ function JobCard({ job, onRefresh }: { job: Job; onRefresh: () => void }) {
         {formatServiceType(job.service_type)}
       </p>
       {job.scheduled_time && (
-        <p style={{ fontSize: 12, color: "#6B6860", margin: "0 0 2px" }}>⏰ {formatTime(job.scheduled_time)}</p>
+        <p style={{ fontSize: 12, color: "#6B6860", margin: "0 0 2px" }}>{formatTime(job.scheduled_time)}</p>
       )}
       {job.address && (
         <p style={{ fontSize: 12, color: "#6B6860", margin: 0 }}>
-          📍 {job.address}{job.city ? `, ${job.city}` : ""}
+          {job.address}{job.city ? `, ${job.city}` : ""}
         </p>
       )}
 
@@ -264,7 +314,6 @@ function JobCard({ job, onRefresh }: { job: Job; onRefresh: () => void }) {
       <div style={{ marginTop: 16 }}>
         {isComplete ? (
           <div style={{ textAlign: "center", padding: "16px 0" }}>
-            <div style={{ fontSize: 36, marginBottom: 6 }}>✓</div>
             <p style={{ fontSize: 18, fontWeight: 700, color: "#1A1917", margin: "0 0 4px" }}>Job Complete</p>
             {entry?.clock_in_at && entry?.clock_out_at && (
               <p style={{ fontSize: 14, color: "#6B6860", margin: 0 }}>
@@ -274,10 +323,29 @@ function JobCard({ job, onRefresh }: { job: Job; onRefresh: () => void }) {
           </div>
         ) : isClockedIn ? (
           <div style={{ textAlign: "center" }}>
+            {paused && (
+              <div style={{ backgroundColor: "#FEF3C7", border: "1px solid #F59E0B", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 12, color: "#92400E", fontWeight: 600 }}>
+                Job is paused
+              </div>
+            )}
             <div style={{ fontSize: 36, fontWeight: 700, color: "#1A1917", marginBottom: 2 }}>
               <ElapsedTimer clockInAt={entry!.clock_in_at} />
             </div>
             <p style={{ fontSize: 11, color: "#9E9B94", margin: "0 0 12px" }}>Time on job</p>
+            {/* Pause / Resume */}
+            <button
+              onClick={() => smsMutation.mutate(paused ? "resumed" : "paused")}
+              disabled={smsMutation.isPending}
+              style={{
+                width: "100%", height: 42, borderRadius: 10, border: `1px solid ${paused ? "#10B981" : "#F59E0B"}`,
+                fontSize: 14, fontWeight: 600, cursor: "pointer", marginBottom: 10,
+                backgroundColor: paused ? "#DCFCE7" : "#FEF3C7",
+                color: paused ? "#166534" : "#92400E",
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+              }}
+            >
+              {smsMutation.isPending ? "Updating…" : paused ? "Resume Job" : "Pause Job"}
+            </button>
             <button
               onClick={() => {
                 if (photosAfter.length === 0) {
@@ -300,20 +368,37 @@ function JobCard({ job, onRefresh }: { job: Job; onRefresh: () => void }) {
             </button>
           </div>
         ) : (
-          <button
-            onClick={() => getLocation((lat, lng) => clockInMutation.mutate({ lat, lng }))}
-            disabled={clockInMutation.isPending || geoLoading}
-            style={{
-              width: "100%", height: 48, backgroundColor: "var(--brand)", color: "#FFFFFF",
-              borderRadius: 10, border: "none", fontSize: 15, fontWeight: 600,
-              cursor: "pointer", opacity: (clockInMutation.isPending || geoLoading) ? 0.7 : 1,
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-            }}
-          >
-            {clockInMutation.isPending || geoLoading ? "Getting location…" : "Clock In"}
-          </button>
+          <div>
+            {/* On My Way button — sends SMS before clock-in */}
+            <button
+              onClick={() => smsMutation.mutate("on_my_way")}
+              disabled={smsMutation.isPending}
+              style={{
+                width: "100%", height: 42, borderRadius: 10, border: "1px solid var(--brand)",
+                fontSize: 14, fontWeight: 600, cursor: "pointer", marginBottom: 10,
+                backgroundColor: "var(--brand-soft)", color: "var(--brand)",
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+              }}
+            >
+              {smsMutation.isPending ? "Sending…" : "On My Way"}
+            </button>
+            <button
+              onClick={() => getLocation((lat, lng) => clockInMutation.mutate({ lat, lng }))}
+              disabled={clockInMutation.isPending || geoLoading}
+              style={{
+                width: "100%", height: 48, backgroundColor: "var(--brand)", color: "#FFFFFF",
+                borderRadius: 10, border: "none", fontSize: 15, fontWeight: 600,
+                cursor: "pointer", opacity: (clockInMutation.isPending || geoLoading) ? 0.7 : 1,
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+              }}
+            >
+              {clockInMutation.isPending || geoLoading ? "Getting location…" : "Clock In"}
+            </button>
+          </div>
         )}
       </div>
+
+      <StatusTimeline jobId={job.id} />
     </div>
   );
 }
@@ -368,7 +453,6 @@ export default function MyJobsPage() {
             <div style={{ textAlign: "center", padding: 40, color: "#9E9B94", fontSize: 14 }}>Loading your jobs…</div>
           ) : jobs.length === 0 ? (
             <div style={{ textAlign: "center", padding: 40 }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>🧹</div>
               <p style={{ fontSize: 16, fontWeight: 600, color: "#1A1917", margin: "0 0 6px" }}>No jobs today</p>
               <p style={{ fontSize: 13, color: "#9E9B94", margin: 0 }}>Check back or contact your manager</p>
             </div>
@@ -384,7 +468,7 @@ export default function MyJobsPage() {
                     <div key={job.id} style={{ opacity: 0.55, backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderLeft: "3px solid var(--brand)", borderRadius: 12, padding: 18, marginBottom: 10 }}>
                       <p style={{ fontSize: 16, fontWeight: 700, color: "#1A1917", margin: "0 0 4px" }}>{job.client_name}</p>
                       <p style={{ fontSize: 11, color: "var(--brand)", textTransform: "uppercase", fontWeight: 600, margin: "0 0 4px" }}>{formatServiceType(job.service_type)}</p>
-                      {job.scheduled_time && <p style={{ fontSize: 12, color: "#6B6860", margin: 0 }}>⏰ {formatTime(job.scheduled_time)}</p>}
+                      {job.scheduled_time && <p style={{ fontSize: 12, color: "#6B6860", margin: 0 }}>{formatTime(job.scheduled_time)}</p>}
                     </div>
                   ))}
                 </div>

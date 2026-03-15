@@ -158,16 +158,16 @@ export function GlobalSearch({ onClose }: Props) {
             <div style={{ padding:'20px 16px' }}>
               <p style={{ fontSize:12, color:'#9E9B94', margin:'0 0 10px 0', fontWeight:600 }}>Quick Navigate</p>
               {[
-                { label:'Dashboard', path:'/dashboard', icon:'📊' },
-                { label:'Jobs / Dispatch', path:'/jobs', icon:'📋' },
-                { label:'Employees', path:'/employees', icon:'👥' },
-                { label:'Customers', path:'/customers', icon:'🏠' },
-                { label:'Invoices', path:'/invoices', icon:'🧾' },
-                { label:'Insights', path:'/reports/insights', icon:'📈' },
+                { label:'Dashboard', path:'/dashboard' },
+                { label:'Jobs / Dispatch', path:'/jobs' },
+                { label:'Employees', path:'/employees' },
+                { label:'Customers', path:'/customers' },
+                { label:'Invoices', path:'/invoices' },
+                { label:'Insights', path:'/reports/insights' },
               ].map(item => (
                 <button key={item.path} onClick={() => go(item.path)}
                   style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'8px 10px', background:'none', border:'none', cursor:'pointer', borderRadius:8, textAlign:'left', fontFamily:'inherit', marginBottom:2 }}>
-                  <span style={{ fontSize:16 }}>{item.icon}</span>
+                  <span style={{ width:6, height:6, borderRadius:3, background:'#C5C3BE', flexShrink:0 }}/>
                   <span style={{ fontSize:13, color:'#1A1917', fontWeight:500 }}>{item.label}</span>
                 </button>
               ))}

@@ -21,6 +21,21 @@ import ClockMonitorPage from "@/pages/clock-monitor";
 import PortalLoginPage from "@/pages/portal/login";
 import PortalDashboardPage from "@/pages/portal/dashboard";
 import InsightsPage from "@/pages/reports/insights";
+import ReportsIndexPage from "@/pages/reports/index";
+import RevenueReportPage from "@/pages/reports/revenue";
+import PayrollReportPage from "@/pages/reports/payroll";
+import EmployeeStatsPage from "@/pages/reports/employee-stats";
+import TipsReportPage from "@/pages/reports/tips";
+import ReceivablesPage from "@/pages/reports/receivables";
+import JobCostingPage from "@/pages/reports/job-costing";
+import PayrollToRevenuePage from "@/pages/reports/payroll-to-revenue";
+import EfficiencyPage from "@/pages/reports/efficiency";
+import WeekReviewPage from "@/pages/reports/week-review";
+import ScorecardsReportPage from "@/pages/reports/scorecards";
+import CancellationsPage from "@/pages/reports/cancellations";
+import ContactTicketsReportPage from "@/pages/reports/contact-tickets";
+import HotSheetPage from "@/pages/reports/hot-sheet";
+import FirstTimePage from "@/pages/reports/first-time";
 import NotFound from "@/pages/not-found";
 
 import AdminDashboard from "@/pages/admin/index";
@@ -54,7 +69,22 @@ function Router() {
       <Route path="/discounts" component={DiscountsPage} />
       <Route path="/my-jobs" component={MyJobsPage} />
 
+      <Route path="/reports" component={ReportsIndexPage} />
       <Route path="/reports/insights" component={InsightsPage} />
+      <Route path="/reports/revenue" component={RevenueReportPage} />
+      <Route path="/reports/payroll" component={PayrollReportPage} />
+      <Route path="/reports/employee-stats" component={EmployeeStatsPage} />
+      <Route path="/reports/tips" component={TipsReportPage} />
+      <Route path="/reports/receivables" component={ReceivablesPage} />
+      <Route path="/reports/job-costing" component={JobCostingPage} />
+      <Route path="/reports/payroll-to-revenue" component={PayrollToRevenuePage} />
+      <Route path="/reports/efficiency" component={EfficiencyPage} />
+      <Route path="/reports/week-review" component={WeekReviewPage} />
+      <Route path="/reports/scorecards" component={ScorecardsReportPage} />
+      <Route path="/reports/cancellations" component={CancellationsPage} />
+      <Route path="/reports/contact-tickets" component={ContactTicketsReportPage} />
+      <Route path="/reports/hot-sheet" component={HotSheetPage} />
+      <Route path="/reports/first-time" component={FirstTimePage} />
 
       <Route path="/portal/:slug/login" component={PortalLoginPage} />
       <Route path="/portal/:slug/dashboard" component={PortalDashboardPage} />

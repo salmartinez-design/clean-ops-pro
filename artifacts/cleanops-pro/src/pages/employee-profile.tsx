@@ -832,7 +832,7 @@ export default function EmployeeProfilePage() {
                   <div style={{ marginTop:12, padding:'10px 12px', background:'#FEF3C7', borderRadius:8 }}>
                     <p style={{ margin:0,fontSize:12,color:'#92400E' }}>
                       Invite sent {new Date(user.invite_sent_at).toLocaleDateString()}&nbsp;·&nbsp;
-                      {user.invite_accepted_at ? '✓ Accepted' : 'Pending acceptance'}
+                      {user.invite_accepted_at ? 'Accepted' : 'Pending acceptance'}
                     </p>
                   </div>
                 )}

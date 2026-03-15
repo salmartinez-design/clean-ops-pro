@@ -100,8 +100,8 @@ export default function InsightsPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {topPerformers.map((p: any, i: number) => (
                 <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: i === 0 ? '#F59E0B' : i === 1 ? '#9CA3AF' : '#CD7F32', width: 24, textAlign: 'center', flexShrink: 0 }}>
-                    {i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}
+                  <div style={{ width: 24, height: 24, borderRadius: 12, background: i === 0 ? '#FEF3C7' : i === 1 ? '#F3F4F6' : '#FDF4E7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: i === 0 ? '#B45309' : i === 1 ? '#6B7280' : '#92400E' }}>{i + 1}</span>
                   </div>
                   <Avatar user={p}/>
                   <div style={{ flex: 1 }}>
@@ -129,8 +129,7 @@ export default function InsightsPage() {
             </div>
             {concerns.length === 0 && (
               <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                <p style={{ fontSize: 20, margin: '0 0 6px' }}>✅</p>
-                <p style={{ fontSize: 12, color: '#6B7280', margin: 0 }}>All employees performing well!</p>
+                <p style={{ fontSize: 12, color: '#6B7280', margin: 0 }}>All employees are performing well.</p>
               </div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -140,7 +139,7 @@ export default function InsightsPage() {
                   <div style={{ flex: 1 }}>
                     <p style={{ fontSize: 13, fontWeight: 600, color: '#1A1917', margin: '0 0 4px' }}>{c.first_name} {c.last_name}</p>
                     {c.concerns.map((flag: string, j: number) => (
-                      <p key={j} style={{ fontSize: 11, color: '#92400E', margin: '0 0 2px 0' }}>⚠️ {flag}</p>
+                      <p key={j} style={{ fontSize: 11, color: '#92400E', margin: '0 0 2px 0' }}>{flag}</p>
                     ))}
                   </div>
                   <button onClick={() => navigate(`/employees/${c.id}`)}
@@ -162,7 +161,7 @@ export default function InsightsPage() {
               <Heart size={16} color="#EF4444"/>
               <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1917', margin: 0 }}>Clients at Risk of Churning</p>
             </div>
-            {clientHealth.length === 0 && <p style={{ fontSize: 12, color: '#9E9B94', textAlign: 'center', padding: '20px 0' }}>All clients are booking regularly! 🎉</p>}
+            {clientHealth.length === 0 && <p style={{ fontSize: 12, color: '#9E9B94', textAlign: 'center', padding: '20px 0' }}>All clients are booking regularly.</p>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {clientHealth.map((c: any) => (
                 <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: '#FFF1F2', borderRadius: 8, border: '1px solid #FECDD3' }}>

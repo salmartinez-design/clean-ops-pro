@@ -90,7 +90,7 @@ export default function AdminDashboard() {
           {data.flagged.length > 0 && (
             <div style={{ backgroundColor: "#FEF2F2", border: "1px solid #FECACA", borderRadius: "10px", padding: "20px" }}>
               <p style={{ fontSize: "13px", fontWeight: 600, color: "#DC2626", margin: "0 0 12px" }}>
-                ⚠ Flagged Companies ({data.flagged.length})
+                Flagged Companies ({data.flagged.length})
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                 {data.flagged.map(c => (

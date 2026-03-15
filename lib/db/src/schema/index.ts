@@ -17,3 +17,4 @@ export * from "./employee_notes";
 export * from "./client_ratings";
 export * from "./messages";
 export * from "./notification_templates";
+export * from "./job_status_logs";

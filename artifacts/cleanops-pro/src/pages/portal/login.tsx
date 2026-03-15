@@ -57,7 +57,9 @@ export default function PortalLoginPage() {
           {company?.logo_url ? (
             <img src={company.logo_url} alt={company.name} style={{ height:52, marginBottom:14, objectFit:'contain' }}/>
           ) : (
-            <div style={{ width:52, height:52, borderRadius:12, background:`${brandColor}20`, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px', fontSize:22 }}>🧹</div>
+            <div style={{ width:52, height:52, borderRadius:12, background:`${brandColor}20`, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px' }}>
+              <span style={{ fontSize:18, fontWeight:800, color:brandColor }}>CP</span>
+            </div>
           )}
           <h2 style={{ fontSize:22, fontWeight:700, color:'#1A1917', margin:'0 0 6px 0' }}>{company?.name || 'Client Portal'}</h2>
           <p style={{ fontSize:14, color:'#6B6860', margin:0 }}>Sign in to your client account</p>
