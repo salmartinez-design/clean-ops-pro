@@ -142,7 +142,7 @@ const SECTION_ICONS = [User, Home, Calculator, PlusSquare];
 const SECTION_LABELS = ["Customer Info", "Property Details", "Service & Pricing", "Add-ons & Notes"];
 
 export default function QuoteBuilderPage() {
-  const [matchEdit, editParams] = useRoute("/quotes/:id"); const id = editParams?.id;
+  const [matchEdit, editParams] = useRoute("/quotes/:id/edit"); const id = editParams?.id;
   const [, navigate] = useLocation();
   const qc = useQueryClient();
   const isEdit = Boolean(id && id !== "new");
@@ -269,21 +269,30 @@ export default function QuoteBuilderPage() {
     };
   }
 
-  async function save(status: string = "draft") {
+  async function save(status: string = "draft", thenConvert = false) {
     setSaving(true);
     try {
       const payload = buildPayload(status);
       let result;
       if (isEdit) {
         result = await apiFetch(`/api/quotes/${id}`, { method: "PATCH", body: payload });
-        toast.success(status === "sent" ? "Quote sent" : "Quote saved");
       } else {
         result = await apiFetch("/api/quotes", { method: "POST", body: payload });
-        toast.success(status === "sent" ? "Quote created and marked as sent" : "Quote saved as draft");
       }
       qc.invalidateQueries({ queryKey: ["quotes"] });
       qc.invalidateQueries({ queryKey: ["quote-stats"] });
-      navigate(`/quotes`);
+      const savedId = result?.id ?? id;
+      if (thenConvert && savedId) {
+        await apiFetch(`/api/quotes/${savedId}/convert`, { method: "POST" });
+        toast.success("Quote converted. Go to Jobs to complete setup.");
+        navigate("/jobs");
+      } else if (status === "sent") {
+        toast.success(isEdit ? "Quote sent" : "Quote created and marked as sent. Configure Resend API to enable email.");
+        navigate(`/quotes/${savedId}`);
+      } else {
+        toast.success("Quote saved as draft");
+        navigate(`/quotes/${savedId}`);
+      }
     } catch (err) {
       toast.error("Failed to save quote");
     } finally {
@@ -761,7 +770,16 @@ export default function QuoteBuilderPage() {
                 disabled={saving || !scopeId}
               >
                 <SendHorizonal className="w-3.5 h-3.5" />
-                Save & Send
+                Save & Send Quote
+              </Button>
+              <Button
+                className="w-full bg-[#1A1917] hover:bg-[#333] text-white gap-1.5"
+                size="sm"
+                onClick={() => save("draft", true)}
+                disabled={saving || !scopeId}
+              >
+                <ArrowRight className="w-3.5 h-3.5" />
+                Save & Convert to Job
               </Button>
               <Button
                 className="w-full"

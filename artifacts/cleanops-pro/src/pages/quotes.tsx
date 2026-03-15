@@ -272,7 +272,7 @@ export default function QuotesPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => navigate(`/quotes/${quote.id}`)}>
+                          <DropdownMenuItem onClick={() => navigate(`/quotes/${quote.id}/edit`)}>
                             <Pencil className="w-4 h-4 mr-2" /> Edit
                           </DropdownMenuItem>
                           {["draft", "viewed"].includes(quote.status) && (

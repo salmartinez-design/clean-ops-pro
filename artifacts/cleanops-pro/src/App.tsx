@@ -50,6 +50,7 @@ import FormsPage from "@/pages/forms";
 import SignPage from "@/pages/sign";
 import QuotesPage from "@/pages/quotes";
 import QuoteBuilderPage from "@/pages/quote-builder";
+import QuoteDetailPage from "@/pages/quote-detail";
 import QuotingPage from "@/pages/quoting";
 
 const queryClient = new QueryClient({
@@ -106,7 +107,8 @@ function Router() {
       <Route path="/company/forms" component={FormsPage} />
       <Route path="/company/quoting" component={QuotingPage} />
       <Route path="/quotes/new" component={QuoteBuilderPage} />
-      <Route path="/quotes/:id" component={QuoteBuilderPage} />
+      <Route path="/quotes/:id/edit" component={QuoteBuilderPage} />
+      <Route path="/quotes/:id" component={QuoteDetailPage} />
       <Route path="/quotes" component={QuotesPage} />
 
       <Route path="/sign/:token" component={SignPage} />

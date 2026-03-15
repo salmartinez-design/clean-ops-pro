@@ -48,6 +48,17 @@ CleanOps Pro is built as a pnpm monorepo, separating the API server and the fron
 - **Client Portal:** A branded portal for clients to view upcoming jobs, history, rate services, and tip technicians.
 - **Reporting:** Performance insights, employee alerts, client churn risk, and revenue analytics.
 
+## Quote Tool Sprint 1 — Complete
+
+All four pages are live and E2E tested (as of March 2026):
+
+- **`/company/quoting`** — Scope Settings: full CRUD for company quoting scopes with seed-defaults button
+- **`/quotes`** — Quote List: stat cards (total, sent, accepted, conversion rate) + sortable table with status badges
+- **`/quotes/new` + `/quotes/:id/edit`** — Quote Builder: 2-column layout with live price preview panel; scopes dropdown → frequency → add-ons → live totals; saves to `/quotes/:id`
+- **`/quotes/:id`** — Quote Detail: read-only view with Created→Sent→Accepted→Converted timeline, action buttons (Edit, Send Quote, Mark Accepted, Convert to Job, Delete)
+
+**Key Fix:** `requireRole` in `quotes.ts` and `quote-scopes.ts` was called with array syntax `(["owner","admin","office"])` but function uses rest spread `(...roles: string[])`. Fixed to `requireRole("owner", "admin", "office")`.
+
 ## External Dependencies
 
 - **Stripe:** For subscription management and payment processing (invoicing, charging cards, refunds).

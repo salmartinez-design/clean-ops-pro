@@ -138,7 +138,7 @@ router.get("/:id", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/", requireAuth, requireRole(["owner", "admin", "office"]), async (req, res) => {
+router.post("/", requireAuth, requireRole("owner", "admin", "office"), async (req, res) => {
   try {
     const {
       client_id, lead_name, lead_email, lead_phone, address,
@@ -179,7 +179,7 @@ router.post("/", requireAuth, requireRole(["owner", "admin", "office"]), async (
   }
 });
 
-router.patch("/:id", requireAuth, requireRole(["owner", "admin", "office"]), async (req, res) => {
+router.patch("/:id", requireAuth, requireRole("owner", "admin", "office"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const allowed = [
@@ -213,7 +213,7 @@ router.patch("/:id", requireAuth, requireRole(["owner", "admin", "office"]), asy
   }
 });
 
-router.post("/:id/send", requireAuth, requireRole(["owner", "admin", "office"]), async (req, res) => {
+router.post("/:id/send", requireAuth, requireRole("owner", "admin", "office"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const [q] = await db.update(quotesTable)
@@ -228,7 +228,7 @@ router.post("/:id/send", requireAuth, requireRole(["owner", "admin", "office"]),
   }
 });
 
-router.post("/:id/accept", requireAuth, requireRole(["owner", "admin", "office"]), async (req, res) => {
+router.post("/:id/accept", requireAuth, requireRole("owner", "admin", "office"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const [q] = await db.update(quotesTable)
@@ -242,7 +242,7 @@ router.post("/:id/accept", requireAuth, requireRole(["owner", "admin", "office"]
   }
 });
 
-router.post("/:id/convert", requireAuth, requireRole(["owner", "admin", "office"]), async (req, res) => {
+router.post("/:id/convert", requireAuth, requireRole("owner", "admin", "office"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const [q] = await db.update(quotesTable)
@@ -256,7 +256,7 @@ router.post("/:id/convert", requireAuth, requireRole(["owner", "admin", "office"
   }
 });
 
-router.delete("/:id", requireAuth, requireRole(["owner", "admin", "office"]), async (req, res) => {
+router.delete("/:id", requireAuth, requireRole("owner", "admin", "office"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     await db.delete(quotesTable).where(and(eq(quotesTable.id, id), eq(quotesTable.company_id, req.auth!.companyId)));
