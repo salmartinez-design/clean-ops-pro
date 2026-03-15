@@ -32,6 +32,16 @@ Multi-tenant SaaS platform for residential and commercial cleaning businesses. B
 - `/discounts` — Discount code management (percentage/fixed, scope, expiry, active toggle); API: GET/POST/PATCH/DELETE /api/discounts
 - `/payroll` — Payroll export and period management
 - `/cleancyclopedia` — Training library for employees
+- `/my-jobs` — Mobile-first employee daily job view; geo-fence clock-in/out; before/after photo upload; elapsed timer; after-photo gate on clock-out
+- `/employees/clocks` — Clock Monitor (owner/admin only); today's entries table; flagged row highlighting; dismiss-flag modal
+
+## Geo-fencing System
+
+- **timeclock** table: clock_in/out lat/lng, distance_from_job_ft, flagged boolean
+- **job_photos** table: before/after photos stored as data_url, per job + user
+- **API**: POST /api/timeclock/clock-in (geo check against client lat/lng), POST /api/timeclock/:id/clock-out (requires ≥1 after photo), PATCH /api/timeclock/:id/unflag
+- **Geocoding**: Auto-geocodes client address on create/update via Google Maps API (key: GOOGLE_MAPS_API_KEY env var); POST /api/clients/geocode-all to backfill existing clients
+- **Geo threshold**: companies.geo_fence_threshold_ft (default 500 ft)
 
 ## Tenant Branding
 

@@ -1,4 +1,4 @@
-import { Home, Briefcase, Users, UsersRound, FileText, DollarSign, BookOpen, Star, Settings, LogOut, LayoutDashboard, X, Tag } from "lucide-react";
+import { Home, Briefcase, Users, UsersRound, FileText, DollarSign, BookOpen, Star, Settings, LogOut, LayoutDashboard, X, Tag, ClipboardList, Clock } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useAuthStore } from "@/lib/auth";
 import { useTenantBrand } from "@/lib/tenant-brand";
@@ -7,12 +7,14 @@ const NAV_SECTIONS = [
   {
     label: "Operations",
     items: [
-      { title: "Dashboard",    url: "/dashboard",    icon: LayoutDashboard },
-      { title: "Jobs",         url: "/jobs",          icon: Briefcase },
-      { title: "Employees",    url: "/employees",     icon: Users },
-      { title: "Customers",    url: "/customers",     icon: UsersRound },
-      { title: "Invoices",     url: "/invoices",      icon: FileText },
-      { title: "Payroll",      url: "/payroll",       icon: DollarSign },
+      { title: "Dashboard",      url: "/dashboard",        icon: LayoutDashboard },
+      { title: "My Jobs",        url: "/my-jobs",           icon: ClipboardList },
+      { title: "Jobs",           url: "/jobs",              icon: Briefcase },
+      { title: "Employees",      url: "/employees",         icon: Users },
+      { title: "Clock Monitor",  url: "/employees/clocks",  icon: Clock, roles: ["owner", "admin"] },
+      { title: "Customers",      url: "/customers",         icon: UsersRound },
+      { title: "Invoices",       url: "/invoices",          icon: FileText },
+      { title: "Payroll",        url: "/payroll",           icon: DollarSign, roles: ["owner", "admin"] },
     ],
   },
   {
@@ -24,9 +26,9 @@ const NAV_SECTIONS = [
   {
     label: "Configuration",
     items: [
-      { title: "Loyalty",    url: "/loyalty",    icon: Star },
-      { title: "Discounts",  url: "/discounts",  icon: Tag },
-      { title: "Company",    url: "/company",    icon: Settings },
+      { title: "Loyalty",    url: "/loyalty",    icon: Star,     roles: ["owner", "admin"] },
+      { title: "Discounts",  url: "/discounts",  icon: Tag,      roles: ["owner", "admin"] },
+      { title: "Company",    url: "/company",    icon: Settings, roles: ["owner", "admin"] },
     ],
   },
 ];
@@ -111,7 +113,7 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
             }}>
               {section.label}
             </p>
-            {section.items.map(item => {
+            {section.items.filter(item => !item.roles || (userInfo && item.roles.includes(userInfo.role))).map(item => {
               const isActive = location === item.url || (item.url !== '/dashboard' && location.startsWith(item.url));
               const Icon = item.icon;
               return (

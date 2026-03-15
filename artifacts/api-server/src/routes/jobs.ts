@@ -125,6 +125,89 @@ router.post("/", requireAuth, async (req, res) => {
   }
 });
 
+router.get("/my-jobs", requireAuth, async (req, res) => {
+  try {
+    const today = new Date().toISOString().split("T")[0];
+    const userId = req.auth!.userId;
+    const companyId = req.auth!.companyId;
+
+    const jobs = await db
+      .select({
+        id: jobsTable.id,
+        client_id: jobsTable.client_id,
+        client_name: sql<string>`concat(${clientsTable.first_name}, ' ', ${clientsTable.last_name})`,
+        address: clientsTable.address,
+        city: clientsTable.city,
+        state: clientsTable.state,
+        zip: clientsTable.zip,
+        lat: clientsTable.lat,
+        lng: clientsTable.lng,
+        client_notes: clientsTable.notes,
+        service_type: jobsTable.service_type,
+        status: jobsTable.status,
+        scheduled_date: jobsTable.scheduled_date,
+        scheduled_time: jobsTable.scheduled_time,
+        base_fee: jobsTable.base_fee,
+        notes: jobsTable.notes,
+      })
+      .from(jobsTable)
+      .leftJoin(clientsTable, eq(jobsTable.client_id, clientsTable.id))
+      .where(and(
+        eq(jobsTable.company_id, companyId),
+        eq(jobsTable.assigned_user_id, userId),
+        eq(jobsTable.scheduled_date, today),
+      ))
+      .orderBy(jobsTable.scheduled_time);
+
+    if (jobs.length === 0) return res.json({ data: [] });
+
+    const jobIds = jobs.map(j => j.id);
+
+    const photoCounts = await db
+      .select({ job_id: jobPhotosTable.job_id, photo_type: jobPhotosTable.photo_type, cnt: count() })
+      .from(jobPhotosTable)
+      .where(sql`${jobPhotosTable.job_id} = ANY(${sql.raw(`ARRAY[${jobIds.join(",")}]`)})`)
+      .groupBy(jobPhotosTable.job_id, jobPhotosTable.photo_type);
+
+    const clockEntries = await db
+      .select()
+      .from(timeclockTable)
+      .where(and(
+        eq(timeclockTable.user_id, userId),
+        eq(timeclockTable.company_id, companyId),
+        sql`${timeclockTable.job_id} = ANY(${sql.raw(`ARRAY[${jobIds.join(",")}]`)})`
+      ));
+
+    const photoMap = new Map<number, { before: number; after: number }>();
+    for (const row of photoCounts) {
+      if (!photoMap.has(row.job_id)) photoMap.set(row.job_id, { before: 0, after: 0 });
+      const e = photoMap.get(row.job_id)!;
+      if (row.photo_type === "before") e.before = row.cnt;
+      if (row.photo_type === "after") e.after = row.cnt;
+    }
+
+    const clockMap = new Map<number, typeof clockEntries[0]>();
+    for (const e of clockEntries) {
+      if (!clockMap.has(e.job_id) || (!e.clock_out_at)) clockMap.set(e.job_id, e);
+    }
+
+    return res.json({
+      data: jobs.map(j => ({
+        ...j,
+        lat: j.lat ? parseFloat(j.lat) : null,
+        lng: j.lng ? parseFloat(j.lng) : null,
+        base_fee: j.base_fee ? parseFloat(j.base_fee) : 0,
+        before_photo_count: photoMap.get(j.id)?.before || 0,
+        after_photo_count: photoMap.get(j.id)?.after || 0,
+        time_clock_entry: clockMap.get(j.id) || null,
+      })),
+    });
+  } catch (err) {
+    console.error("My jobs error:", err);
+    return res.status(500).json({ error: "Internal Server Error", message: "Failed to get my jobs" });
+  }
+});
+
 router.get("/:id", requireAuth, async (req, res) => {
   try {
     const jobId = parseInt(req.params.id);

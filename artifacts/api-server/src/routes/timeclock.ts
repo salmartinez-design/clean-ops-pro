@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { timeclockTable, usersTable, jobsTable, clientsTable, companiesTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
-import { requireAuth } from "../lib/auth.js";
+import { timeclockTable, usersTable, jobsTable, clientsTable, companiesTable, jobPhotosTable } from "@workspace/db/schema";
+import { eq, and, gte, lte, desc, sql, count } from "drizzle-orm";
+import { requireAuth, requireRole } from "../lib/auth.js";
 
 const router = Router();
 
@@ -141,10 +141,45 @@ router.post("/:id/clock-out", requireAuth, async (req, res) => {
     const entryId = parseInt(req.params.id);
     const { lat, lng } = req.body;
 
+    const entry = await db
+      .select()
+      .from(timeclockTable)
+      .where(and(
+        eq(timeclockTable.id, entryId),
+        eq(timeclockTable.company_id, req.auth!.companyId),
+        eq(timeclockTable.user_id, req.auth!.userId)
+      ))
+      .limit(1);
+
+    if (!entry[0]) {
+      return res.status(404).json({ error: "Not Found", message: "Time clock entry not found" });
+    }
+
+    const afterPhotos = await db
+      .select({ cnt: count() })
+      .from(jobPhotosTable)
+      .where(and(
+        eq(jobPhotosTable.job_id, entry[0].job_id),
+        eq(jobPhotosTable.company_id, req.auth!.companyId),
+        eq(jobPhotosTable.photo_type, "after")
+      ));
+
+    if ((afterPhotos[0]?.cnt ?? 0) === 0) {
+      return res.status(400).json({
+        error: "PHOTOS_REQUIRED",
+        message: "Upload at least 1 after photo before clocking out"
+      });
+    }
+
+    const clockOutAt = new Date();
+    const distanceFt = lat && lng && entry[0].clock_in_lat && entry[0].clock_in_lng
+      ? calculateDistanceFt(parseFloat(lat), parseFloat(lng), parseFloat(entry[0].clock_in_lat), parseFloat(entry[0].clock_in_lng))
+      : null;
+
     const updated = await db
       .update(timeclockTable)
       .set({
-        clock_out_at: new Date(),
+        clock_out_at: clockOutAt,
         clock_out_lat: lat?.toString(),
         clock_out_lng: lng?.toString(),
       })
@@ -177,6 +212,24 @@ router.post("/:id/clock-out", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("Clock out error:", err);
     return res.status(500).json({ error: "Internal Server Error", message: "Failed to clock out" });
+  }
+});
+
+router.patch("/:id/unflag", requireAuth, requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const entryId = parseInt(req.params.id);
+    const [updated] = await db
+      .update(timeclockTable)
+      .set({ flagged: false })
+      .where(and(
+        eq(timeclockTable.id, entryId),
+        eq(timeclockTable.company_id, req.auth!.companyId)
+      ))
+      .returning();
+    if (!updated) return res.status(404).json({ error: "Not Found" });
+    return res.json(updated);
+  } catch (err) {
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 });
 

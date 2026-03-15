@@ -2,9 +2,24 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { clientsTable, jobsTable, usersTable, invoicesTable } from "@workspace/db/schema";
 import { eq, and, ilike, or, count, sum, desc, sql } from "drizzle-orm";
-import { requireAuth } from "../lib/auth.js";
+import { requireAuth, requireRole } from "../lib/auth.js";
 
 const router = Router();
+
+async function geocodeAddress(address: string, city: string | undefined, state: string | undefined, zip: string | undefined): Promise<{ lat: string; lng: string } | null> {
+  const key = process.env.GOOGLE_MAPS_API_KEY;
+  if (!key) return null;
+  const full = [address, city, state, zip].filter(Boolean).join(", ");
+  try {
+    const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(full)}&key=${key}`);
+    const data = await res.json() as any;
+    if (data.results?.[0]) {
+      const loc = data.results[0].geometry.location;
+      return { lat: String(loc.lat), lng: String(loc.lng) };
+    }
+  } catch { /* silent */ }
+  return null;
+}
 
 router.get("/", requireAuth, async (req, res) => {
   try {
@@ -52,6 +67,8 @@ router.post("/", requireAuth, async (req, res) => {
   try {
     const { first_name, last_name, email, phone, address, city, state, zip, notes } = req.body;
 
+    const geo = address ? await geocodeAddress(address, city, state, zip) : null;
+
     const newClient = await db
       .insert(clientsTable)
       .values({
@@ -65,6 +82,7 @@ router.post("/", requireAuth, async (req, res) => {
         state,
         zip,
         notes,
+        ...(geo && { lat: geo.lat, lng: geo.lng }),
       })
       .returning();
 
@@ -151,6 +169,8 @@ router.put("/:id", requireAuth, async (req, res) => {
     const clientId = parseInt(req.params.id);
     const { first_name, last_name, email, phone, address, city, state, zip, notes } = req.body;
 
+    const geo = address !== undefined ? await geocodeAddress(address, city, state, zip) : null;
+
     const updated = await db
       .update(clientsTable)
       .set({
@@ -163,6 +183,7 @@ router.put("/:id", requireAuth, async (req, res) => {
         ...(state !== undefined && { state }),
         ...(zip !== undefined && { zip }),
         ...(notes !== undefined && { notes }),
+        ...(geo && { lat: geo.lat, lng: geo.lng }),
       })
       .where(and(
         eq(clientsTable.id, clientId),
@@ -195,6 +216,32 @@ router.delete("/:id", requireAuth, async (req, res) => {
     console.error("Delete client error:", err);
     return res.status(500).json({ error: "Internal Server Error", message: "Failed to delete client" });
   }
+});
+
+router.post("/geocode-all", requireAuth, requireRole("owner", "admin"), async (req, res) => {
+  const key = process.env.GOOGLE_MAPS_API_KEY;
+  if (!key) return res.status(503).json({ error: "GOOGLE_MAPS_API_KEY not configured" });
+
+  const clients = await db
+    .select()
+    .from(clientsTable)
+    .where(and(
+      eq(clientsTable.company_id, req.auth!.companyId),
+      sql`${clientsTable.address} IS NOT NULL`,
+      sql`${clientsTable.lat} IS NULL`
+    ));
+
+  let updated = 0;
+  for (const client of clients) {
+    const geo = await geocodeAddress(client.address!, client.city ?? undefined, client.state ?? undefined, client.zip ?? undefined);
+    if (geo) {
+      await db.update(clientsTable).set({ lat: geo.lat, lng: geo.lng }).where(eq(clientsTable.id, client.id));
+      updated++;
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  return res.json({ geocoded: updated, total: clients.length });
 });
 
 export default router;
