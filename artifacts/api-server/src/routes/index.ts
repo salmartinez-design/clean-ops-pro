@@ -3,6 +3,7 @@ import healthRouter from "./health.js";
 import authRouter from "./auth.js";
 import companiesRouter from "./companies.js";
 import usersRouter from "./users.js";
+import employeeExtendedRouter from "./employee-extended.js";
 import clientsRouter from "./clients.js";
 import jobsRouter from "./jobs.js";
 import timeclockRouter from "./timeclock.js";
@@ -14,12 +15,14 @@ import dashboardRouter from "./dashboard.js";
 import adminRouter from "./admin.js";
 import discountsRouter from "./discounts.js";
 import dispatchRouter from "./dispatch.js";
+import portalRouter from "./portal.js";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use("/auth", authRouter);
 router.use("/companies", companiesRouter);
+router.use("/users", employeeExtendedRouter);
 router.use("/users", usersRouter);
 router.use("/clients", clientsRouter);
 router.use("/jobs", jobsRouter);
@@ -32,5 +35,6 @@ router.use("/dashboard", dashboardRouter);
 router.use("/admin", adminRouter);
 router.use("/discounts", discountsRouter);
 router.use("/dispatch", dispatchRouter);
+router.use("/portal", portalRouter);
 
 export default router;

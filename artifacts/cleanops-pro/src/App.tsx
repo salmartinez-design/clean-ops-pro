@@ -7,6 +7,8 @@ import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import JobsPage from "@/pages/jobs";
 import EmployeesPage from "@/pages/employees";
+import EmployeeProfilePage from "@/pages/employee-profile";
+import AcceptInvitePage from "@/pages/accept-invite";
 import CustomersPage from "@/pages/customers";
 import InvoicesPage from "@/pages/invoices";
 import CompanyPage from "@/pages/company";
@@ -16,6 +18,8 @@ import CleancyclopediaPage from "@/pages/cleancyclopedia";
 import DiscountsPage from "@/pages/discounts";
 import MyJobsPage from "@/pages/my-jobs";
 import ClockMonitorPage from "@/pages/clock-monitor";
+import PortalLoginPage from "@/pages/portal/login";
+import PortalDashboardPage from "@/pages/portal/dashboard";
 import NotFound from "@/pages/not-found";
 
 import AdminDashboard from "@/pages/admin/index";
@@ -34,8 +38,11 @@ function Router() {
     <Switch>
       <Route path="/" component={Dashboard} />
       <Route path="/login" component={Login} />
+      <Route path="/accept-invite" component={AcceptInvitePage} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/jobs" component={JobsPage} />
+      <Route path="/employees/clocks" component={ClockMonitorPage} />
+      <Route path="/employees/:id" component={EmployeeProfilePage} />
       <Route path="/employees" component={EmployeesPage} />
       <Route path="/customers" component={CustomersPage} />
       <Route path="/invoices" component={InvoicesPage} />
@@ -45,7 +52,10 @@ function Router() {
       <Route path="/loyalty" component={LoyaltyPage} />
       <Route path="/discounts" component={DiscountsPage} />
       <Route path="/my-jobs" component={MyJobsPage} />
-      <Route path="/employees/clocks" component={ClockMonitorPage} />
+
+      <Route path="/portal/:slug/login" component={PortalLoginPage} />
+      <Route path="/portal/:slug/dashboard" component={PortalDashboardPage} />
+      <Route path="/portal/:slug" component={PortalLoginPage} />
 
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/admin/companies" component={AdminCompanies} />

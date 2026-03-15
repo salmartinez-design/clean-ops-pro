@@ -11,6 +11,10 @@ export const payTypeEnum = pgEnum("pay_type", [
   "hourly", "per_job", "fee_split"
 ]);
 
+export const employmentTypeEnum = pgEnum("employment_type", [
+  "full_time", "part_time", "contractor"
+]);
+
 export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
   company_id: integer("company_id").references(() => companiesTable.id),
@@ -21,14 +25,35 @@ export const usersTable = pgTable("users", {
   last_name: text("last_name").notNull(),
   avatar_url: text("avatar_url"),
   phone: text("phone"),
+  personal_email: text("personal_email"),
   address: text("address"),
+  city: text("city"),
+  state: text("state"),
+  zip: text("zip"),
   dob: date("dob"),
+  gender: text("gender"),
   hire_date: date("hire_date"),
+  termination_date: date("termination_date"),
+  employment_type: employmentTypeEnum("employment_type"),
   pay_rate: numeric("pay_rate", { precision: 10, scale: 2 }),
   pay_type: payTypeEnum("pay_type"),
   fee_split_pct: numeric("fee_split_pct", { precision: 5, scale: 2 }),
   allowed_hours_per_week: numeric("allowed_hours_per_week", { precision: 6, scale: 2 }),
+  overtime_eligible: boolean("overtime_eligible").default(true),
+  w2_1099: text("w2_1099"),
+  bank_name: text("bank_name"),
+  bank_account_last4: text("bank_account_last4"),
   skills: text("skills").array(),
+  tags: text("tags").array(),
+  emergency_contact_name: text("emergency_contact_name"),
+  emergency_contact_phone: text("emergency_contact_phone"),
+  emergency_contact_relation: text("emergency_contact_relation"),
+  ssn_last4: text("ssn_last4"),
+  notes: text("notes"),
+  invite_token: text("invite_token"),
+  invite_sent_at: timestamp("invite_sent_at"),
+  invite_accepted_at: timestamp("invite_accepted_at"),
+  onboarding_complete: boolean("onboarding_complete").default(false),
   is_active: boolean("is_active").notNull().default(true),
   created_at: timestamp("created_at").notNull().defaultNow(),
 });

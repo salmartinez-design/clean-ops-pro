@@ -2,38 +2,72 @@
 
 ## Overview
 
-Multi-tenant SaaS platform for residential and commercial cleaning businesses. Built on a pnpm monorepo.
+Multi-tenant SaaS platform for residential and commercial cleaning businesses (PHES Cleaning LLC, built for Sal Martinez). Built on a pnpm monorepo.
 
 ## Demo Credentials
 
 - **Owner (PHES Cleaning):** owner@phescleaning.com / demo1234
 - **Admin (PHES Cleaning):** admin@phescleaning.com / demo1234
 - **Technician (PHES Cleaning):** jessica@phescleaning.com / demo1234
+- **Client Portal (PHES Cleaning):** emily.brown@email.com / portal123 → /portal/phes-cleaning/login
 - **Super Admin (Platform):** admin@cleanopspro.com / Admin#CleanOps2026!
 
 ## Design System
 
 **Theme:** Full light theme (Apple/Tesla-grade)
-**Fonts:** Plus Jakarta Sans exclusively (all weights)
-**Colors:** bg-base `#F7F6F3` · bg-card `#FFFFFF` · border `#E5E2DC` · text primary `#1A1917` · text secondary `#6B7280`
+**Fonts:** Plus Jakarta Sans exclusively (all weights). No other fonts allowed.
+**Colors:** bg-base `#F7F6F3` · bg-card `#FFFFFF` · border `#E5E2DC` · text primary `#1A1917` · text secondary `#6B7280` · muted `#9E9B94`
 **Brand accent:** `--brand` CSS var (`#5B9BD5` PHES blue) · `--brand-foreground` `#FFFFFF`
 **Admin portal:** purple accent `#7F77DD` · sidebar `#F5F4FF` · main bg `#F2F1FE`
 **No dark backgrounds anywhere** · Subtle box-shadows on cards · 6px scrollbars
 
 ## Pages
 
+### Admin/Owner Dashboard
 - `/dashboard` — Metrics, revenue chart, top employees, recent jobs
 - `/jobs` — Job grid with frequency-color left borders + status bottom borders, Create Job dialog
-- `/employees` — Table with SVG productivity rings, role badges, score
+- `/employees` — Table with SVG productivity rings, role badges, score + Send Invite button
+- `/employees/:id` — 11-tab employee profile (Information, Tags & Skills, Attendance, Availability, User Account, Contacts, Scorecards, Additional Pay, Contact Tickets, Jobs, Notes)
 - `/customers` — Client table with loyalty points display, batch selection
 - `/invoices` — Stat cards, tabbed filter, invoice table with status badges
 - `/company` — General settings + Branding tab (live color picker, logo URL, sidebar preview)
 - `/loyalty` — Program style selector, earn rules with toggles/slider, rewards toggle list
-- `/discounts` — Discount code management (percentage/fixed, scope, expiry, active toggle); API: GET/POST/PATCH/DELETE /api/discounts
+- `/discounts` — Discount code management (percentage/fixed, scope, expiry, active toggle)
 - `/payroll` — Payroll export and period management
 - `/cleancyclopedia` — Training library for employees
 - `/my-jobs` — Mobile-first employee daily job view; geo-fence clock-in/out; before/after photo upload; elapsed timer; after-photo gate on clock-out
 - `/employees/clocks` — Clock Monitor (owner/admin only); today's entries table; flagged row highlighting; dismiss-flag modal
+
+### Client Portal
+- `/portal/:slug/login` — Branded client portal login (company logo, name, slug-based)
+- `/portal/:slug/dashboard` — 3-tab portal: Home (next cleaning, rate last, quick actions, loyalty points), History, Tip My Cleaner
+- Portal JWT stored in `localStorage` as `portal_token_{slug}`; separate auth role `portal_client`
+
+### Auth Pages
+- `/login` — Staff login
+- `/accept-invite?token=xxx` — Employee invite acceptance + password set
+
+## Employee Profile — 11 Tabs
+
+`/employees/:id` tabs:
+1. **Information** — Personal details (name, phone, email, DOB, city, state, zip, employment type, pay type, pay rate, hire date, banking)
+2. **Tags & Skills** — Skill endorsements + custom tag chips with + Add flows
+3. **Attendance** — Monthly calendar view with clock-in/out records, flagged day markers, stats panel
+4. **Availability** — Weekly availability grid (Mon–Sun), toggle per day + time range, Save Availability
+5. **User Account** — Login email, role selector, account active toggle, password reset
+6. **Contacts** — Primary contact + emergency contact cards
+7. **Scorecards** — Performance ratings history
+8. **Additional Pay** — Tips, bonuses, sick pay entries
+9. **Contact Tickets** — HR contact log with open/closed status
+10. **Jobs** — Paginated job history for this employee
+11. **Notes** — Internal team notes with timestamps
+
+## Employee Invite Flow
+
+- Owner/Admin clicks "Send Invite" on `/employees` table → `POST /api/users/invite` generates a token
+- Employee receives a URL: `/accept-invite?token=xxx`
+- Employee sets their password → auto-login → redirect to `/my-jobs`
+- Row shows "INVITED" badge after successful send, with toast confirmation
 
 ## Geo-fencing System
 
@@ -69,9 +103,13 @@ Stored in `companies.brand_color` column (VARCHAR 7). Default: #00C9A7.
 Every table has `company_id`. Every API route validates `company_id` from JWT — never from client body.
 
 ### Auth Flow
-- POST /api/auth/login → returns JWT token
-- Token stored in localStorage via Zustand store
+- POST /api/auth/login → returns JWT token (role: owner/admin/office/technician)
+- POST /api/portal/login → returns JWT token (role: portal_client, uses clientId as userId)
+- Token stored in localStorage via Zustand store (staff) or per-slug key (portal)
 - All subsequent requests include `Authorization: Bearer <token>`
+
+### Route Order (Important)
+In `routes/index.ts`, `employee-extended` router is mounted **before** `users` router — both at `/users` path — so invite routes (`/users/:id/invite`) don't conflict with the base users CRUD.
 
 ## Structure
 
@@ -79,7 +117,11 @@ Every table has `company_id`. Every API route validates `company_id` from JWT �
 artifacts-monorepo/
 ├── artifacts/
 │   ├── api-server/         # Express 5 API server
+│   │   └── src/routes/     # employees, employee-extended, portal, jobs, clients, etc.
 │   └── cleanops-pro/       # React + Vite frontend
+│       └── src/pages/
+│           ├── portal/     # login.tsx, dashboard.tsx (client portal)
+│           └── ...         # all admin pages
 ├── lib/
 │   ├── api-spec/           # OpenAPI spec + Orval codegen config
 │   ├── api-client-react/   # Generated React Query hooks
@@ -91,63 +133,43 @@ artifacts-monorepo/
 
 ## Database Schema
 
-- `companies` — multi-tenant root
-- `users` — employees with roles (owner/admin/office/technician/super_admin)
-- `clients` — customers with loyalty points
-- `jobs` — scheduled/in_progress/complete/cancelled
+- `companies` — multi-tenant root (slug, brand_color, geo_fence_threshold_ft)
+- `users` — employees with roles (owner/admin/office/technician/super_admin) + 20 extended fields (tags, availability, banking, invite_token, emergency_contacts)
+- `clients` — customers with loyalty points + portal auth columns (portal_password_hash, portal_access, portal_invite_token, portal_last_login)
+- `jobs` — scheduled/in_progress/complete/cancelled (service_type, assigned_user_id, base_fee)
 - `job_photos` — before/after photos per job
 - `timeclock` — geo-fenced clock-in/out entries with flagging
 - `invoices` — with JSONB line items, status flow
 - `scorecards` — 0-4 employee performance scores
-- `additional_pay` — tips/bonuses/sick/holiday/vacation/deductions
+- `additional_pay` — tips/bonuses/sick/holiday/vacation/deductions (linked to jobs)
+- `availability` — per-user weekly availability grid (day_of_week, start_time, end_time, is_available)
+- `contact_tickets` — HR contact log per employee
+- `employee_notes` — internal notes per employee
+- `client_ratings` — star ratings + comments from portal clients per job
 - `loyalty_settings` — per-company loyalty program config
 - `loyalty_points_log` — earn/redeem history
+- `discounts` — discount codes (percentage/fixed, scope, expiry)
 
-## Features Implemented (Phase 1 & 2)
+## API Routes
 
-### Dashboard
-- Metrics: jobs (scheduled/completed/in-progress/cancelled), revenue, tips, active clients, employees, flagged clock-ins, avg score
-- Top employees list
-- Recent jobs list
+### Portal Routes (`/api/portal/*`)
+- `GET /api/portal/company/:slug` — public; get company branding for portal
+- `POST /api/portal/login` — portal client login; returns portal JWT
+- `GET /api/portal/me` — portal auth; get client profile
+- `GET /api/portal/jobs` — portal auth; upcoming + past jobs
+- `POST /api/portal/rate` — portal auth; submit/update star rating for a job
+- `POST /api/portal/tip` — portal auth; send tip (inserts to additional_pay)
+- `POST /api/portal/invite-client` — set portal password + enable access for a client
 
-### Scheduling
-- Week-view calendar with employee color coding
-- Job status badges (scheduled/in_progress/complete/cancelled)
-- Frequency color coding (weekly/biweekly/monthly)
-- Service type labels (residential + commercial)
-
-### Employees
-- Employee list with role/status filters
-- Profile with tabs: Info, Scorecards, Additional Pay, Jobs
-- Productivity % display (allowed vs actual hours)
-- Pay types: hourly, per_job, fee_split
-
-### Clients
-- Client list with search
-- Client detail with job history, revenue stats
-- Loyalty points display
-
-### Jobs
-- Full job lifecycle (schedule → in_progress → complete)
-- Before/after photo upload (gate: must have after photos to complete)
-- Geo-fenced clock-in/out
-- Checklist items
-
-### Invoices
-- Invoice creation from jobs
-- Line item editing
-- Status flow: draft → sent → paid → overdue
-- Revenue statistics header
-
-### Payroll
-- Summary by pay period
-- Breakdown by employee with all pay types
-- Export formats: PDF, CSV, ADP CSV, Paychex CSV, Gusto CSV
-
-### Loyalty Program
-- Points-based, punch card, or tiered VIP styles
-- Configurable earn rules
-- Points ledger per client
+### Employee Extended Routes (`/api/users/*`)
+- `PATCH /api/users/:id/profile` — update extended employee fields
+- `GET/PUT /api/users/:id/availability` — weekly availability grid
+- `GET/POST /api/users/:id/tickets` — contact tickets
+- `GET /api/users/:id/jobs` — paginated job history
+- `POST /api/users/:id/notes` — add note; `GET /api/users/:id/notes`
+- `POST /api/users/invite` — send invite email (token-based)
+- `GET /api/users/validate-invite` — validate invite token
+- `POST /api/users/accept-invite` — set password + auto-login
 
 ## Running Locally
 
@@ -161,27 +183,17 @@ pnpm --filter @workspace/cleanops-pro run dev
 # Seed database
 pnpm --filter @workspace/scripts run seed
 
-# Run codegen after API spec changes
-pnpm --filter @workspace/api-spec run codegen
-
 # Push DB schema changes
 pnpm --filter @workspace/db run push
 ```
 
-## UI Design System
-
-- **Dark mode** default for admin/owner dashboard
-- **Primary teal** (#00C9A7) for accents, CTAs
-- **Dark background** (#0D0D0D base)
-- **Fonts**: Playfair Display (headings) + DM Mono (body/labels)
-- **Cards**: bg #151515, border #222, radius 12px
-- **No gradients, no box shadows, no blur**
-
 ## Security
 
 - JWT auth with company_id + role claims
+- Portal JWT with role: "portal_client" and clientId as userId
 - Every DB query scoped to company_id from token
 - Rate limiting on login (5 attempts/15 min)
 - Parameterized queries (Drizzle ORM)
 - Photo upload gate before job completion
 - Geo-fence flagging for clock-ins outside threshold
+- bcryptjs password hashing for both staff and portal clients

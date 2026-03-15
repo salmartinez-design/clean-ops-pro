@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, numeric } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, numeric, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { companiesTable } from "./companies";
@@ -21,6 +21,11 @@ export const clientsTable = pgTable("clients", {
   stripe_customer_id: text("stripe_customer_id"),
   square_customer_id: text("square_customer_id"),
   loyalty_points: integer("loyalty_points").notNull().default(0),
+  portal_password_hash: text("portal_password_hash"),
+  portal_access: boolean("portal_access").default(false),
+  portal_invite_token: text("portal_invite_token"),
+  portal_invite_sent_at: timestamp("portal_invite_sent_at"),
+  portal_last_login: timestamp("portal_last_login"),
   created_at: timestamp("created_at").notNull().defaultNow(),
 });
 
