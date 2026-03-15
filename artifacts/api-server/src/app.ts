@@ -16,6 +16,10 @@ const uploadsDir = path.resolve(__dirname, "../uploads");
 process.env.UPLOADS_DIR = uploadsDir;
 app.use("/api/uploads", express.static(uploadsDir, { maxAge: "1d" }));
 
+const pdfsDir = path.resolve(__dirname, "../pdfs");
+process.env.PDFS_DIR = pdfsDir;
+app.use("/api/pdfs", express.static(pdfsDir, { maxAge: "1h" }));
+
 app.use("/api", router);
 
 export default app;

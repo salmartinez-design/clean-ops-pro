@@ -43,6 +43,9 @@ import AdminDashboard from "@/pages/admin/index";
 import AdminCompanies from "@/pages/admin/companies";
 import AdminBilling from "@/pages/admin/billing";
 import AdminCleancyclopedia from "@/pages/admin/cleancyclopedia";
+import PropertyGroupsPage from "@/pages/property-groups";
+import CompanyBillingPage from "@/pages/company-billing";
+import AgreementTemplatesPage from "@/pages/agreement-templates";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -91,6 +94,10 @@ function Router() {
       <Route path="/portal/:slug/login" component={PortalLoginPage} />
       <Route path="/portal/:slug/dashboard" component={PortalDashboardPage} />
       <Route path="/portal/:slug" component={PortalLoginPage} />
+
+      <Route path="/company/property-groups" component={PropertyGroupsPage} />
+      <Route path="/company/billing" component={CompanyBillingPage} />
+      <Route path="/company/agreements" component={AgreementTemplatesPage} />
 
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/admin/companies" component={AdminCompanies} />

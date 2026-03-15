@@ -7,7 +7,9 @@ import {
   ArrowLeft, Home, CreditCard, FileText, Bell, Star, UserX, StickyNote, Globe,
   Plus, Trash2, Edit2, ChevronLeft, ChevronRight, Check, X, Eye, EyeOff,
   Phone, Mail, MapPin, MessageSquare, Send, AlertTriangle, TrendingUp,
+  ClipboardList, DollarSign, BookOpen, Paperclip,
 } from "lucide-react";
+import { QuotesTab, PaymentsTab, QuickBooksTab, AttachmentsTab } from "./customer-profile-tabs2";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -57,7 +59,11 @@ const TABS = [
   { id: "overview", label: "Overview", icon: Home },
   { id: "homes", label: "Homes", icon: MapPin },
   { id: "billing", label: "Billing", icon: CreditCard },
+  { id: "quotes", label: "Quotes", icon: ClipboardList },
+  { id: "payments", label: "Payments", icon: DollarSign },
   { id: "agreements", label: "Agreements", icon: FileText },
+  { id: "attachments", label: "Attachments", icon: Paperclip },
+  { id: "quickbooks", label: "QuickBooks", icon: BookOpen },
   { id: "contacts", label: "Contacts & Notifications", icon: Bell },
   { id: "scorecards", label: "Scorecards", icon: Star },
   { id: "tech", label: "Tech Preferences", icon: UserX },
@@ -1156,7 +1162,11 @@ export default function CustomerProfilePage() {
               {tab === "overview" && <OverviewTab client={profile} onUpdate={d => updateMut.mutateAsync(d)} refetch={refetch} />}
               {tab === "homes" && <HomesTab clientId={clientId} homes={profile.homes || []} refetch={refetch} />}
               {tab === "billing" && <BillingTab invoices={profile.invoices || []} />}
+              {tab === "quotes" && <QuotesTab clientId={clientId} client={profile} />}
+              {tab === "payments" && <PaymentsTab clientId={clientId} client={profile} />}
               {tab === "agreements" && <AgreementsTab clientId={clientId} agreements={agreements} refetch={() => { refetchAgreements(); refetch(); }} />}
+              {tab === "attachments" && <AttachmentsTab clientId={clientId} />}
+              {tab === "quickbooks" && <QuickBooksTab clientId={clientId} client={profile} refetch={refetch} />}
               {tab === "contacts" && <ContactsTab clientId={clientId} notifications={profile.notification_settings || []} refetch={refetch} />}
               {tab === "scorecards" && <ScorecardsTab scorecards={profile.scorecards || []} />}
               {tab === "tech" && <TechPrefsTab clientId={clientId} prefs={profile.tech_preferences || []} refetch={refetch} />}

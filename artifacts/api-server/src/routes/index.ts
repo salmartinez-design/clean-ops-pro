@@ -21,6 +21,12 @@ import messagesRouter from "./messages.js";
 import reportsRouter from "./reports.js";
 import notificationsRouter from "./notifications.js";
 import jobSmsRouter from "./job-sms.js";
+import quotesRouter from "./quotes.js";
+import paymentsRouter from "./payments.js";
+import attachmentsRouter from "./attachments.js";
+import propertyGroupsRouter from "./property-groups.js";
+import agreementTemplatesRouter from "./agreement-templates.js";
+import billingRouter from "./billing.js";
 
 const router: IRouter = Router();
 
@@ -46,5 +52,11 @@ router.use("/search", searchRouter);
 router.use("/messages", messagesRouter);
 router.use("/reports", reportsRouter);
 router.use("/notifications", notificationsRouter);
+router.use("/quotes", quotesRouter);
+router.use("/payments", paymentsRouter);
+router.use("/attachments", attachmentsRouter);
+router.use("/property-groups", propertyGroupsRouter);
+router.use("/agreement-templates", agreementTemplatesRouter);
+router.use("/billing", billingRouter);
 
 export default router;

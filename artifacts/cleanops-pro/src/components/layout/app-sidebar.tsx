@@ -2,7 +2,7 @@ import {
   LogOut, X, LayoutDashboard, CalendarDays, ClipboardList, Clock,
   Briefcase, Users, UserCheck, FileText, DollarSign,
   BarChart2, TrendingUp, ArrowUpCircle, Tag,
-  BookOpen, Star, Settings,
+  BookOpen, Star, Settings, Building2, CreditCard, PenLine,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useAuthStore } from "@/lib/auth";
@@ -42,7 +42,15 @@ const NAV_SECTIONS = [
     items: [
       { title: "Cleancyclopedia", url: "/cleancyclopedia", icon: BookOpen },
       { title: "Loyalty",         url: "/loyalty",          icon: Star,     roles: ["owner", "admin"] },
-      { title: "Company",         url: "/company",           icon: Settings, roles: ["owner", "admin"] },
+    ],
+  },
+  {
+    label: "Company",
+    items: [
+      { title: "Settings",          url: "/company",                    icon: Settings,   roles: ["owner", "admin"] },
+      { title: "Billing",           url: "/company/billing",            icon: CreditCard, roles: ["owner"] },
+      { title: "Property Groups",   url: "/company/property-groups",    icon: Building2,  roles: ["owner", "admin"] },
+      { title: "Agreements",        url: "/company/agreements",         icon: PenLine,    roles: ["owner", "admin"] },
     ],
   },
 ];
@@ -76,8 +84,11 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
     ? `${userInfo.firstName[0] || ''}${userInfo.lastName[0] || ''}`.toUpperCase()
     : '??';
 
+  const EXACT_MATCH_URLS = ['/dashboard', '/company'];
   const isActive = (url: string) =>
-    url === '/dashboard' ? location === url : location === url || location.startsWith(url + '/');
+    EXACT_MATCH_URLS.includes(url)
+      ? location === url
+      : location === url || location.startsWith(url + '/');
 
   const navItemStyle = (active: boolean): React.CSSProperties => ({
     height: 38,

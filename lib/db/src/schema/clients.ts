@@ -39,6 +39,9 @@ export const clientsTable = pgTable("clients", {
   portal_invite_token: text("portal_invite_token"),
   portal_invite_sent_at: timestamp("portal_invite_sent_at"),
   portal_last_login: timestamp("portal_last_login"),
+  property_group_id: integer("property_group_id"),
+  default_card_last_4: text("default_card_last_4"),
+  default_card_brand: text("default_card_brand"),
   created_at: timestamp("created_at").notNull().defaultNow(),
 });
 

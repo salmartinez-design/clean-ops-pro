@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { jobsTable, clientsTable, usersTable, jobPhotosTable, timeclockTable, invoicesTable, scorecardsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, count, desc, sql } from "drizzle-orm";
 import { requireAuth } from "../lib/auth.js";
+import { generateJobCompletionPdf } from "../lib/generate-job-pdf.js";
 
 const router = Router();
 
@@ -386,12 +387,72 @@ router.post("/:id/complete", requireAuth, async (req, res) => {
       ))
       .returning();
 
+    if (!updated[0]) {
+      return res.status(404).json({ error: "Not Found", message: "Job not found" });
+    }
+
+    const jobDetail = await db
+      .select({
+        id: jobsTable.id,
+        service_type: jobsTable.service_type,
+        scheduled_date: jobsTable.scheduled_date,
+        scheduled_time: jobsTable.scheduled_time,
+        base_fee: jobsTable.base_fee,
+        actual_hours: jobsTable.actual_hours,
+        notes: jobsTable.notes,
+        client_name: sql<string>`concat(${clientsTable.first_name}, ' ', ${clientsTable.last_name})`,
+        client_address: sql<string>`coalesce(${clientsTable.address}, '')`,
+        assigned_user_name: sql<string | null>`concat(${usersTable.first_name}, ' ', ${usersTable.last_name})`,
+        company_name: sql<string>`coalesce((select name from companies where id = ${jobsTable.company_id}), 'CleanOps Pro')`,
+      })
+      .from(jobsTable)
+      .leftJoin(clientsTable, eq(jobsTable.client_id, clientsTable.id))
+      .leftJoin(usersTable, eq(jobsTable.assigned_user_id, usersTable.id))
+      .where(eq(jobsTable.id, jobId))
+      .limit(1);
+
+    const beforeCount = await db
+      .select({ count: count() })
+      .from(jobPhotosTable)
+      .where(and(eq(jobPhotosTable.job_id, jobId), eq(jobPhotosTable.photo_type, "before")));
+
+    let pdfUrl: string | null = null;
+    try {
+      if (jobDetail[0]) {
+        const d = jobDetail[0];
+        pdfUrl = await generateJobCompletionPdf({
+          jobId,
+          companyName: d.company_name || "CleanOps Pro",
+          clientName: d.client_name || "Unknown Client",
+          clientAddress: d.client_address || "",
+          serviceType: d.service_type || "Cleaning",
+          scheduledDate: d.scheduled_date || "",
+          scheduledTime: d.scheduled_time,
+          assignedUserName: d.assigned_user_name,
+          baseFee: d.base_fee,
+          actualHours: d.actual_hours,
+          notes: d.notes,
+          beforePhotoCount: beforeCount[0]?.count ?? 0,
+          afterPhotoCount: afterPhotos[0].count,
+          completedAt: new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }),
+        });
+
+        await db
+          .update(jobsTable)
+          .set({ completion_pdf_url: pdfUrl })
+          .where(eq(jobsTable.id, jobId));
+      }
+    } catch (pdfErr) {
+      console.error("PDF generation error (non-fatal):", pdfErr);
+    }
+
     return res.json({
       ...updated[0],
-      client_name: "",
-      assigned_user_name: null,
-      before_photo_count: 0,
+      client_name: jobDetail[0]?.client_name ?? "",
+      assigned_user_name: jobDetail[0]?.assigned_user_name ?? null,
+      before_photo_count: beforeCount[0]?.count ?? 0,
       after_photo_count: afterPhotos[0].count,
+      completion_pdf_url: pdfUrl,
     });
   } catch (err) {
     console.error("Complete job error:", err);

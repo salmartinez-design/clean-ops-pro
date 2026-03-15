@@ -33,6 +33,8 @@ export const jobsTable = pgTable("jobs", {
   allowed_hours: numeric("allowed_hours", { precision: 6, scale: 2 }),
   actual_hours: numeric("actual_hours", { precision: 6, scale: 2 }),
   notes: text("notes"),
+  completion_pdf_url: text("completion_pdf_url"),
+  completion_pdf_sent_at: timestamp("completion_pdf_sent_at"),
   created_at: timestamp("created_at").notNull().defaultNow(),
 });
 

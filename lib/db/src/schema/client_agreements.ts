@@ -14,6 +14,10 @@ export const clientAgreementsTable = pgTable("client_agreements", {
   accepted_at: timestamp("accepted_at"),
   ip_address: text("ip_address"),
   pdf_url: text("pdf_url"),
+  template_id: integer("template_id"),
+  content_hash: text("content_hash"),
+  typed_name: text("typed_name"),
+  client_home_id: integer("client_home_id"),
   created_at: timestamp("created_at").notNull().defaultNow(),
 });
 

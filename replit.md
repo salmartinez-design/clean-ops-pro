@@ -31,6 +31,9 @@ Multi-tenant SaaS platform for residential and commercial cleaning businesses (P
 - `/customers` — Client table with loyalty points display, batch selection
 - `/invoices` — Stat cards, tabbed filter, invoice table with status badges
 - `/company` — General + Branding + **Notifications** tab (6 trigger templates, toggle on/off, edit body+subject, variable tokens, test button, activity log) + Integrations + Payroll Options
+- `/company/billing` — Plan status, next billing date, trial countdown, upgrade/cancel; Stripe subscription flow
+- `/company/property-groups` — Property Management Group CRUD; assign clients to groups; filter clients by group
+- `/company/agreements` — Agreement Template editor (WYSIWYG body, custom fields); send eSign request to client; portal signing with typed name + SHA-256 hash; eSign badge on client Overview
 - `/reports/insights` — Performance Insights: top performers with star ratings, employee concern alerts, client churn risk, revenue by service type bar chart
 - `/loyalty` — Program style selector, earn rules with toggles/slider, rewards toggle list
 - `/discounts` — Discount code management (percentage/fixed, scope, expiry, active toggle)
@@ -173,6 +176,50 @@ artifacts-monorepo/
 - `loyalty_settings` — per-company loyalty program config
 - `loyalty_points_log` — earn/redeem history
 - `discounts` — discount codes (percentage/fixed, scope, expiry)
+- `quotes` — client quotes (line items JSONB, status: draft/sent/accepted/declined, valid_until)
+- `payments` — payment records per client (amount, method, stripe_payment_intent_id, status)
+- `client_attachments` — file attachments per client (file_url, file_name, file_type, file_size)
+- `property_groups` — property management groups per company (name, description, contact info)
+- `agreement_templates` — eSign templates (title, body, custom_fields JSONB, active)
+- `client_agreements` — sent/signed agreements per client (template_id, signed_at, typed_name, content_hash SHA-256)
+- `jobs.completion_pdf_url` — path to auto-generated PDF when job is marked complete
+- `clients.property_group_id` — FK to property_groups
+- `clients.stripe_customer_id`, `default_card_last_4`, `default_card_brand` — Stripe billing fields
+
+## Client Profile — 13 Tabs
+
+`/customers/:id` tabs:
+1. **Overview** — Contact info, home details, service history summary, eSign badge, loyalty points
+2. **Jobs** — Paginated job history with status filter, "Book New Job" shortcut
+3. **Invoices** — Client invoice list with status badges, paid/outstanding totals
+4. **Communications** — Email/SMS log
+5. **Portal** — Portal access toggle, invite send, property group assignment
+6. **Ratings** — Star rating history from client portal
+7. **Scorecards** — Employee scorecards per job for this client
+8. **Training** — Relevant Cleancyclopedia articles
+9. **Notes** — Internal team notes with timestamps
+10. **Quotes** — Create/send/convert-to-invoice quotes (line items, status flow)
+11. **Payments** — Charge card, refund, payment history; Stripe customer integration
+12. **QuickBooks** — Connect QBO, sync client/invoices (stub UI)
+13. **Attachments** — Drag-drop file upload, file type icons, download/delete
+
+## Invoices — Batch Invoicing
+
+`/invoices` page has a "Batch Invoice" button that opens a modal:
+- Lists today's completed jobs that haven't been invoiced yet
+- Multi-select checkboxes per job
+- Auto-send and auto-charge toggles
+- Progress bar + summary (created / failed) after processing
+- Creates invoice records for all selected jobs
+
+## Job Completion PDF (T007)
+
+On `POST /api/jobs/:id/complete`:
+1. Marks job status → `complete`
+2. Generates a PDF report (`pdfkit`) with: company name, client, address, service type, dates, fee, hours, notes, before/after photo counts, completion timestamp
+3. Saves PDF to `artifacts/api-server/pdfs/` and serves at `/api/pdfs/<filename>`
+4. Stores path in `jobs.completion_pdf_url`
+5. PDF generation is non-fatal (job still completes if PDF fails)
 
 ## API Routes
 
@@ -184,6 +231,14 @@ artifacts-monorepo/
 - `POST /api/portal/rate` — portal auth; submit/update star rating for a job
 - `POST /api/portal/tip` — portal auth; send tip (inserts to additional_pay)
 - `POST /api/portal/invite-client` — set portal password + enable access for a client
+
+### New Feature Routes
+- `GET/POST /api/quotes` — list/create quotes per client; `PATCH /api/quotes/:id` — update/send/convert; `DELETE /api/quotes/:id`
+- `GET/POST /api/payments` — list/create payments per client; `POST /api/payments/:id/refund`
+- `GET/POST /api/attachments` — list/upload attachments per client; `DELETE /api/attachments/:id`
+- `GET/POST/PATCH/DELETE /api/property-groups` — property management group CRUD; `GET /api/property-groups/:id/clients`
+- `GET/POST/PATCH/DELETE /api/agreement-templates` — template CRUD; `POST /api/agreement-templates/:id/send` — send eSign to client; `POST /api/agreement-templates/agreements/:id/sign` — client portal signing
+- `GET /api/billing/status` — current plan + Stripe subscription status; `POST /api/billing/create-subscription`; `POST /api/billing/cancel-subscription`
 
 ### Employee Extended Routes (`/api/users/*`)
 - `PATCH /api/users/:id/profile` — update extended employee fields
