@@ -7,161 +7,270 @@ import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   useDraggable, useDroppable, type DragEndEvent, type DragStartEvent,
 } from "@dnd-kit/core";
-import { useListClients, useListUsers, useCreateJob } from "@workspace/api-client-react";
-import { useForm, Controller } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import {
-  ChevronLeft, ChevronRight, Plus, Search, Clock, Camera, X, MapPin, User, DollarSign,
+  ChevronLeft, ChevronRight, Plus, Clock, Camera, X, MapPin, User,
+  DollarSign, CheckCircle, AlertCircle, LayoutGrid, List, Calendar,
 } from "lucide-react";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// ─── CONSTANTS ───
+// ─── CONSTANTS ───────────────────────────────────────────────────────────────
+const FF = "'Plus Jakarta Sans', sans-serif";
 const SLOT_W = 80;
 const COL_W = 220;
-const ROW_H = 80;
+const ROW_H = 84;
 const DAY_START = 7 * 60;
 const DAY_END = 20 * 60;
 const TOTAL_SLOTS = (DAY_END - DAY_START) / 30;
 
-const STATUS_COLORS: Record<string, { bg: string; border: string; text: string }> = {
-  scheduled:   { bg: "#DBEAFE", border: "#3B82F6", text: "#1D4ED8" },
-  in_progress: { bg: "#FEF3C7", border: "#F59E0B", text: "#92400E" },
-  complete:    { bg: "#DCFCE7", border: "#22C55E", text: "#15803D" },
-  cancelled:   { bg: "#F3F4F6", border: "#9CA3AF", text: "#6B7280" },
-  flagged:     { bg: "#FEE2E2", border: "#EF4444", text: "#991B1B" },
+const STATUS: Record<string, { bg: string; border: string; text: string; dot: string }> = {
+  scheduled:   { bg: "#DBEAFE", border: "#93C5FD", text: "#1D4ED8", dot: "#3B82F6" },
+  in_progress: { bg: "#FEF3C7", border: "#FCD34D", text: "#92400E", dot: "#F59E0B" },
+  complete:    { bg: "#DCFCE7", border: "#86EFAC", text: "#15803D", dot: "#22C55E" },
+  cancelled:   { bg: "#F3F4F6", border: "#D1D5DB", text: "#6B7280", dot: "#9CA3AF" },
+  flagged:     { bg: "#FEE2E2", border: "#FCA5A5", text: "#991B1B", dot: "#EF4444" },
 };
 
 const TIMES = Array.from({ length: TOTAL_SLOTS }, (_, i) => {
   const mins = DAY_START + i * 30;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  const ampm = h < 12 ? "AM" : "PM";
-  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return `${h === 0 ? 12 : h > 12 ? h - 12 : h}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 });
 
-// ─── TYPES ───
-type JobStatus = "scheduled" | "in_progress" | "complete" | "cancelled";
-interface ClockEntry {
-  id: number;
-  clock_in_at: string | null;
-  clock_out_at: string | null;
-  distance_from_job_ft: number | null;
-  is_flagged: boolean;
-}
-interface DispatchJob {
-  id: number;
-  client_id: number;
-  client_name: string;
-  address: string | null;
-  assigned_user_id: number | null;
-  service_type: string;
-  status: JobStatus;
-  scheduled_date: string;
-  scheduled_time: string | null;
-  frequency: string;
-  amount: number;
-  duration_minutes: number;
-  notes: string | null;
-  before_photo_count: number;
-  after_photo_count: number;
-  clock_entry: ClockEntry | null;
-}
+// ─── TYPES ────────────────────────────────────────────────────────────────────
+interface ClockEntry { id: number; clock_in_at: string | null; clock_out_at: string | null; distance_from_job_ft: number | null; is_flagged: boolean; }
+interface DispatchJob { id: number; client_id: number; client_name: string; address: string | null; assigned_user_id: number | null; assigned_user_name?: string; service_type: string; status: string; scheduled_date: string; scheduled_time: string | null; frequency: string; amount: number; duration_minutes: number; notes: string | null; before_photo_count: number; after_photo_count: number; clock_entry: ClockEntry | null; }
 interface Employee { id: number; name: string; role: string; jobs: DispatchJob[]; }
 interface DispatchData { employees: Employee[]; unassigned_jobs: DispatchJob[]; }
 
-// ─── HELPERS ───
-function timeToMins(t: string | null): number {
-  if (!t) return DAY_START;
-  const [h, m] = t.split(":").map(Number);
-  return h * 60 + (m || 0);
-}
-function minsToTimeStr(mins: number): string {
-  const c = Math.max(DAY_START, Math.min(DAY_END - 30, mins));
-  return `${String(Math.floor(c / 60)).padStart(2, "0")}:${String(c % 60).padStart(2, "0")}:00`;
-}
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+const dateKey = (d: Date) => d.toISOString().split("T")[0];
+const addDays = (d: Date, n: number) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
+const timeToMins = (t: string | null) => { if (!t) return DAY_START; const [h, m] = t.split(":").map(Number); return h * 60 + (m || 0); };
+const minsToStr = (mins: number) => { const c = Math.max(DAY_START, Math.min(DAY_END - 30, mins)); return `${String(Math.floor(c / 60)).padStart(2, "0")}:${String(c % 60).padStart(2, "0")}:00`; };
 function fmtTime(t: string | null): string {
   if (!t) return "—";
   const [h, m] = t.split(":").map(Number);
-  const ampm = h < 12 ? "AM" : "PM";
-  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return `${h12}:${String(m || 0).padStart(2, "0")} ${ampm}`;
+  return `${h === 0 ? 12 : h > 12 ? h - 12 : h}:${String(m || 0).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 }
-function fmtService(s: string): string {
-  return s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-}
-function chipLeft(job: DispatchJob): number {
-  return ((timeToMins(job.scheduled_time) - DAY_START) / 30) * SLOT_W;
-}
-function chipWidth(job: DispatchJob): number {
-  return Math.max(SLOT_W, (job.duration_minutes / 30) * SLOT_W);
-}
-function dateKey(d: Date): string {
-  return d.toISOString().split("T")[0];
-}
-function addDays(d: Date, n: number): Date {
-  const r = new Date(d); r.setDate(r.getDate() + n); return r;
-}
+function fmtSvc(s: string) { return s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()); }
+function useIsMobile() { const [m, setM] = useState(window.innerWidth < 1024); useEffect(() => { const h = () => setM(window.innerWidth < 1024); window.addEventListener("resize", h); return () => window.removeEventListener("resize", h); }, []); return m; }
+
 async function patchJob(id: number, patch: object, token: string) {
-  const res = await fetch(`/api/jobs/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(patch),
-  });
-  if (!res.ok) throw new Error("Failed");
-}
-async function fetchDispatch(date: string, token: string): Promise<DispatchData> {
-  const res = await fetch(`/api/dispatch?date=${date}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error("Failed to load dispatch");
-  return res.json();
+  const API = (window as any).__API_BASE__ || "";
+  const r = await fetch(`${API}/api/jobs/${id}`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(patch) });
+  if (!r.ok) throw new Error("Failed");
 }
 
-// ─── MINI CALENDAR ───
-function MiniCalendar({ value, onChange, jobDates }: {
-  value: Date; onChange: (d: Date) => void; jobDates: Set<string>;
+async function fetchDispatch(date: string, token: string): Promise<DispatchData> {
+  const API = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const r = await fetch(`${API}/api/dispatch?date=${date}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) throw new Error("Failed to load dispatch");
+  return r.json();
+}
+
+// ─── JOB DETAIL PANEL ────────────────────────────────────────────────────────
+function JobPanel({ job, employees, onClose, onUpdate, mobile }: {
+  job: DispatchJob; employees: Employee[]; onClose: () => void; onUpdate: () => void; mobile: boolean;
 }) {
+  const token = useAuthStore(s => s.token)!;
+  const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
+  const sc = STATUS[job.status] || STATUS.scheduled;
+  const assignedEmp = employees.find(e => e.id === job.assigned_user_id);
+  const endMins = timeToMins(job.scheduled_time) + job.duration_minutes;
+
+  async function setStatus(s: string) {
+    setBusy(true);
+    try { await patchJob(job.id, { status: s }, token); toast({ title: `Job marked ${s.replace("_", " ")}` }); onUpdate(); onClose(); }
+    catch { toast({ title: "Error", variant: "destructive" }); }
+    finally { setBusy(false); }
+  }
+
+  const panelStyle: React.CSSProperties = mobile ? {
+    position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 200,
+    backgroundColor: "#FFFFFF", borderRadius: "20px 20px 0 0",
+    boxShadow: "0 -8px 40px rgba(0,0,0,0.15)",
+    maxHeight: "85vh", display: "flex", flexDirection: "column", fontFamily: FF,
+  } : {
+    position: "fixed", top: 0, right: 0, bottom: 0, width: 380, zIndex: 50,
+    backgroundColor: "#FFFFFF", borderLeft: "1px solid #E5E2DC",
+    boxShadow: "-4px 0 24px rgba(0,0,0,0.08)",
+    display: "flex", flexDirection: "column", fontFamily: FF,
+  };
+
+  return (
+    <>
+      {mobile && <div onClick={onClose} style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", zIndex: 199 }} />}
+      <div style={panelStyle}>
+        {mobile && <div style={{ width: 40, height: 4, backgroundColor: "#E5E2DC", borderRadius: 2, margin: "12px auto 0" }} />}
+        <div style={{ padding: "16px 20px 14px", borderBottom: "1px solid #EEECE7", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#1A1917" }}>{job.client_name}</h2>
+            <span style={{ display: "inline-block", marginTop: 5, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", padding: "2px 8px", borderRadius: 4, backgroundColor: "var(--brand-dim)", color: "var(--brand)" }}>{fmtSvc(job.service_type)}</span>
+          </div>
+          <button onClick={onClose} style={{ border: "none", background: "none", cursor: "pointer", color: "#9E9B94", padding: 4 }}><X size={18} /></button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, backgroundColor: sc.bg, border: `1px solid ${sc.border}`, marginBottom: 16 }}>
+            <div style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: sc.dot }} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: sc.text, textTransform: "capitalize" }}>{job.status.replace("_", " ")}</span>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+            <IR icon={<Clock size={14} />} label={`${fmtTime(job.scheduled_time)} – ${fmtTime(minsToStr(endMins))}`} />
+            {job.address && <IR icon={<MapPin size={14} />} label={job.address} />}
+            {(assignedEmp || job.assigned_user_name) && <IR icon={<User size={14} />} label={assignedEmp?.name || job.assigned_user_name || ""} />}
+            <IR icon={<DollarSign size={14} />} label={`$${(job.amount || 0).toFixed(2)}`} bold />
+          </div>
+
+          {job.notes && (
+            <PS label="Notes"><p style={{ margin: 0, fontSize: 13, color: "#6B7280", lineHeight: 1.6 }}>{job.notes}</p></PS>
+          )}
+
+          {job.clock_entry && (
+            <PS label="Clock Data">
+              {job.clock_entry.clock_in_at && <KV label="Clock in" value={new Date(job.clock_entry.clock_in_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} />}
+              {job.clock_entry.clock_out_at && <KV label="Clock out" value={new Date(job.clock_entry.clock_out_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} />}
+              {job.clock_entry.distance_from_job_ft !== null && (
+                <KV label="Distance at clock-in" value={`${Math.round(job.clock_entry.distance_from_job_ft)} ft${job.clock_entry.is_flagged ? " (flagged)" : ""}`} color={job.clock_entry.is_flagged ? "#EF4444" : undefined} />
+              )}
+            </PS>
+          )}
+
+          {(job.before_photo_count > 0 || job.after_photo_count > 0) && (
+            <PS label="Photos">
+              <div style={{ display: "flex", gap: 8 }}>
+                {job.before_photo_count > 0 && <PBadge count={job.before_photo_count} label="before" color="#0284C7" bg="#F0F9FF" border="#BAE6FD" />}
+                {job.after_photo_count > 0 && <PBadge count={job.after_photo_count} label="after" color="#16A34A" bg="#F0FDF4" border="#BBF7D0" />}
+              </div>
+            </PS>
+          )}
+        </div>
+
+        <div style={{ padding: "12px 20px 20px", borderTop: "1px solid #EEECE7", display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+          {job.status !== "complete" && (
+            <button onClick={() => setStatus("complete")} disabled={busy}
+              style={{ flex: 1, minWidth: 100, padding: "10px 12px", border: "none", borderRadius: 8, backgroundColor: "#22C55E", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: FF }}>
+              {busy ? "..." : "Mark Complete"}
+            </button>
+          )}
+          {job.status !== "in_progress" && job.status !== "complete" && (
+            <button onClick={() => setStatus("in_progress")} disabled={busy}
+              style={{ flex: 1, minWidth: 100, padding: "10px 12px", border: "1px solid #FCD34D", borderRadius: 8, backgroundColor: "#FEF3C7", color: "#92400E", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: FF }}>
+              Start Job
+            </button>
+          )}
+          {job.status !== "flagged" && job.status !== "complete" && (
+            <button onClick={() => setStatus("flagged")} disabled={busy}
+              style={{ padding: "10px 12px", border: "1px solid #FCA5A5", borderRadius: 8, backgroundColor: "#FEE2E2", color: "#991B1B", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: FF }}>
+              Flag
+            </button>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+function IR({ icon, label, bold }: { icon: React.ReactNode; label: string; bold?: boolean }) {
+  return <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}><span style={{ color: "#9E9B94", flexShrink: 0, marginTop: 1 }}>{icon}</span><span style={{ fontSize: 13, color: "#1A1917", fontWeight: bold ? 700 : 400, lineHeight: 1.5 }}>{label}</span></div>;
+}
+function PS({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div style={{ marginBottom: 16 }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9E9B94", marginBottom: 8 }}>{label}</div>{children}</div>;
+}
+function KV({ label, value, color }: { label: string; value: string; color?: string }) {
+  return <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}><span style={{ color: "#6B7280" }}>{label}</span><span style={{ color: color || "#1A1917", fontWeight: 600 }}>{value}</span></div>;
+}
+function PBadge({ count, label, color, bg, border }: { count: number; label: string; color: string; bg: string; border: string }) {
+  return <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, backgroundColor: bg, border: `1px solid ${border}` }}><Camera size={12} style={{ color }} /><span style={{ fontSize: 11, color, fontWeight: 600 }}>{count} {label}</span></div>;
+}
+
+// ─── MOBILE JOB CARD ──────────────────────────────────────────────────────────
+function MobileJobCard({ job, onClick }: { job: DispatchJob; onClick: () => void }) {
+  const sc = STATUS[job.status] || STATUS.scheduled;
+  return (
+    <div onClick={onClick} style={{
+      backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 12,
+      padding: "14px 16px", marginBottom: 10, cursor: "pointer",
+      borderLeft: `4px solid ${sc.dot}`, fontFamily: FF,
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: "#1A1917", marginBottom: 2 }}>{job.client_name}</div>
+          <div style={{ fontSize: 12, color: "var(--brand)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>{fmtSvc(job.service_type)}</div>
+        </div>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 20, backgroundColor: sc.bg, border: `1px solid ${sc.border}`, fontSize: 11, fontWeight: 700, color: sc.text, textTransform: "capitalize", flexShrink: 0, marginLeft: 10 }}>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: sc.dot }} />
+          {job.status.replace("_", " ")}
+        </span>
+      </div>
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+        {job.scheduled_time && (
+          <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "#6B7280" }}>
+            <Clock size={12} style={{ color: "#9E9B94" }} />
+            {fmtTime(job.scheduled_time)}
+            <span style={{ color: "#C4C0BB" }}>·</span>
+            {Math.floor(job.duration_minutes / 60)}h{job.duration_minutes % 60 > 0 ? ` ${job.duration_minutes % 60}m` : ""}
+          </div>
+        )}
+        {job.address && (
+          <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "#6B7280", flex: 1, minWidth: 0 }}>
+            <MapPin size={12} style={{ color: "#9E9B94", flexShrink: 0 }} />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{job.address}</span>
+          </div>
+        )}
+      </div>
+      {(job.assigned_user_name || job.clock_entry?.clock_in_at) && (
+        <div style={{ display: "flex", gap: 12, marginTop: 8, alignItems: "center" }}>
+          {job.assigned_user_name && (
+            <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "#6B7280" }}>
+              <User size={12} style={{ color: "#9E9B94" }} />
+              {job.assigned_user_name}
+            </div>
+          )}
+          {job.clock_entry?.clock_in_at && (
+            <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#16A34A", fontWeight: 600 }}>
+              <Clock size={11} />
+              Clocked in {new Date(job.clock_entry.clock_in_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </div>
+          )}
+        </div>
+      )}
+      {(job.before_photo_count > 0 || job.after_photo_count > 0) && (
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          {job.before_photo_count > 0 && <span style={{ fontSize: 11, color: "#0284C7", fontWeight: 600 }}><Camera size={10} style={{ display: "inline", marginRight: 3 }} />{job.before_photo_count} before</span>}
+          {job.after_photo_count > 0 && <span style={{ fontSize: 11, color: "#16A34A", fontWeight: 600 }}><Camera size={10} style={{ display: "inline", marginRight: 3 }} />{job.after_photo_count} after</span>}
+        </div>
+      )}
+      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #F0EEE9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: 14, fontWeight: 800, color: "#1A1917" }}>${(job.amount || 0).toFixed(2)}</span>
+        <span style={{ fontSize: 11, color: "#9E9B94" }}>Tap to view &rarr;</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── MINI CALENDAR ─────────────────────────────────────────────────────────────
+function MiniCalendar({ value, onChange, jobDates }: { value: Date; onChange: (d: Date) => void; jobDates: Set<string> }) {
   const [month, setMonth] = useState(new Date(value.getFullYear(), value.getMonth(), 1));
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
   const firstDow = new Date(month.getFullYear(), month.getMonth(), 1).getDay();
-  const DOW = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-  const label = month.toLocaleDateString("en-US", { month: "long", year: "numeric" });
-
   return (
-    <div style={{ padding: "16px 12px 12px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
-          style={{ border: "none", background: "none", cursor: "pointer", color: "#9E9B94", display: "flex", padding: 2 }}>
-          <ChevronLeft size={14} />
-        </button>
-        <span style={{ fontSize: 12, fontWeight: 600, color: "#1A1917" }}>{label}</span>
-        <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
-          style={{ border: "none", background: "none", cursor: "pointer", color: "#9E9B94", display: "flex", padding: 2 }}>
-          <ChevronRight size={14} />
-        </button>
+    <div style={{ padding: "14px 12px 10px", fontFamily: FF }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} style={{ border: "none", background: "none", cursor: "pointer", color: "#9E9B94", display: "flex", padding: 4 }}><ChevronLeft size={13} /></button>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#1A1917" }}>{month.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span>
+        <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))} style={{ border: "none", background: "none", cursor: "pointer", color: "#9E9B94", display: "flex", padding: 4 }}><ChevronRight size={13} /></button>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 1 }}>
-        {DOW.map(d => <div key={d} style={{ textAlign: "center", fontSize: 10, color: "#9E9B94", fontWeight: 600, paddingBottom: 4 }}>{d}</div>)}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2 }}>
+        {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d => <div key={d} style={{ textAlign: "center", fontSize: 10, color: "#9E9B94", fontWeight: 700, paddingBottom: 4 }}>{d}</div>)}
         {Array.from({ length: firstDow }).map((_, i) => <div key={`_${i}`} />)}
         {Array.from({ length: days }, (_, i) => i + 1).map(day => {
           const d = new Date(month.getFullYear(), month.getMonth(), day);
           const k = dateKey(d);
-          const sel = dateKey(d) === dateKey(value);
-          const isT = dateKey(d) === dateKey(today);
-          const hasJ = jobDates.has(k);
+          const sel = k === dateKey(value), isT = k === dateKey(today), hasJ = jobDates.has(k);
           return (
-            <button key={day} onClick={() => onChange(d)} style={{
-              border: "none", cursor: "pointer", borderRadius: 6, padding: "4px 0",
-              display: "flex", flexDirection: "column", alignItems: "center",
-              background: sel ? "var(--brand)" : isT ? "var(--brand-dim)" : "none",
-            }}>
+            <button key={day} onClick={() => onChange(d)} style={{ border: "none", cursor: "pointer", borderRadius: 6, padding: "4px 0", display: "flex", flexDirection: "column", alignItems: "center", background: sel ? "var(--brand)" : isT ? "var(--brand-dim)" : "none" }}>
               <span style={{ fontSize: 12, fontWeight: sel || isT ? 700 : 400, color: sel ? "#fff" : isT ? "var(--brand)" : "#1A1917" }}>{day}</span>
               {hasJ && <div style={{ width: 4, height: 4, borderRadius: "50%", backgroundColor: sel ? "#fff" : "var(--brand)", marginTop: 1 }} />}
             </button>
@@ -172,328 +281,52 @@ function MiniCalendar({ value, onChange, jobDates }: {
   );
 }
 
-// ─── QUICK PANEL ───
-function QuickPanel({ job, employees, onClose, onUpdate }: {
-  job: DispatchJob; employees: Employee[]; onClose: () => void; onUpdate: () => void;
-}) {
-  const token = useAuthStore(s => s.token)!;
-  const { toast } = useToast();
-  const [busy, setBusy] = useState(false);
-  const [duplicating, setDuplicating] = useState(false);
-  const sc = STATUS_COLORS[job.status] || STATUS_COLORS.scheduled;
-  const assignedEmp = employees.find(e => e.id === job.assigned_user_id);
-  const endMins = timeToMins(job.scheduled_time) + job.duration_minutes;
-
-  async function markComplete() {
-    setBusy(true);
-    try {
-      await patchJob(job.id, { status: "complete" }, token);
-      toast({ title: "Job marked complete" });
-      onUpdate(); onClose();
-    } catch { toast({ title: "Error", variant: "destructive" }); }
-    finally { setBusy(false); }
-  }
-
-  async function duplicateJob() {
-    setDuplicating(true);
-    try {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const newDate = tomorrow.toISOString().split("T")[0];
-      const r = await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/jobs`, {
-        method: "POST",
-        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({
-          client_id: job.client_id,
-          service_type: job.service_type,
-          scheduled_date: newDate,
-          scheduled_time: job.scheduled_time,
-          duration_minutes: job.duration_minutes,
-          base_fee: job.amount,
-          frequency: job.frequency,
-          notes: job.notes,
-          assigned_user_id: job.assigned_user_id || undefined,
-          status: "scheduled",
-        }),
-      });
-      if (!r.ok) throw new Error("Failed to duplicate");
-      toast({ title: "Job duplicated for tomorrow" });
-      onUpdate(); onClose();
-    } catch {
-      toast({ title: "Could not duplicate job", variant: "destructive" });
-    } finally { setDuplicating(false); }
-  }
-
-  return (
-    <div style={{
-      position: "fixed", top: 0, right: 0, bottom: 0, width: 360, zIndex: 50,
-      backgroundColor: "#FFFFFF", borderLeft: "1px solid #E5E2DC",
-      boxShadow: "-4px 0 20px rgba(0,0,0,0.08)",
-      display: "flex", flexDirection: "column", fontFamily: "'Plus Jakarta Sans', sans-serif",
-    }}>
-      <div style={{ padding: "20px 20px 16px", borderBottom: "1px solid #E5E2DC", flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#1A1917" }}>{job.client_name}</h2>
-            <span style={{
-              display: "inline-block", marginTop: 6, fontSize: 11, fontWeight: 600,
-              textTransform: "uppercase", letterSpacing: "0.05em", padding: "2px 8px",
-              borderRadius: 4, backgroundColor: "var(--brand-dim)", color: "var(--brand)",
-            }}>{fmtService(job.service_type)}</span>
-          </div>
-          <button onClick={onClose} style={{ border: "none", background: "none", cursor: "pointer", color: "#9E9B94", padding: 4, marginLeft: 8, display: "flex" }}>
-            <X size={18} />
-          </button>
-        </div>
-      </div>
-
-      <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, backgroundColor: sc.bg, border: `1px solid ${sc.border}`, marginBottom: 16 }}>
-          <div style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: sc.border }} />
-          <span style={{ fontSize: 12, fontWeight: 600, color: sc.text, textTransform: "capitalize" }}>{job.status.replace("_", " ")}</span>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-          <InfoRow icon={<Clock size={14} />} label={`${fmtTime(job.scheduled_time)} – ${fmtTime(minsToTimeStr(endMins))}`} />
-          {job.address && <InfoRow icon={<MapPin size={14} />} label={job.address} />}
-          {assignedEmp && <InfoRow icon={<User size={14} />} label={assignedEmp.name} />}
-          <InfoRow icon={<DollarSign size={14} />} label={`$${job.amount.toFixed(2)}`} bold />
-        </div>
-
-        {job.notes && (
-          <PanelSection label="Notes">
-            <p style={{ margin: 0, fontSize: 13, color: "#6B7280", lineHeight: 1.5 }}>{job.notes}</p>
-          </PanelSection>
-        )}
-
-        {job.clock_entry && (
-          <PanelSection label="Clock Data">
-            {job.clock_entry.clock_in_at && (
-              <KV label="Clock in" value={new Date(job.clock_entry.clock_in_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} />
-            )}
-            {job.clock_entry.clock_out_at && (
-              <KV label="Clock out" value={new Date(job.clock_entry.clock_out_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} />
-            )}
-            {job.clock_entry.distance_from_job_ft !== null && (
-              <KV label="Distance at clock-in"
-                value={`${Math.round(job.clock_entry.distance_from_job_ft)} ft${job.clock_entry.is_flagged ? " (flagged)" : ""}`}
-                valueColor={job.clock_entry.is_flagged ? "#EF4444" : undefined}
-              />
-            )}
-          </PanelSection>
-        )}
-
-        {(job.before_photo_count > 0 || job.after_photo_count > 0) && (
-          <PanelSection label={`Photos — ${job.before_photo_count} before · ${job.after_photo_count} after`}>
-            <div style={{ display: "flex", gap: 8 }}>
-              {job.before_photo_count > 0 && (
-                <PhotoBadge count={job.before_photo_count} label="before" color="#0284C7" bg="#F0F9FF" border="#BAE6FD" />
-              )}
-              {job.after_photo_count > 0 && (
-                <PhotoBadge count={job.after_photo_count} label="after" color="#16A34A" bg="#F0FDF4" border="#BBF7D0" />
-              )}
-            </div>
-          </PanelSection>
-        )}
-      </div>
-
-      <div style={{ padding: "12px 20px", borderTop: "1px solid #E5E2DC", display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
-        {job.status !== "complete" && (
-          <button onClick={markComplete} disabled={busy} style={{
-            flex: 1, minWidth: 100, padding: "8px 12px", border: "none", borderRadius: 8,
-            backgroundColor: "#22C55E", color: "#fff", fontSize: 12, fontWeight: 600,
-            cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif",
-          }}>{busy ? "..." : "Mark Complete"}</button>
-        )}
-        <button onClick={duplicateJob} disabled={duplicating} style={{
-          flex: 1, minWidth: 80, padding: "8px 12px", border: "1px solid #E5E2DC", borderRadius: 8,
-          color: "#6B7280", fontSize: 12, fontWeight: 600, backgroundColor: "#FFFFFF",
-          cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif",
-        }}>{duplicating ? "Duplicating…" : "Duplicate"}</button>
-      </div>
-    </div>
-  );
-}
-function InfoRow({ icon, label, bold }: { icon: React.ReactNode; label: string; bold?: boolean }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <span style={{ color: "#9E9B94", flexShrink: 0 }}>{icon}</span>
-      <span style={{ fontSize: 13, color: "#1A1917", fontWeight: bold ? 700 : 400 }}>{label}</span>
-    </div>
-  );
-}
-function PanelSection({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9E9B94", marginBottom: 8 }}>{label}</div>
-      {children}
-    </div>
-  );
-}
-function KV({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-      <span style={{ color: "#6B7280" }}>{label}</span>
-      <span style={{ color: valueColor || "#1A1917", fontWeight: 500 }}>{value}</span>
-    </div>
-  );
-}
-function PhotoBadge({ count, label, color, bg, border }: { count: number; label: string; color: string; bg: string; border: string }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 8px", borderRadius: 6, backgroundColor: bg, border: `1px solid ${border}` }}>
-      <Camera size={12} style={{ color }} />
-      <span style={{ fontSize: 11, color, fontWeight: 600 }}>{count} {label}</span>
-    </div>
-  );
-}
-
-// ─── JOB CHIP ───
+// ─── DESKTOP: JOB CHIP ─────────────────────────────────────────────────────────
 function JobChip({ job, onClick }: { job: DispatchJob; onClick: (j: DispatchJob) => void }) {
+  const sc = STATUS[job.status] || STATUS.scheduled;
+  const left = ((timeToMins(job.scheduled_time) - DAY_START) / 30) * SLOT_W;
+  const width = Math.max(SLOT_W, (job.duration_minutes / 30) * SLOT_W);
   const isComplete = job.status === "complete";
-  const sc = STATUS_COLORS[job.status] || STATUS_COLORS.scheduled;
-  const left = chipLeft(job);
-  const width = chipWidth(job);
-
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: `chip-${job.id}`,
-    data: { job, originalLeft: left },
-    disabled: isComplete,
-  });
-
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: `chip-${job.id}`, data: { job, originalLeft: left }, disabled: isComplete });
   return (
-    <div
-      ref={setNodeRef}
-      onClick={e => { e.stopPropagation(); onClick(job); }}
-      {...(isComplete ? {} : { ...listeners, ...attributes })}
-      style={{
-        position: "absolute", top: 12, left, width, height: ROW_H - 24,
-        borderRadius: 8, backgroundColor: sc.bg, borderLeft: `3px solid ${sc.border}`,
-        padding: "6px 8px", boxSizing: "border-box", overflow: "hidden",
-        cursor: isComplete ? "default" : isDragging ? "grabbing" : "grab",
-        opacity: isDragging ? 0.3 : 1,
-        transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined,
-        zIndex: isDragging ? 0 : 2, userSelect: "none",
-        display: "flex", flexDirection: "column", justifyContent: "center", gap: 2,
-        boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-      }}
-    >
+    <div ref={setNodeRef} onClick={e => { e.stopPropagation(); onClick(job); }} {...(isComplete ? {} : { ...listeners, ...attributes })}
+      style={{ position: "absolute", top: 10, left, width, height: ROW_H - 20, borderRadius: 8, backgroundColor: sc.bg, borderLeft: `3px solid ${sc.dot}`, padding: "6px 8px", boxSizing: "border-box", overflow: "hidden", cursor: isComplete ? "default" : isDragging ? "grabbing" : "grab", opacity: isDragging ? 0.3 : 1, transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined, zIndex: isDragging ? 0 : 2, userSelect: "none", display: "flex", flexDirection: "column", justifyContent: "center", gap: 2, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
-        {job.clock_entry?.clock_in_at && <Clock size={9} style={{ color: sc.border, flexShrink: 0 }} />}
-        {job.after_photo_count > 0 && <Camera size={9} style={{ color: sc.border, flexShrink: 0 }} />}
-        <span style={{ fontSize: 11, fontWeight: 700, color: "#1A1917", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {job.client_name}
-        </span>
+        {job.clock_entry?.clock_in_at && <Clock size={9} style={{ color: sc.dot, flexShrink: 0 }} />}
+        {job.after_photo_count > 0 && <Camera size={9} style={{ color: sc.dot, flexShrink: 0 }} />}
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#1A1917", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{job.client_name}</span>
       </div>
-      <span style={{ fontSize: 10, color: "#6B7280", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        {fmtService(job.service_type)}
-      </span>
-      {width > 130 && (
-        <span style={{ fontSize: 9, color: "#9E9B94" }}>
-          {fmtTime(job.scheduled_time)} – {fmtTime(minsToTimeStr(timeToMins(job.scheduled_time) + job.duration_minutes))}
-        </span>
-      )}
+      <span style={{ fontSize: 10, color: "#6B7280", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fmtSvc(job.service_type)}</span>
+      {width > 130 && <span style={{ fontSize: 9, color: "#9E9B94" }}>{fmtTime(job.scheduled_time)} – {fmtTime(minsToStr(timeToMins(job.scheduled_time) + job.duration_minutes))}</span>}
     </div>
   );
 }
 
-function ChipOverlay({ job }: { job: DispatchJob }) {
-  const sc = STATUS_COLORS[job.status] || STATUS_COLORS.scheduled;
-  return (
-    <div style={{
-      width: Math.min(chipWidth(job), 200), height: ROW_H - 24, borderRadius: 8,
-      backgroundColor: sc.bg, borderLeft: `3px solid ${sc.border}`,
-      padding: "6px 8px", opacity: 0.9, boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
-      display: "flex", flexDirection: "column", justifyContent: "center",
-    }}>
-      <span style={{ fontSize: 11, fontWeight: 700, color: "#1A1917" }}>{job.client_name}</span>
-      <span style={{ fontSize: 10, color: "#6B7280" }}>{fmtService(job.service_type)}</span>
-    </div>
-  );
-}
-
-// ─── UNASSIGNED CARD ───
-function UnassignedCard({ job, onClick }: { job: DispatchJob; onClick: (j: DispatchJob) => void }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: `unassigned-${job.id}`,
-    data: { job, type: "unassigned", originalLeft: 0 },
-  });
-  return (
-    <div ref={setNodeRef} {...listeners} {...attributes}
-      onClick={() => onClick(job)}
-      style={{
-        backgroundColor: "#FEF3C7", borderLeft: "3px solid #F59E0B", borderRadius: 8,
-        padding: "10px 12px", marginBottom: 8, cursor: "grab",
-        opacity: isDragging ? 0.4 : 1,
-        transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined,
-        boxShadow: "0 1px 3px rgba(0,0,0,0.06)", userSelect: "none",
-      }}
-    >
-      <div style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", marginBottom: 2 }}>{job.client_name}</div>
-      <div style={{ fontSize: 11, color: "var(--brand)", textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.04em", marginBottom: 2 }}>
-        {fmtService(job.service_type)}
-      </div>
-      <div style={{ fontSize: 11, color: "#6B6860" }}>
-        {Math.floor(job.duration_minutes / 60)}h{job.duration_minutes % 60 > 0 ? ` ${job.duration_minutes % 60}m` : ""}
-      </div>
-    </div>
-  );
-}
-
-// ─── EMPLOYEE ROW ───
-function EmployeeRow({ employee, onChipClick, nowLine }: {
-  employee: Employee; onChipClick: (j: DispatchJob) => void; nowLine: number;
-}) {
+// ─── DESKTOP: EMPLOYEE ROW ────────────────────────────────────────────────────
+function EmployeeRow({ employee, onChipClick, nowLine }: { employee: Employee; onChipClick: (j: DispatchJob) => void; nowLine: number }) {
   const { setNodeRef, isOver } = useDroppable({ id: `row-${employee.id}` });
-  const initials = employee.name.split(" ").map(p => p[0]).join("").toUpperCase().slice(0, 2);
-  const totalMins = employee.jobs.reduce((s, j) => s + j.duration_minutes, 0);
-
+  const initials = employee.name.split(" ").map((p: string) => p[0]).join("").toUpperCase().slice(0, 2);
+  const totalMins = employee.jobs.reduce((s: number, j: DispatchJob) => s + j.duration_minutes, 0);
+  const revenue = employee.jobs.reduce((s: number, j: DispatchJob) => s + (j.amount || 0), 0);
   return (
     <div style={{ display: "flex", borderBottom: "1px solid #EEECE7", height: ROW_H }}>
-      <div style={{
-        position: "sticky", left: 0, zIndex: 5, width: COL_W, flexShrink: 0,
-        backgroundColor: "#FFFFFF", borderRight: "1px solid #E5E2DC",
-        display: "flex", alignItems: "center", padding: "0 14px", gap: 10,
-      }}>
-        <div style={{
-          width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
-          backgroundColor: "var(--brand-dim)", color: "var(--brand)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 12, fontWeight: 700,
-        }}>{initials}</div>
+      <div style={{ position: "sticky", left: 0, zIndex: 5, width: COL_W, flexShrink: 0, backgroundColor: "#FFFFFF", borderRight: "1px solid #E5E2DC", display: "flex", alignItems: "center", padding: "0 14px", gap: 10 }}>
+        <div style={{ width: 34, height: 34, borderRadius: "50%", flexShrink: 0, backgroundColor: "var(--brand-dim)", color: "var(--brand)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>{initials}</div>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {employee.name}
-          </div>
-          <div style={{ fontSize: 9, color: "#6B7280", textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.05em" }}>
-            {employee.role}
-          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#1A1917", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{employee.name}</div>
+          <div style={{ fontSize: 9, color: "#9E9B94", textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.05em" }}>{employee.role}</div>
           <div style={{ fontSize: 10, color: "#6B6860", marginTop: 1 }}>
-            {employee.jobs.length} job{employee.jobs.length !== 1 ? "s" : ""} · {Math.floor(totalMins / 60)}h{totalMins % 60 > 0 ? ` ${totalMins % 60}m` : ""}
+            {employee.jobs.length} job{employee.jobs.length !== 1 ? "s" : ""} · {Math.floor(totalMins / 60)}h{totalMins % 60 > 0 ? ` ${totalMins % 60}m` : ""} · ${revenue.toFixed(0)}
           </div>
         </div>
       </div>
-
-      <div ref={setNodeRef} style={{
-        position: "relative", width: TOTAL_SLOTS * SLOT_W, flexShrink: 0, height: ROW_H,
-        backgroundColor: isOver ? "rgba(91,155,213,0.05)" : "transparent",
-        transition: "background-color 0.1s",
-      }}>
-        {TIMES.map((_, i) => (
-          <div key={i} style={{
-            position: "absolute", left: i * SLOT_W, top: 0, bottom: 0,
-            borderRight: i % 2 === 1 ? "1px solid #E5E2DC" : "1px solid #EEECE7",
-          }} />
-        ))}
-        {nowLine >= 0 && nowLine <= TOTAL_SLOTS * SLOT_W && (
-          <div style={{ position: "absolute", left: nowLine, top: 0, bottom: 0, width: 2, backgroundColor: "#EF4444", zIndex: 3, pointerEvents: "none" }} />
-        )}
+      <div ref={setNodeRef} style={{ position: "relative", width: TOTAL_SLOTS * SLOT_W, flexShrink: 0, height: ROW_H, backgroundColor: isOver ? "rgba(91,155,213,0.05)" : "transparent", transition: "background-color 0.1s" }}>
+        {TIMES.map((_, i) => <div key={i} style={{ position: "absolute", left: i * SLOT_W, top: 0, bottom: 0, borderRight: i % 2 === 1 ? "1px solid #E5E2DC" : "1px solid #EEECE7" }} />)}
+        {nowLine >= 0 && nowLine <= TOTAL_SLOTS * SLOT_W && <div style={{ position: "absolute", left: nowLine, top: 0, bottom: 0, width: 2, backgroundColor: "#EF4444", zIndex: 3, pointerEvents: "none" }} />}
         {employee.jobs.map(j => <JobChip key={j.id} job={j} onClick={onChipClick} />)}
         {employee.jobs.length === 0 && (
-          <div style={{
-            position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
-            border: "1px dashed #E5E2DC", margin: "16px 8px", borderRadius: 6,
-          }}>
-            <span style={{ fontSize: 11, color: "#C9C7C2" }}>No jobs scheduled</span>
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ fontSize: 11, color: "#D0CEC9", letterSpacing: "0.02em" }}>No jobs scheduled</span>
           </div>
         )}
       </div>
@@ -501,366 +334,334 @@ function EmployeeRow({ employee, onChipClick, nowLine }: {
   );
 }
 
-// ─── WEEK VIEW ───
-function WeekView({ weekStart, data, onDayClick }: {
-  weekStart: Date; data: DispatchData; onDayClick: (d: Date) => void;
-}) {
-  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+// ─── DESKTOP: UNASSIGNED PANEL ────────────────────────────────────────────────
+function UnassignedChip({ job, onClick }: { job: DispatchJob; onClick: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: `unassigned-${job.id}`, data: { job, type: "unassigned", originalLeft: 0 } });
   return (
-    <div style={{ flex: 1, overflow: "auto", backgroundColor: "#F7F6F3" }}>
-      <div style={{ minWidth: (data.employees.length + 1) * 160, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-        <div style={{ display: "flex", position: "sticky", top: 0, zIndex: 10, backgroundColor: "#FFFFFF", borderBottom: "1px solid #E5E2DC" }}>
-          <div style={{ width: 120, flexShrink: 0, padding: "12px 16px", fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase" }}>Day</div>
-          {data.employees.map(e => (
-            <div key={e.id} style={{ flex: 1, minWidth: 140, padding: "10px 12px", borderLeft: "1px solid #EEECE7" }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "#1A1917" }}>{e.name}</div>
-              <div style={{ fontSize: 10, color: "#9E9B94", textTransform: "uppercase" }}>{e.role}</div>
-            </div>
-          ))}
-        </div>
-        {days.map(day => {
-          const k = dateKey(day);
-          const isT = dateKey(day) === dateKey(today);
-          const dayLbl = day.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-          return (
-            <div key={k} style={{ display: "flex", borderBottom: "1px solid #EEECE7", minHeight: 80 }}>
-              <div style={{
-                width: 120, flexShrink: 0, padding: "10px 16px", borderRight: "1px solid #EEECE7",
-                cursor: "pointer", backgroundColor: isT ? "var(--brand-dim)" : "#FFFFFF",
-              }} onClick={() => onDayClick(day)}>
-                <div style={{ fontSize: 12, fontWeight: isT ? 700 : 500, color: isT ? "var(--brand)" : "#1A1917" }}>{dayLbl}</div>
-                {isT && <div style={{ fontSize: 10, color: "var(--brand)", fontWeight: 600 }}>Today</div>}
-              </div>
-              {data.employees.map(e => {
-                const empJobs = e.jobs.filter(j => j.scheduled_date === k);
-                return (
-                  <div key={e.id} style={{ flex: 1, minWidth: 140, padding: "8px 10px", borderLeft: "1px solid #EEECE7", display: "flex", flexDirection: "column", gap: 4 }}>
-                    {empJobs.map(j => {
-                      const sc = STATUS_COLORS[j.status] || STATUS_COLORS.scheduled;
-                      return (
-                        <div key={j.id} style={{ padding: "4px 8px", borderRadius: 6, backgroundColor: sc.bg, borderLeft: `2px solid ${sc.border}` }}>
-                          <div style={{ fontSize: 11, fontWeight: 600, color: "#1A1917" }}>{j.client_name}</div>
-                          <div style={{ fontSize: 10, color: "#6B7280" }}>{fmtTime(j.scheduled_time)}</div>
-                          <div style={{ fontSize: 10, color: "var(--brand)", textTransform: "uppercase", fontWeight: 600 }}>{fmtService(j.service_type)}</div>
-                        </div>
-                      );
-                    })}
-                    {empJobs.length === 0 && <div style={{ fontSize: 11, color: "#C9C7C2" }}>—</div>}
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })}
-      </div>
+    <div ref={setNodeRef} {...listeners} {...attributes} onClick={onClick}
+      style={{ backgroundColor: "#FEF9EE", borderLeft: "3px solid #F59E0B", borderRadius: 8, padding: "10px 12px", marginBottom: 6, cursor: "grab", opacity: isDragging ? 0.4 : 1, transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", userSelect: "none" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "#1A1917", marginBottom: 2 }}>{job.client_name}</div>
+      <div style={{ fontSize: 10, color: "var(--brand)", textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.04em" }}>{fmtSvc(job.service_type)}</div>
+      <div style={{ fontSize: 11, color: "#9E9B94", marginTop: 2 }}>{Math.floor(job.duration_minutes / 60)}h{job.duration_minutes % 60 > 0 ? ` ${job.duration_minutes % 60}m` : ""}</div>
     </div>
   );
 }
 
-// ─── SKELETON ───
-function SkeletonBoard() {
-  return (
-    <div style={{ minWidth: COL_W + TOTAL_SLOTS * SLOT_W }}>
-      <style>{`@keyframes shimmer{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
-      {[...Array(4)].map((_, i) => (
-        <div key={i} style={{ display: "flex", borderBottom: "1px solid #EEECE7", height: ROW_H }}>
-          <div style={{ width: COL_W, flexShrink: 0, borderRight: "1px solid #E5E2DC", padding: "16px 14px", display: "flex", gap: 10, alignItems: "center" }}>
-            <div style={{ width: 32, height: 32, borderRadius: "50%", backgroundColor: "#E5E2DC", animation: "shimmer 1.5s ease-in-out infinite" }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ height: 12, backgroundColor: "#E5E2DC", borderRadius: 4, marginBottom: 6, width: "70%", animation: "shimmer 1.5s ease-in-out infinite" }} />
-              <div style={{ height: 10, backgroundColor: "#EEECE7", borderRadius: 4, width: "50%", animation: "shimmer 1.5s ease-in-out infinite" }} />
-            </div>
-          </div>
-          <div style={{ flex: 1, position: "relative" }}>
-            <div style={{ position: "absolute", left: (i + 1) * SLOT_W * 2, top: 12, width: SLOT_W * (2 + i), height: ROW_H - 24, backgroundColor: "#E5E2DC", borderRadius: 8, animation: "shimmer 1.5s ease-in-out infinite" }} />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── CREATE JOB SCHEMA ───
-const createSchema = z.object({
-  client_id: z.coerce.number().min(1, "Required"),
-  service_type: z.enum(["standard_clean", "deep_clean", "move_out", "recurring_maintenance", "post_construction"]),
-  scheduled_date: z.string().min(1, "Required"),
-  scheduled_time: z.string().optional(),
-  frequency: z.enum(["weekly", "biweekly", "monthly", "on_demand"]),
-  base_fee: z.coerce.number().min(0),
-  allowed_hours: z.coerce.number().min(0.5).optional(),
-  assigned_user_id: z.coerce.number().optional(),
-});
-type CreateForm = z.infer<typeof createSchema>;
-
-// ─── MAIN PAGE ───
+// ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 export default function JobsPage() {
+  const isMobile = useIsMobile();
   const token = useAuthStore(s => s.token)!;
   const { toast } = useToast();
-  const [viewDate, setViewDate] = useState<Date>(() => { const d = new Date(); d.setHours(0,0,0,0); return d; });
-  const [viewMode, setViewMode] = useState<"day" | "week">("day");
-  const [data, setData] = useState<DispatchData>({ employees: [], unassigned_jobs: [] });
+  const [selectedDate, setSelectedDate] = useState(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; });
+  const [data, setData] = useState<DispatchData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedJob, setSelectedJob] = useState<DispatchJob | null>(null);
-  const [activeJob, setActiveJob] = useState<DispatchJob | null>(null);
-  const [nowLine, setNowLine] = useState(0);
-  const [search, setSearch] = useState("");
-  const [filterEmp, setFilterEmp] = useState("all");
-  const [newJobOpen, setNewJobOpen] = useState(false);
-  const boardRef = useRef<HTMLDivElement>(null);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
-
-  const { data: clientsRes } = useListClients({}, { request: { headers: getAuthHeaders() } });
-  const { data: usersRes } = useListUsers({}, { request: { headers: getAuthHeaders() } });
-  const clients = (clientsRes as any)?.data ?? [];
-  const users = (usersRes as any)?.data ?? [];
-
-  const { register, handleSubmit, control, reset, formState: { errors, isSubmitting } } = useForm<CreateForm>({
-    resolver: zodResolver(createSchema),
-    defaultValues: { frequency: "on_demand", base_fee: 0 },
-  });
-  const { mutateAsync: createJob } = useCreateJob();
+  const [showWizard, setShowWizard] = useState(false);
+  const [draggingJob, setDraggingJob] = useState<DispatchJob | null>(null);
+  const [desktopView, setDesktopView] = useState<"timeline" | "list">("timeline");
+  const [jobDates, setJobDates] = useState<Set<string>>(new Set());
+  const refreshRef = useRef(0);
 
   const load = useCallback(async () => {
+    const id = ++refreshRef.current;
     setLoading(true);
     try {
-      const d = await fetchDispatch(dateKey(viewDate), token);
+      const d = await fetchDispatch(dateKey(selectedDate), token);
+      if (id !== refreshRef.current) return;
       setData(d);
-    } catch { toast({ title: "Could not load board", variant: "destructive" }); }
+      // Collect all dates with jobs for the calendar dots
+      const allJobs = [...(d.unassigned_jobs || []), ...(d.employees || []).flatMap((e: Employee) => e.jobs)];
+      setJobDates(prev => {
+        const next = new Set(prev);
+        allJobs.forEach((j: DispatchJob) => next.add(j.scheduled_date));
+        return next;
+      });
+    } catch { toast({ title: "Could not load schedule", variant: "destructive" }); }
     finally { setLoading(false); }
-  }, [viewDate, token]);
+  }, [selectedDate, token]);
 
   useEffect(() => { load(); }, [load]);
 
-  useEffect(() => {
-    function tick() {
-      const now = new Date();
-      const minsFromStart = now.getHours() * 60 + now.getMinutes() - DAY_START;
-      setNowLine((minsFromStart / 30) * SLOT_W);
-    }
-    tick();
-    const id = setInterval(tick, 60_000);
-    return () => clearInterval(id);
-  }, []);
+  // Now-line calculation
+  const nowLine = (() => {
+    const now = new Date();
+    if (dateKey(now) !== dateKey(selectedDate)) return -1;
+    const mins = now.getHours() * 60 + now.getMinutes();
+    return ((mins - DAY_START) / 30) * SLOT_W;
+  })();
 
-  function onDragStart({ active }: DragStartEvent) {
-    const job: DispatchJob = active.data.current?.job;
-    if (job) setActiveJob(job);
-  }
-
-  function onDragEnd({ active, over, delta }: DragEndEvent) {
-    setActiveJob(null);
-    if (!over) return;
+  // DnD
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  function onDragStart(e: DragStartEvent) { setDraggingJob(e.active.data.current?.job ?? null); }
+  async function onDragEnd(e: DragEndEvent) {
+    setDraggingJob(null);
+    const { active, over, delta } = e;
+    if (!over || !data) return;
     const job: DispatchJob = active.data.current?.job;
     if (!job) return;
-    const targetEmpId = parseInt(String(over.id).replace("row-", ""));
-    if (isNaN(targetEmpId)) return;
-
-    const origLeft: number = active.data.current?.originalLeft ?? chipLeft(job);
-    const newLeft = Math.max(0, origLeft + delta.x);
-    const slot = Math.max(0, Math.min(TOTAL_SLOTS - 1, Math.round(newLeft / SLOT_W)));
-    const newMins = DAY_START + slot * 30;
-    const newTime = minsToTimeStr(newMins);
-    const sameEmp = targetEmpId === (job.assigned_user_id ?? -1);
-    const sameTime = newTime.slice(0, 5) === (job.scheduled_time ?? "").slice(0, 5);
-    if (sameEmp && sameTime) return;
-
-    const patch: Record<string, unknown> = { scheduled_time: newTime };
-    if (!sameEmp) patch.assigned_user_id = targetEmpId;
-
-    // Optimistic update
-    setData(prev => {
-      const emps = prev.employees.map(e => ({ ...e, jobs: e.jobs.filter(j => j.id !== job.id) }));
-      const updated: DispatchJob = { ...job, scheduled_time: newTime, assigned_user_id: targetEmpId };
-      const idx = emps.findIndex(e => e.id === targetEmpId);
-      if (idx !== -1) emps[idx] = { ...emps[idx], jobs: [...emps[idx].jobs, updated] };
-      const unassigned = active.data.current?.type === "unassigned"
-        ? prev.unassigned_jobs.filter(j => j.id !== job.id)
-        : prev.unassigned_jobs;
-      return { employees: emps, unassigned_jobs: unassigned };
-    });
-
-    const targetName = data.employees.find(e => e.id === targetEmpId)?.name ?? "employee";
-    patchJob(job.id, patch, token)
-      .then(() => toast({ title: !sameEmp ? `Reassigned to ${targetName}` : `Rescheduled to ${fmtTime(newTime)}` }))
-      .catch(() => { toast({ title: "Update failed — reverting", variant: "destructive" }); load(); });
+    const empId = parseInt(String(over.id).replace("row-", ""), 10);
+    const originalLeft: number = active.data.current?.originalLeft ?? chipLeft(job);
+    const newLeft = originalLeft + delta.x;
+    const newMins = DAY_START + Math.round(newLeft / SLOT_W) * 30;
+    const patch: any = { scheduled_time: minsToStr(newMins) };
+    if (empId !== job.assigned_user_id) patch.assigned_user_id = empId;
+    try { await patchJob(job.id, patch, token); await load(); }
+    catch { toast({ title: "Failed to update job", variant: "destructive" }); }
   }
+  function chipLeft(job: DispatchJob) { return ((timeToMins(job.scheduled_time) - DAY_START) / 30) * SLOT_W; }
 
-  async function onCreateJob(values: CreateForm) {
-    try {
-      await createJob({ body: values as any, request: { headers: getAuthHeaders() } } as any);
-      toast({ title: "Job created" });
-      setNewJobOpen(false); reset(); load();
-    } catch { toast({ title: "Failed to create job", variant: "destructive" }); }
-  }
+  const allJobs = data ? [
+    ...data.unassigned_jobs,
+    ...data.employees.flatMap(e => e.jobs.map(j => ({ ...j, assigned_user_name: e.name }))),
+  ].sort((a, b) => timeToMins(a.scheduled_time) - timeToMins(b.scheduled_time)) : [];
 
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const isToday = dateKey(viewDate) === dateKey(today);
-  const dateLabel = viewDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-  const weekStart = (() => { const d = new Date(viewDate); const dow = d.getDay(); d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1)); return d; })();
+  const stats = {
+    total: allJobs.length,
+    complete: allJobs.filter(j => j.status === "complete").length,
+    inProgress: allJobs.filter(j => j.status === "in_progress").length,
+    revenue: allJobs.reduce((s, j) => s + (j.amount || 0), 0),
+    unassigned: data?.unassigned_jobs.length || 0,
+  };
 
-  const filteredEmps = data.employees
-    .filter(e => filterEmp === "all" || String(e.id) === filterEmp)
-    .map(e => ({
-      ...e,
-      jobs: e.jobs.filter(j =>
-        !search || j.client_name.toLowerCase().includes(search.toLowerCase()) || j.service_type.includes(search.toLowerCase())
-      ),
-    }));
+  const dayLabel = selectedDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  const isToday = dateKey(selectedDate) === dateKey(new Date());
 
-  const GRID_W = TOTAL_SLOTS * SLOT_W;
-
-  return (
-    <DashboardLayout fullBleed>
-      <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-        <div style={{ display: "flex", flexDirection: "column", height: "100%", fontFamily: "'Plus Jakarta Sans', sans-serif", overflow: "hidden" }}>
-
-          {/* ZONE 1 — TOP BAR */}
-          <div style={{
-            height: 56, flexShrink: 0, backgroundColor: "#FFFFFF",
-            borderBottom: "1px solid #E5E2DC",
-            display: "flex", alignItems: "center", padding: "0 20px", gap: 14, zIndex: 20,
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <button onClick={() => setViewDate(prev => addDays(prev, -1))}
-                style={{ border: "1px solid #E5E2DC", background: "#FFFFFF", borderRadius: 6, padding: "5px 8px", cursor: "pointer", display: "flex", alignItems: "center" }}>
-                <ChevronLeft size={14} />
+  // ── MOBILE VIEW ──────────────────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <>
+        <div style={{ display: "flex", flexDirection: "column", height: "100dvh", backgroundColor: "#F7F6F3", fontFamily: FF }}>
+          {/* Header */}
+          <div style={{ backgroundColor: "#FFFFFF", borderBottom: "1px solid #EEECE7", padding: "12px 16px 10px", flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "#1A1917" }}>Dispatch</div>
+              <button onClick={() => setShowWizard(true)}
+                style={{ display: "flex", alignItems: "center", gap: 6, backgroundColor: "var(--brand)", color: "#FFFFFF", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                <Plus size={14} /> New Job
               </button>
-              <span style={{ fontSize: 15, fontWeight: 600, color: "#1A1917", minWidth: 200, textAlign: "center" }}>{dateLabel}</span>
-              <button onClick={() => setViewDate(prev => addDays(prev, 1))}
-                style={{ border: "1px solid #E5E2DC", background: "#FFFFFF", borderRadius: 6, padding: "5px 8px", cursor: "pointer", display: "flex", alignItems: "center" }}>
-                <ChevronRight size={14} />
-              </button>
-              {!isToday && (
-                <button onClick={() => { const t = new Date(); t.setHours(0,0,0,0); setViewDate(t); }}
-                  style={{ fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 20, border: "1px solid var(--brand)", color: "var(--brand)", background: "none", cursor: "pointer" }}>
-                  Today
-                </button>
-              )}
             </div>
-
-            <div style={{ display: "flex", gap: 2, padding: 3, backgroundColor: "#F7F6F3", borderRadius: 8, marginLeft: 8 }}>
-              {(["day", "week"] as const).map(v => (
-                <button key={v} onClick={() => setViewMode(v)} style={{
-                  padding: "4px 14px", borderRadius: 6, border: "none", cursor: "pointer",
-                  fontSize: 13, fontWeight: 600,
-                  backgroundColor: viewMode === v ? "var(--brand)" : "transparent",
-                  color: viewMode === v ? "#FFFFFF" : "#6B6860",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                }}>{v === "day" ? "Day View" : "Week View"}</button>
-              ))}
+            {/* Date navigation */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <button onClick={() => setSelectedDate(d => addDays(d, -1))} style={{ border: "none", background: "#F7F6F3", borderRadius: 8, padding: "6px 10px", cursor: "pointer", color: "#6B7280" }}><ChevronLeft size={16} /></button>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: "#1A1917" }}>
+                  {isToday ? "Today" : selectedDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                </div>
+                {isToday && <div style={{ fontSize: 11, color: "#9E9B94" }}>{selectedDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</div>}
+              </div>
+              <button onClick={() => setSelectedDate(d => addDays(d, 1))} style={{ border: "none", background: "#F7F6F3", borderRadius: 8, padding: "6px 10px", cursor: "pointer", color: "#6B7280" }}><ChevronRight size={16} /></button>
             </div>
-
-            <div style={{ flex: 1 }} />
-
-            <select value={filterEmp} onChange={e => setFilterEmp(e.target.value)} style={{
-              border: "1px solid #E5E2DC", borderRadius: 8, padding: "6px 10px", fontSize: 13,
-              color: "#1A1917", background: "#FFFFFF", cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif", outline: "none",
-            }}>
-              <option value="all">All Employees</option>
-              {data.employees.map(e => <option key={e.id} value={String(e.id)}>{e.name}</option>)}
-            </select>
-
-            <div style={{ position: "relative" }}>
-              <Search size={13} style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", color: "#9E9B94", pointerEvents: "none" }} />
-              <input value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Search jobs or clients..."
-                style={{ paddingLeft: 28, paddingRight: 10, paddingTop: 7, paddingBottom: 7, border: "1px solid #E5E2DC", borderRadius: 8, fontSize: 13, width: 210, fontFamily: "'Plus Jakarta Sans', sans-serif", color: "#1A1917", outline: "none" }}
-              />
-            </div>
-
-            <button onClick={() => setNewJobOpen(true)} style={{
-              display: "flex", alignItems: "center", gap: 6, padding: "7px 14px",
-              backgroundColor: "var(--brand)", color: "#FFFFFF", border: "none", borderRadius: 8,
-              fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif",
-            }}>
-              <Plus size={14} /> New Job
-            </button>
           </div>
 
-          {/* ZONES 2 + 3 */}
-          <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-
-            {/* ZONE 2 — LEFT PANEL */}
-            <div style={{ width: 260, flexShrink: 0, backgroundColor: "#FFFFFF", borderRight: "1px solid #E5E2DC", overflowY: "auto", display: "flex", flexDirection: "column" }}>
-              <MiniCalendar value={viewDate} onChange={d => { setViewDate(d); setViewMode("day"); }} jobDates={new Set()} />
-              <div style={{ height: 1, backgroundColor: "#EEECE7", margin: "0 12px" }} />
-
-              <div style={{ padding: "14px 12px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9E9B94" }}>Unassigned</span>
-                  {data.unassigned_jobs.length > 0 && (
-                    <span style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#F59E0B", color: "#FFF", borderRadius: 10, padding: "1px 6px" }}>
-                      {data.unassigned_jobs.length}
-                    </span>
-                  )}
+          {/* Summary strip */}
+          {!loading && data && (
+            <div style={{ display: "flex", gap: 0, backgroundColor: "#FFFFFF", borderBottom: "1px solid #EEECE7", flexShrink: 0, overflowX: "auto" }}>
+              {[
+                { label: "Total", value: stats.total, color: "#1A1917" },
+                { label: "Done", value: stats.complete, color: "#16A34A" },
+                { label: "Active", value: stats.inProgress, color: "#D97706" },
+                { label: "Revenue", value: `$${stats.revenue.toFixed(0)}`, color: "var(--brand)" },
+                ...(stats.unassigned > 0 ? [{ label: "Unassigned", value: stats.unassigned, color: "#DC2626" }] : []),
+              ].map((s, i, arr) => (
+                <div key={s.label} style={{ flex: "0 0 auto", padding: "8px 16px", textAlign: "center", borderRight: i < arr.length - 1 ? "1px solid #EEECE7" : "none" }}>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: s.color }}>{s.value}</div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.04em" }}>{s.label}</div>
                 </div>
-                {data.unassigned_jobs.length === 0 ? (
-                  <div style={{ fontSize: 12, color: "#9E9B94", textAlign: "center", padding: "12px 0" }}>All jobs assigned</div>
-                ) : (
-                  data.unassigned_jobs.map(j => <UnassignedCard key={j.id} job={j} onClick={setSelectedJob} />)
+              ))}
+            </div>
+          )}
+
+          {/* Week strip */}
+          <div style={{ backgroundColor: "#FFFFFF", borderBottom: "1px solid #EEECE7", padding: "8px 12px", flexShrink: 0, display: "flex", gap: 4, overflowX: "auto" }}>
+            {Array.from({ length: 14 }, (_, i) => {
+              const d = addDays(new Date(new Date().setHours(0, 0, 0, 0)), i - 3);
+              const k = dateKey(d);
+              const sel = k === dateKey(selectedDate);
+              const isT = k === dateKey(new Date());
+              return (
+                <button key={k} onClick={() => setSelectedDate(d)} style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", alignItems: "center", padding: "6px 10px", borderRadius: 10, border: "none", backgroundColor: sel ? "var(--brand)" : isT ? "var(--brand-dim)" : "transparent", cursor: "pointer" }}>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: sel ? "#fff" : isT ? "var(--brand)" : "#9E9B94", textTransform: "uppercase" }}>{d.toLocaleDateString("en-US", { weekday: "short" })}</span>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: sel ? "#fff" : isT ? "var(--brand)" : "#1A1917", marginTop: 2 }}>{d.getDate()}</span>
+                  {jobDates.has(k) && <div style={{ width: 5, height: 5, borderRadius: "50%", backgroundColor: sel ? "#ffffff80" : "var(--brand)", marginTop: 3 }} />}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Job list */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px" }}>
+            {loading ? (
+              <div style={{ textAlign: "center", padding: 48, color: "#9E9B94", fontSize: 13 }}>Loading...</div>
+            ) : allJobs.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 48 }}>
+                <Calendar size={36} style={{ color: "#D0CEC9", marginBottom: 12 }} />
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#6B7280", marginBottom: 6 }}>No jobs {isToday ? "today" : "this day"}</div>
+                <div style={{ fontSize: 13, color: "#9E9B94" }}>Tap "+ New Job" to schedule one</div>
+              </div>
+            ) : (
+              <>
+                {allJobs.map(j => <MobileJobCard key={j.id} job={j} onClick={() => setSelectedJob(j)} />)}
+                {data?.unassigned_jobs && data.unassigned_jobs.length > 0 && (
+                  <div style={{ marginTop: 8, padding: "10px 14px", backgroundColor: "#FEF3C7", border: "1px solid #FCD34D", borderRadius: 10, fontSize: 13, color: "#92400E", fontWeight: 600 }}>
+                    {data.unassigned_jobs.length} job{data.unassigned_jobs.length !== 1 ? "s" : ""} still unassigned
+                  </div>
                 )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {selectedJob && (
+          <JobPanel job={selectedJob} employees={data?.employees || []} onClose={() => setSelectedJob(null)} onUpdate={load} mobile />
+        )}
+        {showWizard && <JobWizard onClose={() => { setShowWizard(false); load(); }} />}
+      </>
+    );
+  }
+
+  // ── DESKTOP VIEW ─────────────────────────────────────────────────────────────
+  return (
+    <DashboardLayout>
+      <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+        <div style={{ display: "flex", height: "calc(100vh - 56px)", overflow: "hidden", fontFamily: FF }}>
+
+          {/* LEFT SIDEBAR */}
+          <div style={{ width: 256, flexShrink: 0, borderRight: "1px solid #E5E2DC", backgroundColor: "#FAFAF9", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid #EEECE7" }}>
+              <button onClick={() => setShowWizard(true)}
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "var(--brand)", color: "#FFFFFF", border: "none", borderRadius: 8, padding: "9px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                <Plus size={14} /> New Job
+              </button>
+            </div>
+
+            <div style={{ borderBottom: "1px solid #EEECE7" }}>
+              <MiniCalendar value={selectedDate} onChange={d => { setSelectedDate(d); }} jobDates={jobDates} />
+            </div>
+
+            {/* Team summary */}
+            <div style={{ flex: 1, overflowY: "auto" }}>
+              {data && (
+                <>
+                  <div style={{ padding: "12px 14px 6px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#9E9B94" }}>Team Today</div>
+                  {data.employees.map(e => {
+                    const mins = e.jobs.reduce((s, j) => s + j.duration_minutes, 0);
+                    const rev = e.jobs.reduce((s, j) => s + (j.amount || 0), 0);
+                    const initials = e.name.split(" ").map((p: string) => p[0]).join("").toUpperCase().slice(0, 2);
+                    return (
+                      <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderBottom: "1px solid #F5F3F0" }}>
+                        <div style={{ width: 30, height: 30, borderRadius: "50%", backgroundColor: "var(--brand-dim)", color: "var(--brand)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{initials}</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: "#1A1917", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.name}</div>
+                          <div style={{ fontSize: 10, color: "#9E9B94" }}>{e.jobs.length} job{e.jobs.length !== 1 ? "s" : ""} · {Math.floor(mins / 60)}h · ${rev.toFixed(0)}</div>
+                        </div>
+                        {e.jobs.some(j => j.status === "in_progress") && (
+                          <div style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: "#F59E0B", flexShrink: 0 }} title="In progress" />
+                        )}
+                        {e.jobs.every(j => j.status === "complete") && e.jobs.length > 0 && (
+                          <CheckCircle size={14} style={{ color: "#22C55E", flexShrink: 0 }} />
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Unassigned */}
+                  {data.unassigned_jobs.length > 0 && (
+                    <>
+                      <div style={{ padding: "12px 14px 6px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#DC2626" }}>
+                        Unassigned · {data.unassigned_jobs.length}
+                      </div>
+                      <div style={{ padding: "0 14px 10px" }}>
+                        {data.unassigned_jobs.map(j => <UnassignedChip key={j.id} job={j} onClick={() => setSelectedJob(j)} />)}
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* MAIN CONTENT */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            {/* Day header */}
+            <div style={{ padding: "10px 20px", borderBottom: "1px solid #E5E2DC", backgroundColor: "#FFFFFF", display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <button onClick={() => setSelectedDate(d => addDays(d, -1))} style={{ border: "1px solid #E5E2DC", background: "#FAFAF9", borderRadius: 6, padding: "5px 8px", cursor: "pointer", display: "flex", color: "#6B7280" }}><ChevronLeft size={14} /></button>
+                <div style={{ textAlign: "center", minWidth: 170 }}>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: "#1A1917" }}>{isToday ? "Today — " : ""}{dayLabel}</span>
+                </div>
+                <button onClick={() => setSelectedDate(d => addDays(d, 1))} style={{ border: "1px solid #E5E2DC", background: "#FAFAF9", borderRadius: 6, padding: "5px 8px", cursor: "pointer", display: "flex", color: "#6B7280" }}><ChevronRight size={14} /></button>
+                {!isToday && <button onClick={() => { const t = new Date(); t.setHours(0,0,0,0); setSelectedDate(t); }} style={{ border: "1px solid var(--brand)", background: "var(--brand-dim)", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "var(--brand)" }}>Today</button>}
               </div>
 
-              <div style={{ height: 1, backgroundColor: "#EEECE7", margin: "0 12px" }} />
+              <div style={{ display: "flex", gap: 12, marginLeft: "auto", alignItems: "center" }}>
+                {/* Stats pills */}
+                {!loading && data && [
+                  { label: `${stats.total} jobs`, color: "#1A1917", bg: "#F7F6F3" },
+                  { label: `${stats.complete} done`, color: "#16A34A", bg: "#DCFCE7" },
+                  ...(stats.inProgress > 0 ? [{ label: `${stats.inProgress} active`, color: "#D97706", bg: "#FEF3C7" }] : []),
+                  { label: `$${stats.revenue.toFixed(0)} rev`, color: "var(--brand)", bg: "var(--brand-dim)" },
+                ].map(s => (
+                  <span key={s.label} style={{ fontSize: 11, fontWeight: 700, color: s.color, backgroundColor: s.bg, padding: "3px 8px", borderRadius: 20 }}>{s.label}</span>
+                ))}
 
-              <div style={{ padding: "14px 12px" }}>
-                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9E9B94", marginBottom: 8 }}>Status</div>
-                {[["Scheduled","#3B82F6"],["In Progress","#F59E0B"],["Complete","#22C55E"],["Flagged","#EF4444"]].map(([l,c]) => (
-                  <div key={l} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: c, flexShrink: 0 }} />
-                    <span style={{ fontSize: 12, color: "#6B7280" }}>{l}</span>
-                  </div>
-                ))}
-                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9E9B94", marginBottom: 8, marginTop: 12 }}>Frequency</div>
-                {[["Weekly","#8B5CF6"],["Bi-weekly","#06B6D4"],["Monthly","#F97316"],["One-time","#6B7280"]].map(([l,c]) => (
-                  <div key={l} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: c, flexShrink: 0 }} />
-                    <span style={{ fontSize: 12, color: "#6B7280" }}>{l}</span>
-                  </div>
-                ))}
+                {/* View toggle */}
+                <div style={{ display: "flex", border: "1px solid #E5E2DC", borderRadius: 8, overflow: "hidden" }}>
+                  <button onClick={() => setDesktopView("timeline")} style={{ padding: "5px 10px", border: "none", cursor: "pointer", backgroundColor: desktopView === "timeline" ? "var(--brand)" : "#FAFAF9", color: desktopView === "timeline" ? "#fff" : "#6B7280", display: "flex" }}><LayoutGrid size={14} /></button>
+                  <button onClick={() => setDesktopView("list")} style={{ padding: "5px 10px", border: "none", cursor: "pointer", backgroundColor: desktopView === "list" ? "var(--brand)" : "#FAFAF9", color: desktopView === "list" ? "#fff" : "#6B7280", display: "flex" }}><List size={14} /></button>
+                </div>
               </div>
             </div>
 
-            {/* ZONE 3 — DISPATCH BOARD */}
-            {viewMode === "week" ? (
-              <WeekView weekStart={weekStart} data={data} onDayClick={d => { setViewDate(d); setViewMode("day"); }} />
-            ) : (
-              <div ref={boardRef} style={{ flex: 1, minWidth: 0, overflow: "auto", position: "relative", backgroundColor: "#F7F6F3" }}>
-                {loading ? <SkeletonBoard /> : filteredEmps.length === 0 ? (
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 300 }}>
-                    <div style={{ textAlign: "center" }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: "#1A1917", marginBottom: 8 }}>No employees yet</div>
-                      <a href="/employees/new" style={{ fontSize: 13, color: "var(--brand)", textDecoration: "none" }}>Add employees →</a>
+            {/* Timeline or list */}
+            {loading ? (
+              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#9E9B94", fontSize: 13 }}>Loading schedule...</div>
+            ) : desktopView === "timeline" ? (
+              <div style={{ flex: 1, overflow: "auto" }}>
+                {/* Time header */}
+                <div style={{ display: "flex", position: "sticky", top: 0, zIndex: 10, backgroundColor: "#FAFAF9", borderBottom: "1px solid #E5E2DC" }}>
+                  <div style={{ width: COL_W, flexShrink: 0, position: "sticky", left: 0, zIndex: 11, backgroundColor: "#FAFAF9", borderRight: "1px solid #E5E2DC", padding: "8px 14px" }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#9E9B94" }}>Technician</span>
+                  </div>
+                  {TIMES.map((t, i) => (
+                    <div key={i} style={{ width: SLOT_W, flexShrink: 0, padding: "8px 0 4px 6px", borderRight: i % 2 === 1 ? "1px solid #E5E2DC" : "1px solid #EEECE7" }}>
+                      {i % 2 === 0 && <span style={{ fontSize: 9, fontWeight: 600, color: "#9E9B94", whiteSpace: "nowrap" }}>{t}</span>}
                     </div>
+                  ))}
+                </div>
+                {data && data.employees.length === 0 && data.unassigned_jobs.length === 0 ? (
+                  <div style={{ padding: 60, textAlign: "center" }}>
+                    <Calendar size={40} style={{ color: "#D0CEC9", marginBottom: 14 }} />
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "#6B7280", marginBottom: 6 }}>No jobs scheduled {isToday ? "today" : "this day"}</div>
+                    <div style={{ fontSize: 13, color: "#9E9B94" }}>Click "+ New Job" to get started</div>
                   </div>
                 ) : (
-                  <div style={{ minWidth: COL_W + GRID_W }}>
-                    {/* Sticky time header */}
-                    <div style={{ position: "sticky", top: 0, zIndex: 10, display: "flex", backgroundColor: "#FFFFFF", borderBottom: "1px solid #E5E2DC" }}>
-                      <div style={{ position: "sticky", left: 0, zIndex: 11, width: COL_W, flexShrink: 0, backgroundColor: "#FFFFFF", borderRight: "1px solid #E5E2DC", padding: "10px 14px", display: "flex", alignItems: "center" }}>
-                        <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9E9B94" }}>Team</span>
-                      </div>
-                      <div style={{ position: "relative", display: "flex", width: GRID_W, flexShrink: 0 }}>
-                        {TIMES.map((t, i) => (
-                          <div key={i} style={{
-                            width: SLOT_W, flexShrink: 0, padding: "8px 0 8px 4px",
-                            fontSize: 10, color: "#9E9B94", fontWeight: 500,
-                            borderRight: i % 2 === 1 ? "1px solid #E5E2DC" : "1px solid #EEECE7",
-                          }}>
-                            {i % 2 === 0 ? t : ""}
+                  data && data.employees.map(e => <EmployeeRow key={e.id} employee={e} onChipClick={setSelectedJob} nowLine={nowLine} />)
+                )}
+              </div>
+            ) : (
+              /* List view */
+              <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
+                {allJobs.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: 60, color: "#9E9B94", fontSize: 13 }}>No jobs scheduled.</div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+                    {allJobs.map(j => (
+                      <div key={j.id} onClick={() => setSelectedJob(j)}
+                        style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 10, padding: "14px 16px", cursor: "pointer", borderLeft: `4px solid ${(STATUS[j.status] || STATUS.scheduled).dot}` }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 800, color: "#1A1917" }}>{j.client_name}</div>
+                            <div style={{ fontSize: 11, color: "var(--brand)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", marginTop: 2 }}>{fmtSvc(j.service_type)}</div>
                           </div>
-                        ))}
-                        {nowLine >= 0 && nowLine <= GRID_W && (
-                          <div style={{ position: "absolute", left: nowLine - 1, top: 0, bottom: 0, width: 2, backgroundColor: "#EF4444", zIndex: 5, pointerEvents: "none" }}>
-                            <span style={{ position: "absolute", top: 2, left: 4, fontSize: 9, fontWeight: 700, color: "#EF4444", whiteSpace: "nowrap" }}>NOW</span>
-                          </div>
-                        )}
+                          <span style={{ fontSize: 11, fontWeight: 700, color: (STATUS[j.status] || STATUS.scheduled).text, backgroundColor: (STATUS[j.status] || STATUS.scheduled).bg, padding: "3px 8px", borderRadius: 20, textTransform: "capitalize" }}>{j.status.replace("_", " ")}</span>
+                        </div>
+                        <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+                          {j.scheduled_time && <div style={{ fontSize: 12, color: "#6B7280", display: "flex", alignItems: "center", gap: 4 }}><Clock size={11} style={{ color: "#9E9B94" }} />{fmtTime(j.scheduled_time)}</div>}
+                          {j.assigned_user_name && <div style={{ fontSize: 12, color: "#6B7280", display: "flex", alignItems: "center", gap: 4 }}><User size={11} style={{ color: "#9E9B94" }} />{j.assigned_user_name}</div>}
+                          <div style={{ fontSize: 12, fontWeight: 700, color: "#1A1917", marginLeft: "auto" }}>${(j.amount || 0).toFixed(0)}</div>
+                        </div>
                       </div>
-                    </div>
-                    {/* Rows */}
-                    {filteredEmps.map(e => <EmployeeRow key={e.id} employee={e} onChipClick={setSelectedJob} nowLine={nowLine} />)}
+                    ))}
                   </div>
                 )}
               </div>
@@ -868,18 +669,20 @@ export default function JobsPage() {
           </div>
         </div>
 
-        <DragOverlay>{activeJob ? <ChipOverlay job={activeJob} /> : null}</DragOverlay>
+        <DragOverlay>
+          {draggingJob && (
+            <div style={{ width: Math.max(SLOT_W, (draggingJob.duration_minutes / 30) * SLOT_W), height: ROW_H - 20, borderRadius: 8, backgroundColor: (STATUS[draggingJob.status] || STATUS.scheduled).bg, borderLeft: `3px solid ${(STATUS[draggingJob.status] || STATUS.scheduled).dot}`, padding: "6px 8px", opacity: 0.9, boxShadow: "0 8px 24px rgba(0,0,0,0.15)", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#1A1917" }}>{draggingJob.client_name}</span>
+              <span style={{ fontSize: 10, color: "#6B7280" }}>{fmtSvc(draggingJob.service_type)}</span>
+            </div>
+          )}
+        </DragOverlay>
       </DndContext>
 
-      {/* Quick panel overlay */}
-      {selectedJob && (
-        <>
-          <div onClick={() => setSelectedJob(null)} style={{ position: "fixed", inset: 0, zIndex: 49 }} />
-          <QuickPanel job={selectedJob} employees={data.employees} onClose={() => setSelectedJob(null)} onUpdate={load} />
-        </>
+      {selectedJob && !isMobile && (
+        <JobPanel job={selectedJob} employees={data?.employees || []} onClose={() => setSelectedJob(null)} onUpdate={load} mobile={false} />
       )}
-
-      <JobWizard open={newJobOpen} onClose={() => setNewJobOpen(false)} onCreated={load} />
+      {showWizard && <JobWizard onClose={() => { setShowWizard(false); load(); }} />}
     </DashboardLayout>
   );
 }

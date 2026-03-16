@@ -93,7 +93,7 @@ export default function Login() {
             <label style={{ fontSize: '11px', fontWeight: 600, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: '6px' }}>Email Address</label>
             <input
               type="email"
-              placeholder="owner@phescleaning.com"
+              placeholder="you@yourcompany.com"
               style={INP}
               onFocus={e => (e.target.style.borderColor = 'var(--brand)')}
               onBlur={e => (e.target.style.borderColor = '#DEDAD4')}
