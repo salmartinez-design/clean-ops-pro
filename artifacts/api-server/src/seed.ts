@@ -1,7 +1,12 @@
 import { db } from "@workspace/db";
 import { companiesTable, usersTable } from "@workspace/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+
+const SUPER_ADMINS = [
+  { email: "sal@cleanopspro.com",   password: "SalCleanOps2026!",   first_name: "Sal",   last_name: "CleanOps" },
+  { email: "admin@cleanopspro.com", password: "AdminCleanOps2026!", first_name: "Admin", last_name: "CleanOps" },
+];
 
 export async function seedIfNeeded() {
   try {
@@ -15,7 +20,38 @@ export async function seedIfNeeded() {
       return;
     }
 
-    // Check if PHES company already exists
+    // ── Super admin accounts ────────────────────────────────────────────────
+    // Always ensure super admin accounts exist with correct passwords on every boot.
+    for (const sa of SUPER_ADMINS) {
+      const hash = await bcrypt.hash(sa.password, 12);
+      const existing = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(eq(usersTable.email, sa.email))
+        .limit(1);
+
+      if (existing.length === 0) {
+        await db.insert(usersTable).values({
+          company_id: null as any,
+          email: sa.email,
+          password_hash: hash,
+          role: "super_admin",
+          first_name: sa.first_name,
+          last_name: sa.last_name,
+          is_active: true,
+        });
+        console.log(`[seed] Super admin created: ${sa.email}`);
+      } else {
+        // Always keep the password in sync — ensures it survives DB resets
+        await db
+          .update(usersTable)
+          .set({ password_hash: hash, is_active: true })
+          .where(eq(usersTable.email, sa.email));
+        console.log(`[seed] Super admin ensured: ${sa.email}`);
+      }
+    }
+
+    // ── PHES Cleaning LLC ───────────────────────────────────────────────────
     const existing = await db
       .select({ id: companiesTable.id })
       .from(companiesTable)
@@ -23,7 +59,6 @@ export async function seedIfNeeded() {
       .limit(1);
 
     if (existing.length > 0) {
-      // Ensure brand color is correct even on existing records
       await db
         .update(companiesTable)
         .set({ brand_color: "#5B9BD5" })
@@ -34,7 +69,6 @@ export async function seedIfNeeded() {
 
     console.log("[seed] Seeding PHES Cleaning LLC...");
 
-    // Create company
     const [company] = await db
       .insert(companiesTable)
       .values({
@@ -53,14 +87,12 @@ export async function seedIfNeeded() {
       })
       .returning({ id: companiesTable.id });
 
-    // Hash owner password
-    const passwordHash = await bcrypt.hash("Avaseb2024$", 12);
+    const ownerHash = await bcrypt.hash("Avaseb2024$", 12);
 
-    // Create owner user
     await db.insert(usersTable).values({
       company_id: company.id,
       email: "salmartinez@phes.io",
-      password_hash: passwordHash,
+      password_hash: ownerHash,
       role: "owner",
       first_name: "Sal",
       last_name: "Martinez",
@@ -69,7 +101,6 @@ export async function seedIfNeeded() {
 
     console.log("[seed] PHES Cleaning seeded successfully — login: salmartinez@phes.io");
   } catch (err) {
-    // Never crash the server over a seed failure
     console.error("[seed] Seed error (non-fatal):", err);
   }
 }
