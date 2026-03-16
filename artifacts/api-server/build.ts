@@ -2,6 +2,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { build as esbuild } from "esbuild";
 import { rm, readFile } from "fs/promises";
+import { execSync } from "child_process";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,6 +43,20 @@ const allowlist = [
 async function buildAll() {
   const distDir = path.resolve(__dirname, "dist");
   await rm(distDir, { recursive: true, force: true });
+
+  // Push DB schema to production database (idempotent, safe to run every build)
+  if (process.env.DATABASE_URL) {
+    console.log("pushing database schema...");
+    try {
+      execSync("pnpm --filter @workspace/db run push-force", {
+        stdio: "inherit",
+        cwd: path.resolve(__dirname, "../.."),
+      });
+      console.log("schema push complete");
+    } catch (e) {
+      console.warn("schema push failed (non-fatal):", e);
+    }
+  }
 
   console.log("building server...");
   const pkgPath = path.resolve(__dirname, "package.json");

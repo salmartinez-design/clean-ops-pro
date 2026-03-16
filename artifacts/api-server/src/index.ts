@@ -1,4 +1,5 @@
 import app from "./app";
+import { seedIfNeeded } from "./seed";
 
 const rawPort = process.env["PORT"];
 
@@ -14,6 +15,14 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, () => {
-  console.log(`Server listening on port ${port}`);
+seedIfNeeded().then(() => {
+  app.listen(port, () => {
+    console.log(`Server listening on port ${port}`);
+  });
+}).catch((err) => {
+  console.error("Fatal startup error:", err);
+  // Still start the server even if seed fails
+  app.listen(port, () => {
+    console.log(`Server listening on port ${port} (seed skipped)`);
+  });
 });
