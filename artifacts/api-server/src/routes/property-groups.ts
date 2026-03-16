@@ -46,7 +46,7 @@ router.get("/:id/clients", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/", requireAuth, requireRole(["owner", "admin"]), async (req, res) => {
+router.post("/", requireAuth, requireRole("owner", "admin"), async (req, res) => {
   try {
     const { name, contact_name, contact_email, contact_phone, billing_centralized, notes } = req.body;
     if (!name) return res.status(400).json({ error: "name required" });
@@ -63,7 +63,7 @@ router.post("/", requireAuth, requireRole(["owner", "admin"]), async (req, res) 
   }
 });
 
-router.patch("/:id", requireAuth, requireRole(["owner", "admin"]), async (req, res) => {
+router.patch("/:id", requireAuth, requireRole("owner", "admin"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const allowed = ["name", "contact_name", "contact_email", "contact_phone", "billing_centralized", "notes"];
@@ -82,7 +82,7 @@ router.patch("/:id", requireAuth, requireRole(["owner", "admin"]), async (req, r
   }
 });
 
-router.delete("/:id", requireAuth, requireRole(["owner", "admin"]), async (req, res) => {
+router.delete("/:id", requireAuth, requireRole("owner", "admin"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     await db.update(clientsTable).set({ property_group_id: null } as any)

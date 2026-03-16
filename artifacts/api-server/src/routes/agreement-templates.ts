@@ -21,7 +21,7 @@ router.get("/", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/", requireAuth, requireRole(["owner", "admin"]), async (req, res) => {
+router.post("/", requireAuth, requireRole("owner", "admin"), async (req, res) => {
   try {
     const { name, body } = req.body;
     if (!name || !body) return res.status(400).json({ error: "name and body required" });
@@ -38,7 +38,7 @@ router.post("/", requireAuth, requireRole(["owner", "admin"]), async (req, res) 
   }
 });
 
-router.patch("/:id", requireAuth, requireRole(["owner", "admin"]), async (req, res) => {
+router.patch("/:id", requireAuth, requireRole("owner", "admin"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { name, body, is_active } = req.body;
@@ -59,7 +59,7 @@ router.patch("/:id", requireAuth, requireRole(["owner", "admin"]), async (req, r
   }
 });
 
-router.delete("/:id", requireAuth, requireRole(["owner", "admin"]), async (req, res) => {
+router.delete("/:id", requireAuth, requireRole("owner", "admin"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     await db.delete(agreementTemplatesTable).where(
@@ -72,7 +72,7 @@ router.delete("/:id", requireAuth, requireRole(["owner", "admin"]), async (req, 
   }
 });
 
-router.post("/:id/send", requireAuth, requireRole(["owner", "admin"]), async (req, res) => {
+router.post("/:id/send", requireAuth, requireRole("owner", "admin"), async (req, res) => {
   try {
     const templateId = parseInt(req.params.id);
     const { client_id, client_home_id } = req.body;

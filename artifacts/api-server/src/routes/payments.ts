@@ -23,7 +23,7 @@ router.get("/", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/", requireAuth, requireRole(["owner", "admin"]), async (req, res) => {
+router.post("/", requireAuth, requireRole("owner", "admin"), async (req, res) => {
   try {
     const { client_id, invoice_id, amount, method, last_4, card_brand, stripe_payment_id } = req.body;
     if (!client_id || !amount) return res.status(400).json({ error: "client_id and amount required" });
@@ -49,7 +49,7 @@ router.post("/", requireAuth, requireRole(["owner", "admin"]), async (req, res) 
   }
 });
 
-router.post("/:id/refund", requireAuth, requireRole(["owner", "admin"]), async (req, res) => {
+router.post("/:id/refund", requireAuth, requireRole("owner", "admin"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { reason } = req.body;

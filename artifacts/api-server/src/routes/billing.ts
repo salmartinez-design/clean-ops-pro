@@ -38,7 +38,7 @@ router.get("/status", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/create-subscription", requireAuth, requireRole(["owner"]), async (req, res) => {
+router.post("/create-subscription", requireAuth, requireRole("owner"), async (req, res) => {
   try {
     const { plan, billing_email } = req.body;
     const stripeKey = process.env.STRIPE_SECRET_KEY;
@@ -84,7 +84,7 @@ router.post("/create-subscription", requireAuth, requireRole(["owner"]), async (
   }
 });
 
-router.post("/cancel-subscription", requireAuth, requireRole(["owner"]), async (req, res) => {
+router.post("/cancel-subscription", requireAuth, requireRole("owner"), async (req, res) => {
   try {
     await db.update(companiesTable).set({
       subscription_status: "canceled",
@@ -96,7 +96,7 @@ router.post("/cancel-subscription", requireAuth, requireRole(["owner"]), async (
   }
 });
 
-router.patch("/update", requireAuth, requireRole(["owner", "admin"]), async (req, res) => {
+router.patch("/update", requireAuth, requireRole("owner", "admin"), async (req, res) => {
   try {
     const { plan, billing_email } = req.body;
     const updates: any = {};

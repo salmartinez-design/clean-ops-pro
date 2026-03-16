@@ -19,7 +19,7 @@ declare global {
 const JWT_SECRET = process.env.JWT_SECRET || "cleanops-secret-key-change-in-production";
 
 export function signToken(payload: AuthPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: "24h" });
 }
 
 export function verifyToken(token: string): AuthPayload {

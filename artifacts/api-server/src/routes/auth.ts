@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { usersTable, companiesTable } from "@workspace/db/schema";
+import { usersTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { requireAuth, signToken } from "../lib/auth.js";
+import { logAudit } from "../lib/audit.js";
 
 const router = Router();
 
@@ -13,19 +14,24 @@ router.post("/login", async (req, res) => {
     if (!email || !password) {
       return res.status(400).json({ error: "Bad Request", message: "Email and password required" });
     }
+    if (typeof email !== "string" || email.length > 255) {
+      return res.status(400).json({ error: "Bad Request", message: "Invalid email" });
+    }
 
     const user = await db
       .select()
       .from(usersTable)
-      .where(eq(usersTable.email, email.toLowerCase()))
+      .where(eq(usersTable.email, email.toLowerCase().trim()))
       .limit(1);
 
     if (!user[0]) {
+      await logAudit(req, "login_failed", "user", null, null, { email, reason: "user_not_found" });
       return res.status(401).json({ error: "Unauthorized", message: "Invalid credentials" });
     }
 
     const validPassword = await bcrypt.compare(password, user[0].password_hash);
     if (!validPassword) {
+      await logAudit(req, "login_failed", "user", user[0].id, null, { email, reason: "wrong_password" });
       return res.status(401).json({ error: "Unauthorized", message: "Invalid credentials" });
     }
 
@@ -39,6 +45,8 @@ router.post("/login", async (req, res) => {
       role: user[0].role,
       email: user[0].email,
     });
+
+    await logAudit(req, "login_success", "user", user[0].id, null, { email });
 
     return res.json({
       token,
@@ -58,8 +66,24 @@ router.post("/login", async (req, res) => {
   }
 });
 
-router.post("/logout", requireAuth, (_req, res) => {
-  res.json({ success: true, message: "Logged out" });
+router.post("/logout", requireAuth, async (req, res) => {
+  await logAudit(req, "logout", "user", req.auth!.userId);
+  return res.json({ success: true, message: "Logged out" });
+});
+
+router.post("/refresh", requireAuth, (req, res) => {
+  try {
+    const newToken = signToken({
+      userId: req.auth!.userId,
+      companyId: req.auth!.companyId,
+      role: req.auth!.role,
+      email: req.auth!.email,
+    });
+    return res.json({ token: newToken });
+  } catch (err) {
+    console.error("Token refresh error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
 });
 
 router.get("/me", requireAuth, async (req, res) => {

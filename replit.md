@@ -86,6 +86,37 @@ All four pages are live and E2E tested (as of March 2026):
 
 **Key Fix:** `requireRole` in `quotes.ts` and `quote-scopes.ts` was called with array syntax `(["owner","admin","office"])` but function uses rest spread `(...roles: string[])`. Fixed to `requireRole("owner", "admin", "office")`.
 
+## Sprint 4: Security Hardening — Complete
+
+All hardening verified via curl and audit log checks (March 2026):
+
+### API Security
+- **JWT expiry:** Reduced from 7 days to 24 hours (`artifacts/api-server/src/lib/auth.ts`)
+- **`/api/auth/refresh`:** New endpoint issues fresh token when current one is valid; resets expiry to 24h
+- **`requireRole` pattern fixed:** All 13 broken array-syntax calls converted to rest-spread: `requireRole("owner","admin","office")`
+- **Rate limiting:** Auth limiter (10 req/15min on `/api/auth`); general limiter (300 req/min, user-keyed on `/api`); message limiter (50/hr, company-keyed on SMS/email endpoints) — uses `validate: { keyGeneratorIpFallback: false }` to suppress IPv6 validation warning
+- **Global error handler + 404 handler:** Added to `app.ts`; maps PG error codes (23505→409, 23503→400, 42501→403) to clean JSON responses
+- **Audit log:** `app_audit_log` table + `logAudit()` helper captures login events (`artifacts/api-server/src/lib/audit.ts`)
+- **`/api/health`:** No-auth endpoint returns `{status, database, timestamp, uptime}` with a live DB ping
+- **Env var validation on startup:** Checks JWT_SECRET is set; warns on missing optional service keys
+- **JWT_SECRET:** Set as a shared environment variable (96-char hex); server no longer falls back to insecure default
+- **Super admin boot guarantee:** `seed.ts` re-ensures `sal@cleanopspro.com` and `admin@cleanopspro.com` on every server start
+
+### Frontend Security
+- **React ErrorBoundary:** Wraps entire `<App>` to catch unhandled render errors (`artifacts/cleanops-pro/src/components/error-boundary.tsx`)
+- **Token auto-refresh:** `startTokenRefresh()` polls every 5 min and refreshes when <2hr remain; force-logout on 401 (`artifacts/cleanops-pro/src/lib/auth.ts`)
+- **Logout API call:** Frontend fires `POST /api/auth/logout` before clearing local storage
+
+### Key Files
+- `artifacts/api-server/src/app.ts` — rate limiting, error handlers, 404
+- `artifacts/api-server/src/lib/auth.ts` — JWT 24h, signToken
+- `artifacts/api-server/src/lib/audit.ts` — logAudit helper
+- `artifacts/api-server/src/routes/auth.ts` — refresh endpoint + audit logging
+- `artifacts/api-server/src/routes/health.ts` — full health check with DB
+- `artifacts/api-server/src/seed.ts` — super admin ensured on every boot
+- `artifacts/cleanops-pro/src/components/error-boundary.tsx` — React error boundary
+- `artifacts/cleanops-pro/src/lib/auth.ts` — token auto-refresh + logout API call
+
 ## External Dependencies
 
 - **Stripe:** For subscription management and payment processing (invoicing, charging cards, refunds).

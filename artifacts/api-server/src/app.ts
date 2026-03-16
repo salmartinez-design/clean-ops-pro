@@ -1,13 +1,10 @@
-import express, { type Express } from "express";
+import express, { type Express, Request, Response, NextFunction } from "express";
 import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
+import rateLimit from "express-rate-limit";
 import router from "./routes";
 
-// Works in both ESM (tsx dev) and CJS (esbuild prod bundle).
-// In CJS, __dirname is a global string; typeof check avoids ReferenceError in ESM.
-// In ESM, __dirname is not defined so we derive it from import.meta.url.
-// eslint-disable-next-line no-undef
 const __appDir: string =
   typeof __dirname !== "undefined"
     ? __dirname
@@ -27,6 +24,99 @@ const pdfsDir = path.resolve(__appDir, "../pdfs");
 process.env.PDFS_DIR = pdfsDir;
 app.use("/api/pdfs", express.static(pdfsDir, { maxAge: "1h" }));
 
+// ── Rate Limiting ────────────────────────────────────────────────────────────
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many login attempts. Please try again in 15 minutes." },
+  skip: (req) => req.path === "/logout" || req.path === "/me",
+});
+
+const userKeyGenerator = (req: Request): string => {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    try {
+      const token = authHeader.substring(7);
+      const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64").toString());
+      return `user_${payload.userId}`;
+    } catch {}
+  }
+  return req.ip ?? "unknown";
+};
+
+const companyKeyGenerator = (req: Request): string => {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    try {
+      const token = authHeader.substring(7);
+      const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64").toString());
+      return `company_${payload.companyId}`;
+    } catch {}
+  }
+  return req.ip ?? "unknown";
+};
+
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Rate limit exceeded. Please slow down." },
+  keyGenerator: userKeyGenerator,
+  validate: { keyGeneratorIpFallback: false },
+});
+
+const messageLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 50,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Message limit reached for this hour." },
+  keyGenerator: companyKeyGenerator,
+  validate: { keyGeneratorIpFallback: false },
+});
+
+app.use("/api/auth", authLimiter);
+app.use("/api/clients/:id/communications/sms", messageLimiter);
+app.use("/api/clients/:id/communications/email", messageLimiter);
+app.use("/api/job-sms", messageLimiter);
+app.use("/api", generalLimiter);
 app.use("/api", router);
+
+// ── 404 Handler ──────────────────────────────────────────────────────────────
+app.use((_req: Request, res: Response) => {
+  res.status(404).json({ error: "Route not found" });
+});
+
+// ── Global Error Handler ─────────────────────────────────────────────────────
+app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
+  const timestamp = new Date().toISOString();
+  const userId = req.auth?.userId ?? "unauthenticated";
+  const companyId = req.auth?.companyId ?? "none";
+
+  console.error(
+    `[${timestamp}] ERROR | ${req.method} ${req.path} | user=${userId} company=${companyId}`,
+    err
+  );
+
+  if (err.code === "23505") {
+    return res.status(409).json({ error: "Conflict", message: "A record with this value already exists." });
+  }
+  if (err.code === "23503") {
+    return res.status(400).json({ error: "Bad Request", message: "Referenced record does not exist." });
+  }
+  if (err.code === "42501") {
+    return res.status(403).json({ error: "Forbidden", message: "Permission denied." });
+  }
+
+  const isDev = process.env.NODE_ENV !== "production";
+  return res.status(500).json({
+    error: "Something went wrong. Please try again.",
+    ...(isDev ? { detail: err.message } : {}),
+  });
+});
 
 export default app;

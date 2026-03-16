@@ -79,7 +79,7 @@ router.post("/", requireAuth, upload.single("file"), async (req, res) => {
   }
 });
 
-router.delete("/:id", requireAuth, requireRole(["owner", "admin"]), async (req, res) => {
+router.delete("/:id", requireAuth, requireRole("owner", "admin"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     await db.delete(clientAttachmentsTable).where(

@@ -20,6 +20,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ token });
   },
   logout: () => {
+    const token = get().token;
+    if (token) {
+      fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    }
     localStorage.removeItem('cleanops_token');
     localStorage.removeItem('cleanops_admin_token');
     set({ token: null });
@@ -62,4 +69,55 @@ export function getTokenRole(): string | null {
   } catch {
     return null;
   }
+}
+
+function getTokenExp(): number | null {
+  const token = useAuthStore.getState().token;
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function startTokenRefresh() {
+  const TWO_HOURS = 2 * 60 * 60;
+  const checkInterval = 5 * 60 * 1000;
+
+  const refresh = async () => {
+    const exp = getTokenExp();
+    if (!exp) return;
+
+    const now = Math.floor(Date.now() / 1000);
+    const remaining = exp - now;
+
+    if (remaining < 0) {
+      useAuthStore.getState().logout();
+      return;
+    }
+
+    if (remaining < TWO_HOURS) {
+      try {
+        const token = useAuthStore.getState().token;
+        if (!token) return;
+        const res = await fetch('/api/auth/refresh', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.token) {
+            useAuthStore.getState().setToken(data.token);
+          }
+        } else if (res.status === 401) {
+          useAuthStore.getState().logout();
+        }
+      } catch {}
+    }
+  };
+
+  refresh();
+  return setInterval(refresh, checkInterval);
 }
