@@ -514,7 +514,7 @@ export default function JobsPage() {
         {selectedJob && (
           <JobPanel job={selectedJob} employees={data?.employees || []} onClose={() => setSelectedJob(null)} onUpdate={load} mobile />
         )}
-        {showWizard && <JobWizard onClose={() => { setShowWizard(false); load(); }} />}
+        <JobWizard open={showWizard} onClose={() => setShowWizard(false)} onCreated={() => { setShowWizard(false); load(); }} />
       </>
     );
   }
@@ -682,7 +682,7 @@ export default function JobsPage() {
       {selectedJob && !isMobile && (
         <JobPanel job={selectedJob} employees={data?.employees || []} onClose={() => setSelectedJob(null)} onUpdate={load} mobile={false} />
       )}
-      {showWizard && <JobWizard onClose={() => { setShowWizard(false); load(); }} />}
+      <JobWizard open={showWizard} onClose={() => setShowWizard(false)} onCreated={() => { setShowWizard(false); load(); }} />
     </DashboardLayout>
   );
 }

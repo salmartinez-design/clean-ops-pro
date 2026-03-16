@@ -70,10 +70,10 @@
   --border-sub: #EEECE7;
 
   /* === BRAND (overridden by JS on login) === */
-  --brand:      #00C9A7;
-  --brand-rgb:  0, 201, 167;
-  --brand-dim:  rgba(0, 201, 167, 0.12);
-  --brand-soft: rgba(0, 201, 167, 0.07);
+  --brand:      #5B9BD5;
+  --brand-rgb:  91, 155, 213;
+  --brand-dim:  rgba(91, 155, 213, 0.12);
+  --brand-soft: rgba(91, 155, 213, 0.07);
 
   /* === LEGACY ALIASES === */
   --tenant-color:     #00C9A7;

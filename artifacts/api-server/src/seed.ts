@@ -23,7 +23,12 @@ export async function seedIfNeeded() {
       .limit(1);
 
     if (existing.length > 0) {
-      console.log("[seed] PHES Cleaning already seeded — skipping");
+      // Ensure brand color is correct even on existing records
+      await db
+        .update(companiesTable)
+        .set({ brand_color: "#5B9BD5" })
+        .where(eq(companiesTable.slug, "phes-cleaning"));
+      console.log("[seed] PHES Cleaning already seeded — brand color ensured");
       return;
     }
 
