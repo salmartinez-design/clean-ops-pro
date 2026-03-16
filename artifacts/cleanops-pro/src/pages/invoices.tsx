@@ -334,7 +334,7 @@ export default function InvoicesPage() {
     <>
       <DashboardLayout>
         <div style={{ display: "flex", flexDirection: "column", gap: 20, fontFamily: FF }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12 }}>
             {[
               { label: "Outstanding", value: `$${Math.round(stats.total_outstanding || 0).toLocaleString()}` },
               { label: "Overdue",     value: `$${Math.round(stats.total_overdue || 0).toLocaleString()}`, color: (stats.total_overdue || 0) > 0 ? "#DC2626" : undefined },
@@ -349,42 +349,81 @@ export default function InvoicesPage() {
           </div>
 
           <div style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 10, overflow: "hidden" }}>
-            <div style={{ padding: "12px 16px", borderBottom: "1px solid #EEECE7", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-              <div style={{ display: "flex", gap: 4, backgroundColor: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: 8, padding: 4 }}>
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid #EEECE7", display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "center", gap: 10 }}>
+              <div style={{ display: "flex", gap: 4, backgroundColor: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: 8, padding: 4, overflowX: "auto" }}>
                 {tabs.map(tab => {
                   const isActive = activeTab === tab.id;
                   return (
                     <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                      style={{ padding: "5px 12px", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: isActive ? 700 : 400, border: "none", backgroundColor: isActive ? "var(--brand)" : "transparent", color: isActive ? "#FFFFFF" : "#6B7280", transition: "all 0.15s", fontFamily: FF }}>
+                      style={{ padding: "5px 12px", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: isActive ? 700 : 400, border: "none", backgroundColor: isActive ? "var(--brand)" : "transparent", color: isActive ? "#FFFFFF" : "#6B7280", transition: "all 0.15s", fontFamily: FF, whiteSpace: "nowrap" }}>
                       {tab.label}
                     </button>
                   );
                 })}
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <div style={{ position: "relative" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ position: "relative", flex: isMobile ? 1 : "none" }}>
                   <Search size={13} strokeWidth={1.5} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#9E9B94" }} />
                   <input placeholder="Search invoices..." value={search} onChange={e => setSearch(e.target.value)}
-                    style={{ paddingLeft: 32, paddingRight: 10, height: 36, width: 200, backgroundColor: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: 8, color: "#1A1917", fontSize: 13, outline: "none", fontFamily: FF }} />
+                    style={{ paddingLeft: 32, paddingRight: 10, height: 36, width: isMobile ? "100%" : 200, backgroundColor: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: 8, color: "#1A1917", fontSize: 13, outline: "none", fontFamily: FF }} />
                 </div>
                 {canAdmin && (
                   <>
-                    <button onClick={() => setShowCloseDay(true)}
+                    {!isMobile && <button onClick={() => setShowCloseDay(true)}
                       style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 13px", backgroundColor: "transparent", color: "#1A1917", border: "1px solid #E5E2DC", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FF }}>
                       <Calendar size={14} strokeWidth={2} /> Close Day
-                    </button>
+                    </button>}
                     <button onClick={() => setShowBatch(true)}
                       style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 13px", backgroundColor: "#F7F6F3", color: "var(--brand)", border: "1px solid var(--brand)", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FF }}>
-                      <Layers size={14} strokeWidth={2} /> Batch Invoice
+                      <Layers size={14} strokeWidth={2} /> {isMobile ? "Batch" : "Batch Invoice"}
                     </button>
                   </>
                 )}
                 <button style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 13px", backgroundColor: "var(--brand)", color: "#FFFFFF", borderRadius: 8, fontSize: 13, fontWeight: 700, border: "none", cursor: "pointer", fontFamily: FF }}>
-                  <Plus size={14} strokeWidth={2} /> New Invoice
+                  <Plus size={14} strokeWidth={2} /> {isMobile ? "New" : "New Invoice"}
                 </button>
               </div>
             </div>
 
+            {isMobile ? (
+              <div>
+                {isLoading ? (
+                  <div style={{ padding: 32, textAlign: "center", color: "#6B7280", fontSize: 13, fontFamily: FF }}>Loading invoices...</div>
+                ) : invoices.length === 0 ? (
+                  <div style={{ padding: 48, textAlign: "center" }}>
+                    <AlertCircle size={28} style={{ color: "#C4C0BB", marginBottom: 10 }} />
+                    <p style={{ color: "#6B7280", fontSize: 13, margin: 0, fontFamily: FF }}>No invoices found.</p>
+                  </div>
+                ) : invoices.map((inv: any) => {
+                  const effectiveStatus = (inv.status === "sent" && inv.due_date && new Date(inv.due_date) < new Date()) ? "overdue" : inv.status;
+                  const s = STATUS_STYLES[effectiveStatus] || STATUS_STYLES.draft;
+                  return (
+                    <div key={inv.id}
+                      onClick={() => navigate(`/invoices/${inv.id}`)}
+                      style={{ borderBottom: "1px solid #F0EEE9", padding: "14px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1917", fontFamily: FF }}>{inv.client_name}</span>
+                          <span style={{ ...s, display: "inline-flex", alignItems: "center", padding: "2px 7px", borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" as const, fontFamily: FF }}>
+                            {effectiveStatus}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 11, color: "#9E9B94", fontFamily: FF }}>
+                          {inv.invoice_number || `INV-${String(inv.id).padStart(4, "0")}`}
+                          {inv.due_date ? ` · Due ${new Date(inv.due_date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "right", flexShrink: 0 }}>
+                        <span style={{ fontSize: 15, fontWeight: 700, color: "#1A1917", fontFamily: FF }}>${(inv.total || 0).toFixed(2)}</span>
+                        {effectiveStatus === "overdue" && (inv.days_overdue || 0) > 0 && (
+                          <div style={{ fontSize: 10, color: "#991B1B", fontWeight: 600, marginTop: 2 }}>{inv.days_overdue}d overdue</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>
@@ -442,6 +481,7 @@ export default function InvoicesPage() {
                 })}
               </tbody>
             </table>
+            )}
           </div>
         </div>
       </DashboardLayout>

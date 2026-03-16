@@ -53,6 +53,7 @@ const PORTAL_OPTIONS = ["all","registered","invited","not_invited"] as const;
 
 export default function CustomersPage() {
   const [, navigate] = useLocation();
+  const isMobile = useIsMobile();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<string>("all");
   const [frequency, setFrequency] = useState<string>("all");
@@ -118,20 +119,22 @@ export default function CustomersPage() {
         </div>
 
         {/* Filter Bar */}
-        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
-          {/* Search */}
-          <div style={{ position: "relative", flexShrink: 0 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          {/* Search row */}
+          <div style={{ position: "relative" }}>
             <Search size={13} strokeWidth={1.5} style={{ position: "absolute", left: "11px", top: "50%", transform: "translateY(-50%)", color: "#9E9B94", pointerEvents: "none" }} />
             <input
               placeholder="Search name, phone, email..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              style={{ paddingLeft: "34px", paddingRight: "12px", height: "34px", width: "250px", backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: "8px", color: "#1A1917", fontSize: "13px", outline: "none" }}
+              style={{ paddingLeft: "34px", paddingRight: "12px", height: "36px", width: "100%", backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: "8px", color: "#1A1917", fontSize: "13px", outline: "none" }}
             />
           </div>
 
+          {/* Filter chips row — horizontal scroll on mobile */}
+          <div style={{ display: "flex", gap: "8px", overflowX: "auto", paddingBottom: "2px" }}>
           {/* Status */}
-          <div style={{ display: "flex", gap: "4px", background: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: "8px", padding: "3px" }}>
+          <div style={{ display: "flex", gap: "4px", background: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: "8px", padding: "3px", flexShrink: 0 }}>
             {STATUS_OPTIONS.map(s => (
               <button key={s} onClick={() => setStatus(s)} style={filterBtn(status === s)}>
                 {s === "at_risk" ? "At Risk" : s.charAt(0).toUpperCase() + s.slice(1)}
@@ -140,7 +143,7 @@ export default function CustomersPage() {
           </div>
 
           {/* Frequency */}
-          <div style={{ display: "flex", gap: "4px", background: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: "8px", padding: "3px" }}>
+          <div style={{ display: "flex", gap: "4px", background: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: "8px", padding: "3px", flexShrink: 0 }}>
             {FREQ_OPTIONS.map(f => (
               <button key={f} onClick={() => setFrequency(f)} style={filterBtn(frequency === f)}>
                 {f === "all" ? "All Freq" : freqLabel(f)}
@@ -149,12 +152,13 @@ export default function CustomersPage() {
           </div>
 
           {/* Portal */}
-          <div style={{ display: "flex", gap: "4px", background: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: "8px", padding: "3px" }}>
+          <div style={{ display: "flex", gap: "4px", background: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: "8px", padding: "3px", flexShrink: 0 }}>
             {PORTAL_OPTIONS.map(p => (
               <button key={p} onClick={() => setPortal(p)} style={filterBtn(portal === p)}>
                 {p === "all" ? "All Portal" : p === "not_invited" ? "Not Invited" : p.charAt(0).toUpperCase() + p.slice(1)}
               </button>
             ))}
+          </div>
           </div>
 
           {/* Bulk actions */}
@@ -179,7 +183,41 @@ export default function CustomersPage() {
           )}
         </div>
 
-        {/* Table */}
+        {/* Table / Card list */}
+        {isMobile ? (
+          <div style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: "10px", overflow: "hidden" }}>
+            {isLoading ? (
+              <div style={{ padding: "48px", textAlign: "center", color: "#9E9B94", fontSize: "13px" }}>Loading clients...</div>
+            ) : clients.length === 0 ? (
+              <div style={{ padding: "48px", textAlign: "center", color: "#9E9B94", fontSize: "13px" }}>No clients found</div>
+            ) : clients.map(client => {
+              const st = clientStatus(client);
+              const tier = tierColor(client.loyalty_tier);
+              return (
+                <div key={client.id}
+                  onClick={() => navigate(`/customers/${client.id}`)}
+                  style={{ borderBottom: "1px solid #F0EEE9", padding: "14px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 12, borderLeft: st === "at_risk" ? "3px solid #F59E0B" : "3px solid transparent" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                      <span style={{ fontSize: "14px", fontWeight: 700, color: "#1A1917" }}>{client.first_name} {client.last_name}</span>
+                      {st === "at_risk" && <span style={{ background: "#FEF3C7", color: "#92400E", border: "1px solid #FDE68A", padding: "2px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 600 }}>At Risk</span>}
+                      {!client.is_active && <span style={{ background: "#F3F4F6", color: "#6B7280", border: "1px solid #E5E7EB", padding: "2px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 600 }}>Inactive</span>}
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#9E9B94", display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      {client.phone && <span>{client.phone}</span>}
+                      {client.city && <span>{client.city}</span>}
+                      {client.frequency && <span style={{ color: "var(--brand)", fontWeight: 600 }}>{freqLabel(client.frequency)}</span>}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <span style={{ background: tier.bg, color: tier.text, padding: "2px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 700, display: "block", marginBottom: 3 }}>{tier.label}</span>
+                    <span style={{ fontSize: "12px", color: "var(--brand)", fontWeight: 600 }}>{client.loyalty_points} pts</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
         <div style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: "10px", overflow: "hidden" }}>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "900px" }}>
@@ -289,6 +327,7 @@ export default function CustomersPage() {
             </table>
           </div>
         </div>
+        )}{/* end desktop table ternary */}
       </div>
     </DashboardLayout>
   );

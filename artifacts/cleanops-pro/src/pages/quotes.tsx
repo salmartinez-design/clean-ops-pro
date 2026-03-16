@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { getAuthHeaders } from "@/lib/auth";
@@ -94,6 +95,7 @@ function displayPrice(q: Quote) {
 
 export default function QuotesPage() {
   const [, navigate] = useLocation();
+  const isMobile = useIsMobile();
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState("all");
   const [search, setSearch] = useState("");
@@ -160,8 +162,8 @@ export default function QuotesPage() {
 
   return (
     <DashboardLayout>
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+    <div className={isMobile ? "space-y-4" : "p-6 max-w-6xl mx-auto space-y-6"}>
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-[#1A1917]">Quotes</h1>
           <p className="text-sm text-[#6B7280] mt-1">Manage and track client quotes.</p>
@@ -190,13 +192,14 @@ export default function QuotesPage() {
       </div>
 
       <div className="bg-white border border-[#E5E2DC] rounded-lg overflow-hidden">
-        <div className="flex items-center gap-4 p-4 border-b border-[#E5E2DC]">
-          <div className="flex gap-1">
+        <div className={`flex gap-3 p-4 border-b border-[#E5E2DC] ${isMobile ? "flex-col" : "items-center"}`}>
+          <div className="flex gap-1 overflow-x-auto">
             {TABS.map(tab => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                style={{ whiteSpace: "nowrap" }}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex-shrink-0 ${
                   activeTab === tab.key
                     ? "bg-[#5B9BD5] text-white"
                     : "text-[#6B7280] hover:bg-[#F7F6F3]"
@@ -206,13 +209,13 @@ export default function QuotesPage() {
               </button>
             ))}
           </div>
-          <div className="ml-auto relative">
+          <div className={`relative ${isMobile ? "" : "ml-auto"}`}>
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#9E9B94]" />
             <Input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search quotes..."
-              className="pl-9 h-8 w-52 text-sm"
+              className={`pl-9 h-8 text-sm ${isMobile ? "w-full" : "w-52"}`}
             />
           </div>
         </div>
@@ -226,6 +229,32 @@ export default function QuotesPage() {
             <Button size="sm" className="bg-[#5B9BD5] hover:bg-[#4a8ac4] text-white gap-1.5" onClick={() => navigate("/quotes/new")}>
               <Plus className="w-3.5 h-3.5" /> Create your first quote
             </Button>
+          </div>
+        ) : isMobile ? (
+          <div>
+            {filtered.map(quote => {
+              const cfg = STATUS_CONFIG[quote.status] ?? { label: quote.status, className: "bg-gray-100 text-gray-600" };
+              return (
+                <div key={quote.id}
+                  onClick={() => navigate(`/quotes/${quote.id}`)}
+                  style={{ borderBottom: "1px solid #F0EEE9", padding: "14px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                      <span style={{ fontSize: "14px", fontWeight: 700, color: "#1A1917" }}>{clientName(quote)}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.className}`}>{cfg.label}</span>
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#9E9B94", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {quote.scope_name && <span>{quote.scope_name}</span>}
+                      {quote.frequency && <span style={{ textTransform: "capitalize" }}>{quote.frequency}</span>}
+                      <span>{format(new Date(quote.created_at), "MMM d")}</span>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <span style={{ fontSize: "15px", fontWeight: 700, color: "#1A1917" }}>{displayPrice(quote)}</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         ) : (
           <Table>

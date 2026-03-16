@@ -34,6 +34,7 @@ function ProductivityRing({ pct }: { pct: number }) {
 
 export default function EmployeesPage() {
   const [, navigate] = useLocation();
+  const isMobile = useIsMobile();
   const [search, setSearch] = useState('');
   const [inviteModal, setInviteModal] = useState(false);
   const [sendingInvite, setSendingInvite] = useState<number | null>(null);
@@ -96,14 +97,14 @@ export default function EmployeesPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
         {/* Controls */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ position: 'relative' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+          <div style={{ position: 'relative', flex: isMobile ? '1 1 100%' : 'none' }}>
             <Search size={14} strokeWidth={1.5} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#9E9B94', pointerEvents: 'none' }} />
             <input
               placeholder="Search team..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              style={{ paddingLeft: '36px', paddingRight: '12px', height: '36px', width: '260px', backgroundColor: '#FFFFFF', border: '1px solid #E5E2DC', borderRadius: '8px', color: '#1A1917', fontSize: '13px', outline: 'none' }}
+              style={{ paddingLeft: '36px', paddingRight: '12px', height: '36px', width: isMobile ? '100%' : '260px', backgroundColor: '#FFFFFF', border: '1px solid #E5E2DC', borderRadius: '8px', color: '#1A1917', fontSize: '13px', outline: 'none' }}
             />
           </div>
           <button onClick={() => setAddModal(true)}
@@ -112,7 +113,53 @@ export default function EmployeesPage() {
           </button>
         </div>
 
-        {/* Table */}
+        {/* Table / Card list */}
+        {isMobile ? (
+          <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E2DC', borderRadius: '10px', overflow: 'hidden' }}>
+            {isLoading ? (
+              <div style={{ padding: '48px', textAlign: 'center', color: '#9E9B94', fontSize: '13px' }}>Loading team members…</div>
+            ) : employees.length === 0 ? (
+              <div style={{ padding: '48px', textAlign: 'center', color: '#9E9B94', fontSize: '13px' }}>No team members found</div>
+            ) : employees.map(user => {
+              const roleBadge = ROLE_BADGES[user.role] || ROLE_BADGES.technician;
+              const invited = inviteSent === user.id || !!(user as any).invite_sent_at;
+              return (
+                <div key={user.id}
+                  onClick={() => navigate(`/employees/${user.id}`)}
+                  style={{ borderBottom: '1px solid #F0EEE9', padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: '50%', backgroundColor: 'var(--brand-dim)', color: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 700, flexShrink: 0 }}>
+                    {user.first_name[0]}{user.last_name[0]}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                      <span style={{ fontSize: '14px', fontWeight: 700, color: '#1A1917' }}>{user.first_name} {user.last_name}</span>
+                      <span style={{ ...roleBadge, padding: '2px 7px', borderRadius: '4px', fontSize: '10px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' as const, display: 'inline-block' }}>
+                        {user.role.replace('_', ' ')}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#9E9B94' }}>
+                      {user.pay_type === 'hourly' ? `$${user.pay_rate}/hr` : user.pay_type?.replace('_', ' ')}
+                    </div>
+                  </div>
+                  <div style={{ flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                    {invited ? (
+                      <span style={{ display:'inline-flex',alignItems:'center',gap:3,fontSize:10,fontWeight:600,color:'#166534',background:'#DCFCE7',padding:'3px 7px',borderRadius:4 }}>
+                        <Check size={9}/> Invited
+                      </span>
+                    ) : (
+                      <button
+                        onClick={e => { e.stopPropagation(); sendInvite(user.id, `${user.first_name} ${user.last_name}`); }}
+                        disabled={sendingInvite === user.id}
+                        style={{ display:'flex',alignItems:'center',gap:4,padding:'5px 10px',border:'1px solid #E5E2DC',borderRadius:6,fontSize:11,fontWeight:600,background:'#FFFFFF',cursor:'pointer',color:'#6B7280',fontFamily:'inherit' }}>
+                        <Mail size={11}/>{sendingInvite===user.id?'…':'Invite'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
         <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E2DC', borderRadius: '10px', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -204,6 +251,7 @@ export default function EmployeesPage() {
             </tbody>
           </table>
         </div>
+        )}{/* end desktop table ternary */}
       </div>
 
       {/* Add Team Member Modal */}
