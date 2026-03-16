@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
@@ -188,6 +189,7 @@ function StarRating({ score, max=4 }: { score: number; max?: number }) {
 }
 
 function AttendanceCalendar({ userId }: { userId: number }) {
+  const isMobile = useIsMobile();
   const [monthDate, setMonthDate] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -254,10 +256,10 @@ function AttendanceCalendar({ userId }: { userId: number }) {
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:1, background:'#E5E2DC', borderRadius:8, overflow:'hidden' }}>
         {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
-          <div key={d} style={{ background:'#F7F6F3',padding:'6px 0',textAlign:'center',fontSize:11,fontWeight:600,color:'#9E9B94' }}>{d}</div>
+          <div key={d} style={{ background:'#F7F6F3',padding:'6px 0',textAlign:'center',fontSize: isMobile ? 9 : 11,fontWeight:600,color:'#9E9B94' }}>{isMobile ? d.slice(0,1) : d}</div>
         ))}
         {Array.from({ length: blanks }).map((_,i) => (
-          <div key={`b${i}`} style={{ background:'#F7F6F3', minHeight:64 }} />
+          <div key={`b${i}`} style={{ background:'#F7F6F3', minHeight: isMobile ? 40 : 64 }} />
         ))}
         {Array.from({ length: daysInMonth }).map((_,i) => {
           const day  = i + 1;
@@ -267,11 +269,11 @@ function AttendanceCalendar({ userId }: { userId: number }) {
           return (
             <div key={key} style={{
               background: worked ? '#DCFCE7' : '#FFFFFF',
-              minHeight:64, padding:'6px 8px', position:'relative',
+              minHeight: isMobile ? 40 : 64, padding: isMobile ? '4px 3px' : '6px 8px', position:'relative',
               outline: today ? '2px solid var(--brand)' : 'none',
               outlineOffset:'-1px',
             }}>
-              <span style={{ fontSize:11,fontWeight: today ? 700 : 500, color: worked ? '#166534' : '#9E9B94' }}>{day}</span>
+              <span style={{ fontSize: isMobile ? 9 : 11,fontWeight: today ? 700 : 500, color: worked ? '#166534' : '#9E9B94' }}>{day}</span>
               {worked && (
                 <div style={{ marginTop:2 }}>
                   <p style={{ fontSize:9,color:'#166534',margin:0,fontWeight:600 }}>{worked.in}</p>
@@ -311,6 +313,7 @@ export default function EmployeeProfilePage() {
   const [, navigate] = useLocation();
   const userId = parseInt(id!);
   const qc = useQueryClient();
+  const isMobile = useIsMobile();
 
   const [activeTab, setActiveTab] = useState('Information');
   const [saving, setSaving] = useState(false);
@@ -465,12 +468,14 @@ export default function EmployeeProfilePage() {
         </div>
 
         {/* ── PROFILE HEADER ── */}
-        <div style={{ background:'#FFFFFF', border:'1px solid #E5E2DC', borderRadius:12, padding:'24px 32px', marginBottom:2, display:'flex', gap:32, alignItems:'flex-start' }}>
+        <div style={{ background:'#FFFFFF', border:'1px solid #E5E2DC', borderRadius:12, padding: isMobile ? '16px' : '24px 32px', marginBottom:2, display:'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 16 : 32, alignItems:'flex-start' }}>
+          {/* Top row on mobile: avatar + info side-by-side */}
+          <div style={{ display:'flex', flexDirection:'row', gap:16, alignItems:'flex-start', flex:1, minWidth:0 }}>
           {/* Left: avatar */}
           <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8, flexShrink:0 }}>
             {user.avatar_url
-              ? <img src={user.avatar_url} alt={fullName} style={{ width:96, height:96, borderRadius:12, objectFit:'cover' }} />
-              : <InitialAvatar name={fullName} size={96} />
+              ? <img src={user.avatar_url} alt={fullName} style={{ width: isMobile ? 72 : 96, height: isMobile ? 72 : 96, borderRadius:12, objectFit:'cover' }} />
+              : <InitialAvatar name={fullName} size={isMobile ? 72 : 96} />
             }
             <button style={{ fontSize:11,color:'var(--brand)',background:'none',border:'none',cursor:'pointer',fontWeight:600,fontFamily:'inherit' }}>
               <Camera size={11} style={{ marginRight:3, verticalAlign:'middle' }}/> Edit photo
@@ -493,10 +498,11 @@ export default function EmployeeProfilePage() {
             </div>
             {user.hire_date && <p style={{ fontSize:12, color:'#9E9B94', margin:'6px 0 0 0' }}>Hired {new Date(user.hire_date + 'T00:00:00').toLocaleDateString()}</p>}
           </div>
+          </div>{/* end avatar+info row */}
 
           {/* Right: snapshot + productivity */}
-          <div style={{ flexShrink:0, width:280, display:'flex', flexDirection:'column', gap:12 }}>
-            <div style={{ background:'#F7F6F3', borderRadius:10, padding:'14px 16px' }}>
+          <div style={{ flexShrink:0, width: isMobile ? '100%' : 280, display:'flex', flexDirection: isMobile ? 'row' : 'column', flexWrap:'wrap', gap:12 }}>
+            <div style={{ background:'#F7F6F3', borderRadius:10, padding:'14px 16px', flex: isMobile ? '1 1 0' : undefined, minWidth: isMobile ? 0 : undefined }}>
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
                   <span style={{ fontSize:11,fontWeight:600,color:'#9E9B94',textTransform:'uppercase',letterSpacing:'0.05em' }}>Hire Date</span>
@@ -535,7 +541,7 @@ export default function EmployeeProfilePage() {
               </div>
             </div>
 
-            <div style={{ background:'#F7F6F3', borderRadius:10, padding:'14px 16px' }}>
+            <div style={{ background:'#F7F6F3', borderRadius:10, padding:'14px 16px', flex: isMobile ? '1 1 0' : undefined, minWidth: isMobile ? 0 : undefined }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
                 <p style={{ fontSize:12,fontWeight:700,color:'#1A1917',margin:0 }}>Productivity</p>
                 <span style={{ fontSize:10,color:'#9E9B94' }}>This month</span>

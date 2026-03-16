@@ -56,12 +56,21 @@ const ROUTE_TITLES: Record<string, string> = {
   '/reports/first-time':           'First Time In',
 };
 
-const BOTTOM_TABS = [
+const BOTTOM_TABS_MANAGER = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Today' },
   { href: '/jobs',      icon: CalendarDays,    label: 'Schedule' },
+  { href: '/customers', icon: Users,            label: 'Customers' },
+];
+
+const BOTTOM_TABS_TECH = [
+  { href: '/dashboard', icon: LayoutDashboard, label: 'Today' },
   { href: '/my-jobs',   icon: ClipboardList,   label: 'My Jobs' },
   { href: '/customers', icon: Users,            label: 'Customers' },
 ];
+
+function getBottomTabs(role?: string) {
+  return role === 'technician' ? BOTTOM_TABS_TECH : BOTTOM_TABS_MANAGER;
+}
 
 const MORE_CARDS = [
   { title: 'Employees',      href: '/employees',         icon: UserCheck   },
@@ -229,7 +238,8 @@ export function DashboardLayout({ children, title, fullBleed, onNewJob }: Dashbo
   const initials = user ? `${user.first_name?.[0] || ''}${user.last_name?.[0] || ''}`.toUpperCase() : '';
 
   if (isMobile) {
-    const isMoreActive = !BOTTOM_TABS.some(t => t.href === '/dashboard' ? location === t.href : location.startsWith(t.href));
+    const bottomTabs = getBottomTabs(user?.role);
+    const isMoreActive = !bottomTabs.some(t => t.href === '/dashboard' ? location === t.href : location.startsWith(t.href));
     return (
       <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", backgroundColor: '#F7F6F3', minHeight: '100dvh', color: '#1A1917', position: 'relative' }}>
         {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} />}
@@ -268,7 +278,7 @@ export function DashboardLayout({ children, title, fullBleed, onNewJob }: Dashbo
           display: 'flex', alignItems: 'stretch',
           height: 64, paddingBottom: 'env(safe-area-inset-bottom)',
         }}>
-          {BOTTOM_TABS.map(tab => {
+          {bottomTabs.map(tab => {
             const isTab = tab.href === '/dashboard' ? location === tab.href : location.startsWith(tab.href);
             const Icon = tab.icon;
             return (
