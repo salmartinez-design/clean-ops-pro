@@ -1,7 +1,7 @@
 import { db } from "@workspace/db";
 import {
   usersTable, clientsTable, jobsTable, invoicesTable,
-  timeclockTable, scorecardsTable, contactTicketsTable,
+  timeclockTable, scorecardsTable, contactTicketsTable, companiesTable,
 } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import bcrypt from "bcryptjs";
@@ -248,12 +248,11 @@ export async function seedDemoData(companyId: number, ownerId: number) {
 
 // Allow running directly: pnpm exec tsx src/seed-demo.ts
 if (process.argv[1]?.endsWith("seed-demo.ts") || process.argv[1]?.endsWith("seed-demo.js")) {
-  const { db: dbInst } = await import("@workspace/db");
-  const { companiesTable: ct, usersTable: ut } = await import("@workspace/db/schema");
-  const { eq: eqFn } = await import("drizzle-orm");
-  const [company] = await dbInst.select({ id: ct.id }).from(ct).where(eqFn(ct.slug, "phes-cleaning")).limit(1);
-  const [owner] = await dbInst.select({ id: ut.id }).from(ut).where(eqFn(ut.email, "salmartinez@phes.io")).limit(1);
-  if (!company || !owner) { console.error("PHES company not found — run seed first"); process.exit(1); }
-  await seedDemoData(company.id, owner.id);
-  process.exit(0);
+  (async () => {
+    const [company] = await db.select({ id: companiesTable.id }).from(companiesTable).where(eq(companiesTable.slug, "phes-cleaning")).limit(1);
+    const [owner] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, "salmartinez@phes.io")).limit(1);
+    if (!company || !owner) { console.error("PHES company not found — run seed first"); process.exit(1); }
+    await seedDemoData(company.id, owner.id);
+    process.exit(0);
+  })();
 }
