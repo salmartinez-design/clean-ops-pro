@@ -1,7 +1,18 @@
 import { useState, useEffect, useRef } from "react";
 import { getAuthHeaders } from "@/lib/auth";
-import { X, ChevronRight, ChevronLeft, Search, Check, Clock, User, Calendar, Sparkles, Zap, ArrowRightCircle, Home, RefreshCw, Wrench, Building2, LayoutGrid } from "lucide-react";
+import { X, ChevronRight, ChevronLeft, Search, Check, Clock, User, Calendar, Sparkles, Zap, ArrowRightCircle, Home, RefreshCw, Wrench, Building2, LayoutGrid, MapPin } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+
+interface SuggestedTech {
+  employee_id: number;
+  name: string;
+  avatar_url: string | null;
+  tier: number;
+  reason: string;
+  zone_color: string | null;
+  zone_name: string | null;
+  last_job_end_time: string | null;
+}
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -80,6 +91,11 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  // Smart suggestions
+  const [suggestions, setSuggestions] = useState<SuggestedTech[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
+
   useEffect(() => {
     if (!open) {
       setStep(1);
@@ -87,6 +103,7 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
       setServiceType("standard_clean"); setScheduledDate(todayStr()); setScheduledTime("09:00");
       setDuration(120); setPrice(120); setPriceOverridden(false); setFrequency("one_time"); setNotes("");
       setSelectedEmployee(null); setSubmitting(false); setError("");
+      setSuggestions([]); setSuggestionsLoading(false); setSuggestionsDismissed(false);
     }
   }, [open]);
 
@@ -119,6 +136,32 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
       .then(d => setEmployees(d?.data || d || []))
       .catch(() => {});
   }, [step]);
+
+  // Fetch smart suggestions when entering step 3 (or when date/time/duration changes while on step 3)
+  useEffect(() => {
+    if (step !== 3) return;
+    const zip = selectedClient?.zip;
+    if (!scheduledDate || !scheduledTime || !duration || !zip) return;
+
+    // Compute end_time from start + duration
+    const [h, m] = scheduledTime.split(":").map(Number);
+    const endTotalMins = h * 60 + (m || 0) + duration;
+    const endH = Math.floor(endTotalMins / 60) % 24;
+    const endM = endTotalMins % 60;
+    const endTime = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+
+    setSuggestionsLoading(true);
+    setSuggestions([]);
+    fetch(`${API}/api/jobs/suggest-tech`, {
+      method: "POST",
+      headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ date: scheduledDate, start_time: scheduledTime, end_time: endTime, zip_code: zip }),
+    })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setSuggestions(Array.isArray(d) ? d : []))
+      .catch(() => setSuggestions([]))
+      .finally(() => setSuggestionsLoading(false));
+  }, [step, scheduledDate, scheduledTime, duration, selectedClient?.zip]);
 
   // Auto-price on service type change
   useEffect(() => {
@@ -378,8 +421,118 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
                 </div>
               </div>
 
+              {/* ── Smart Suggestions ── */}
+              {!suggestionsDismissed && (suggestionsLoading || suggestions.length > 0 || (!suggestionsLoading && selectedClient?.zip)) && (
+                <div style={{ border: "1px solid #E5E2DC", borderRadius: 12, overflow: "hidden" }}>
+                  {/* Header */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "#F7F6F3", borderBottom: "1px solid #E5E2DC" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                      <MapPin size={13} color="var(--brand, #5B9BD5)"/>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#1A1917", textTransform: "uppercase", letterSpacing: "0.06em" }}>Smart Suggestions</span>
+                    </div>
+                    <button onClick={() => setSuggestionsDismissed(true)} style={{ background: "none", border: "none", cursor: "pointer", color: "#9E9B94", padding: 2, lineHeight: 1 }}>
+                      <X size={13}/>
+                    </button>
+                  </div>
+
+                  {/* Loading skeletons */}
+                  {suggestionsLoading && (
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      {[0, 1, 2].map(i => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", borderBottom: i < 2 ? "1px solid #F3F4F6" : "none" }}>
+                          <div style={{ width: 34, height: 34, borderRadius: 17, background: "#F3F4F6", flexShrink: 0, animation: "pulse 1.5s ease-in-out infinite" }}/>
+                          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                            <div style={{ height: 11, width: "55%", background: "#F3F4F6", borderRadius: 4 }}/>
+                            <div style={{ height: 9, width: "35%", background: "#F3F4F6", borderRadius: 4 }}/>
+                          </div>
+                          <div style={{ height: 28, width: 58, background: "#F3F4F6", borderRadius: 6 }}/>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Suggestion rows */}
+                  {!suggestionsLoading && suggestions.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      {suggestions.map((s, i) => {
+                        const isTop = i === 0;
+                        const initials = s.name.split(" ").map((n: string) => n[0]).slice(0, 2).join("");
+                        return (
+                          <div key={s.employee_id} style={{
+                            display: "flex", alignItems: "center", gap: 12, padding: "11px 14px",
+                            borderLeft: isTop ? "3px solid var(--brand, #5B9BD5)" : "3px solid transparent",
+                            borderBottom: i < suggestions.length - 1 ? "1px solid #F3F4F6" : "none",
+                            background: selectedEmployee === s.employee_id ? "#EBF4FF" : "#fff",
+                          }}>
+                            {/* Avatar */}
+                            {s.avatar_url
+                              ? <img src={s.avatar_url} style={{ width: 34, height: 34, borderRadius: 17, objectFit: "cover", flexShrink: 0 }}/>
+                              : <div style={{ width: 34, height: 34, borderRadius: 17, background: isTop ? "#EBF4FF" : "#F3F4F6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: isTop ? "var(--brand, #5B9BD5)" : "#6B7280", flexShrink: 0 }}>
+                                  {initials}
+                                </div>
+                            }
+                            {/* Info */}
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                                <span style={{ fontSize: 13, fontWeight: 600, color: "#1A1917" }}>{s.name}</span>
+                                {s.zone_color && (
+                                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: s.zone_color, flexShrink: 0, display: "inline-block" }}/>
+                                    <span style={{ fontSize: 10, color: "#9E9B94" }}>{s.zone_name}</span>
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <span style={{
+                                  fontSize: 10, fontWeight: 600, padding: "1px 7px", borderRadius: 10,
+                                  background: s.tier === 1 ? "#DCFCE7" : s.tier === 2 ? "#EBF4FF" : s.tier === 3 ? "#FEF3C7" : "#F3F4F6",
+                                  color: s.tier === 1 ? "#16A34A" : s.tier === 2 ? "var(--brand, #5B9BD5)" : s.tier === 3 ? "#D97706" : "#6B7280",
+                                }}>
+                                  {s.reason}
+                                </span>
+                                {s.last_job_end_time && (
+                                  <span style={{ fontSize: 10, color: "#9E9B94" }}>Free after {s.last_job_end_time}</span>
+                                )}
+                                {!s.last_job_end_time && (
+                                  <span style={{ fontSize: 10, color: "#9E9B94" }}>Available all day</span>
+                                )}
+                              </div>
+                            </div>
+                            {/* Assign button */}
+                            <button
+                              onClick={() => {
+                                setSelectedEmployee(s.employee_id);
+                                setSuggestionsDismissed(true);
+                              }}
+                              style={{
+                                padding: "6px 12px", borderRadius: 7, border: "none", cursor: "pointer", fontFamily: "inherit",
+                                fontSize: 11, fontWeight: 700, flexShrink: 0,
+                                background: selectedEmployee === s.employee_id ? "var(--brand, #5B9BD5)" : "#F3F4F6",
+                                color: selectedEmployee === s.employee_id ? "#fff" : "#1A1917",
+                              }}
+                            >
+                              {selectedEmployee === s.employee_id ? "Assigned" : "Assign"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* No suggestions */}
+                  {!suggestionsLoading && suggestions.length === 0 && (
+                    <div style={{ padding: "16px 14px", textAlign: "center" }}>
+                      <p style={{ fontSize: 12, color: "#9E9B94", margin: 0 }}>No techs available in this window — adjust time or date</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── Full employee list ── */}
               <div>
-                <p style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Choose Assignee (optional)</p>
+                <p style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  {suggestions.length > 0 && !suggestionsDismissed ? "All Technicians" : "Choose Assignee (optional)"}
+                </p>
                 {employees.length === 0 && (
                   <p style={{ fontSize: 13, color: "#9E9B94", textAlign: "center", padding: "20px 0" }}>No active employees found</p>
                 )}

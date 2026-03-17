@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, usersTable, jobPhotosTable, timeclockTable, invoicesTable, scorecardsTable } from "@workspace/db/schema";
+import { jobsTable, clientsTable, usersTable, jobPhotosTable, timeclockTable, invoicesTable, scorecardsTable, serviceZonesTable, serviceZoneEmployeesTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, count, desc, sql, notExists, inArray } from "drizzle-orm";
 import { requireAuth } from "../lib/auth.js";
 import { generateJobCompletionPdf } from "../lib/generate-job-pdf.js";
@@ -256,6 +256,159 @@ router.get("/my-jobs", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("My jobs error:", err);
     return res.status(500).json({ error: "Internal Server Error", message: "Failed to get my jobs" });
+  }
+});
+
+// ─── POST /api/jobs/suggest-tech ─────────────────────────────────────────────
+router.post("/suggest-tech", requireAuth, async (req, res) => {
+  try {
+    const { date, start_time, end_time, zip_code } = req.body;
+    const companyId = req.auth!.companyId;
+
+    if (!date || !start_time || !end_time || !zip_code) {
+      return res.status(400).json({ error: "date, start_time, end_time, zip_code required" });
+    }
+
+    function toMinutes(t: string): number {
+      const [h, m] = t.split(":").map(Number);
+      return h * 60 + (m || 0);
+    }
+    function fmtMinutes(m: number): string {
+      const hh = Math.floor(m / 60) % 24;
+      const mm = m % 60;
+      const ampm = hh < 12 ? "AM" : "PM";
+      const h12 = hh === 0 ? 12 : hh > 12 ? hh - 12 : hh;
+      return `${h12}:${String(mm).padStart(2, "0")} ${ampm}`;
+    }
+
+    const bufStart = toMinutes(start_time) - 30;
+    const bufEnd   = toMinutes(end_time)   + 30;
+
+    // 1. All active technicians for this company
+    const techs = await db
+      .select({
+        id: usersTable.id,
+        first_name: usersTable.first_name,
+        last_name: usersTable.last_name,
+        home_zip: usersTable.zip,
+        avatar_url: usersTable.avatar_url,
+        role: usersTable.role,
+      })
+      .from(usersTable)
+      .where(
+        and(
+          eq(usersTable.company_id, companyId),
+          eq(usersTable.is_active, true),
+          inArray(usersTable.role, ["technician"] as any),
+        )
+      );
+
+    if (techs.length === 0) return res.json([]);
+
+    const techIds = techs.map(t => t.id);
+
+    // 2. All jobs that date for these techs
+    const dayJobs = await db
+      .select({
+        assigned_user_id: jobsTable.assigned_user_id,
+        scheduled_time:   jobsTable.scheduled_time,
+        allowed_hours:    jobsTable.allowed_hours,
+        zone_id:          jobsTable.zone_id,
+      })
+      .from(jobsTable)
+      .where(
+        and(
+          eq(jobsTable.company_id, companyId),
+          eq(jobsTable.scheduled_date, date),
+          inArray(jobsTable.assigned_user_id, techIds as any),
+        )
+      );
+
+    // 3. Detect conflicts; track last-job end time & zone per tech
+    const conflictedIds = new Set<number>();
+    const lastEndMap: Record<number, number>      = {};
+    const lastZoneMap: Record<number, number|null> = {};
+
+    for (const j of dayJobs) {
+      if (j.assigned_user_id == null) continue;
+      const uid   = j.assigned_user_id;
+      const jStart = toMinutes(j.scheduled_time || "00:00");
+      const jEnd   = jStart + parseFloat(j.allowed_hours ?? "1") * 60;
+
+      if (!lastEndMap[uid] || jEnd > lastEndMap[uid]) {
+        lastEndMap[uid]  = jEnd;
+        lastZoneMap[uid] = j.zone_id ?? null;
+      }
+
+      if (jStart < bufEnd && jEnd > bufStart) conflictedIds.add(uid);
+    }
+
+    const available = techs.filter(t => !conflictedIds.has(t.id));
+    if (available.length === 0) return res.json([]);
+
+    // 4. Zone assignments for available techs
+    const zoneRows = await db
+      .select({
+        user_id:   serviceZoneEmployeesTable.user_id,
+        zone_id:   serviceZoneEmployeesTable.zone_id,
+        zone_name: serviceZonesTable.name,
+        zone_color: serviceZonesTable.color,
+        zip_codes: serviceZonesTable.zip_codes,
+      })
+      .from(serviceZoneEmployeesTable)
+      .innerJoin(serviceZonesTable, eq(serviceZonesTable.id, serviceZoneEmployeesTable.zone_id))
+      .where(inArray(serviceZoneEmployeesTable.user_id, available.map(t => t.id)));
+
+    const techZoneMap: Record<number, typeof zoneRows[0]> = {};
+    for (const z of zoneRows) techZoneMap[z.user_id] = z;
+
+    // 5. Find the zone that contains the job zip
+    const allZones = await db
+      .select({ id: serviceZonesTable.id, name: serviceZonesTable.name, color: serviceZonesTable.color, zip_codes: serviceZonesTable.zip_codes })
+      .from(serviceZonesTable)
+      .where(eq(serviceZonesTable.company_id, companyId));
+
+    const jobZone = allZones.find(z => (z.zip_codes || []).includes(zip_code)) ?? null;
+
+    // 6. Score and rank
+    const scored = available.map(t => {
+      const tz = techZoneMap[t.id] ?? null;
+      const lastEnd = lastEndMap[t.id] ?? null;
+
+      let tier = 4;
+      let reason = "Available — different zone";
+
+      if (!tz) {
+        tier = 4;
+        reason = "No zone assigned";
+      } else if (jobZone && tz.zone_id === jobZone.id) {
+        tier = 1;
+        reason = "Same zone";
+      } else if (jobZone && lastZoneMap[t.id] != null && lastZoneMap[t.id] === jobZone.id) {
+        tier = 2;
+        reason = "Last job in same zone";
+      } else if (jobZone && (jobZone.zip_codes || []).includes(t.home_zip || "")) {
+        tier = 3;
+        reason = "Home in job zone";
+      }
+
+      return {
+        employee_id: t.id,
+        name: `${t.first_name} ${t.last_name}`,
+        avatar_url: t.avatar_url ?? null,
+        tier,
+        reason,
+        zone_color: tz?.zone_color ?? null,
+        zone_name: tz?.zone_name ?? null,
+        last_job_end_time: lastEnd != null ? fmtMinutes(lastEnd) : null,
+      };
+    });
+
+    scored.sort((a, b) => a.tier - b.tier || a.name.localeCompare(b.name));
+    return res.json(scored.slice(0, 5));
+  } catch (err) {
+    console.error("[suggest-tech]", err);
+    return res.status(500).json({ error: "Server error" });
   }
 });
 
