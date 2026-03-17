@@ -1,6 +1,7 @@
 import express, { type Express, Request, Response, NextFunction } from "express";
 import cors from "cors";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import rateLimit from "express-rate-limit";
 import router from "./routes";
@@ -86,10 +87,25 @@ app.use("/api/job-sms", messageLimiter);
 app.use("/api", generalLimiter);
 app.use("/api", router);
 
-// ── 404 Handler ──────────────────────────────────────────────────────────────
-app.use((_req: Request, res: Response) => {
-  res.status(404).json({ error: "Route not found" });
-});
+// ── Frontend Static Serving (Production) ─────────────────────────────────────
+if (process.env.NODE_ENV === "production") {
+  const frontendDist = path.resolve(__appDir, "../../cleanops-pro/dist/public");
+  if (fs.existsSync(frontendDist)) {
+    app.use(express.static(frontendDist, { maxAge: "1h" }));
+    app.use((_req: Request, res: Response) => {
+      res.sendFile(path.join(frontendDist, "index.html"));
+    });
+  } else {
+    app.use((_req: Request, res: Response) => {
+      res.status(404).json({ error: "Route not found" });
+    });
+  }
+} else {
+  // ── 404 Handler ──────────────────────────────────────────────────────────────
+  app.use((_req: Request, res: Response) => {
+    res.status(404).json({ error: "Route not found" });
+  });
+}
 
 // ── Global Error Handler ─────────────────────────────────────────────────────
 app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
