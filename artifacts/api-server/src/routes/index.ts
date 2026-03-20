@@ -44,6 +44,11 @@ import addonsRouter from "./addons.js";
 import routeSequencesRouter from "./route-sequences.js";
 import suppliesRouter from "./supplies.js";
 import revenueGoalRouter from "./revenue-goal.js";
+import policyRouter from "./policy.js";
+import hrAttendanceRouter from "./hr-attendance.js";
+import hrDisciplineRouter from "./hr-discipline.js";
+import hrLeaveRouter from "./hr-leave.js";
+import hrQualityRouter from "./hr-quality.js";
 
 const router: IRouter = Router();
 
@@ -92,5 +97,10 @@ router.use("/addons", addonsRouter);
 router.use("/routes", routeSequencesRouter);
 router.use("/supplies", suppliesRouter);
 router.use("/revenue-goal", revenueGoalRouter);
+router.use("/policy", policyRouter);
+router.use("/hr-attendance", hrAttendanceRouter);
+router.use("/hr-discipline", hrDisciplineRouter);
+router.use("/hr-leave", hrLeaveRouter);
+router.use("/hr-quality", hrQualityRouter);
 
 export default router;

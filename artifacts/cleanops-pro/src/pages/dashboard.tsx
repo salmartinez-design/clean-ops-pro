@@ -3,7 +3,7 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { getAuthHeaders, useAuthStore } from "@/lib/auth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useLocation } from "wouter";
-import { ChevronRight, Calendar } from "lucide-react";
+import { ChevronRight, Calendar, ShieldAlert } from "lucide-react";
 import { CloseDayModal } from "@/components/close-day-modal";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -300,6 +300,9 @@ export default function Dashboard() {
           )}
         </div>
 
+        {/* ── HR Alerts widget (owner/admin only) ── */}
+        {canAdmin && <HRAlertsBanner />}
+
         {/* Employee board — compact version */}
         {today?.employee_board?.length > 0 && (
           <div>
@@ -352,5 +355,62 @@ export default function Dashboard() {
       </div>
       {showCloseDay && <CloseDayModal onClose={() => setShowCloseDay(false)} />}
     </DashboardLayout>
+  );
+}
+
+function HRAlertsBanner() {
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    fetch(`${base}/api/hr-attendance/today`, { headers: getAuthHeaders() })
+      .then(r => r.ok ? r.json() : [])
+      .then((todayLogs: any[]) => {
+        const hrAlerts: any[] = [];
+        const ncns = todayLogs.filter((l: any) => l.type === "ncns");
+        const absences = todayLogs.filter((l: any) => l.type === "absent");
+        if (ncns.length > 0) hrAlerts.push({ level: "red", text: `${ncns.length} NCNS today — review required`, href: null });
+        if (absences.length > 0) hrAlerts.push({ level: "amber", text: `${absences.length} absence(s) logged today`, href: null });
+        setAlerts(hrAlerts);
+      })
+      .catch(() => {});
+  }, []);
+
+  if (!alerts.length) return null;
+
+  const COLOR: Record<string, { bg: string; border: string; text: string; dot: string }> = {
+    red:   { bg: "#FEF2F2", border: "#FECACA", text: "#991B1B", dot: "#EF4444" },
+    amber: { bg: "#FFFBEB", border: "#FDE68A", text: "#92400E", dot: "#F59E0B" },
+    blue:  { bg: "#EFF6FF", border: "#BFDBFE", text: "#1E40AF", dot: "#3B82F6" },
+  };
+
+  return (
+    <div style={{ background: "#fff", border: "1px solid #E5E2DC", borderRadius: 10, padding: "14px 18px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <ShieldAlert size={15} color="#6B7280" />
+        <span style={{ fontSize: 11, fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: FF }}>HR Alerts</span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {alerts.map((a, i) => {
+          const c = COLOR[a.level] ?? COLOR.blue;
+          return (
+            <div
+              key={i}
+              onClick={() => a.href && navigate(a.href)}
+              style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+                background: c.bg, border: `1px solid ${c.border}`, borderRadius: 7,
+                cursor: a.href ? "pointer" : "default",
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: 3, background: c.dot, flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: c.text, fontFamily: FF }}>{a.text}</span>
+              {a.href && <ChevronRight size={13} color={c.text} style={{ marginLeft: "auto" }} />}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

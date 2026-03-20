@@ -15,6 +15,10 @@ export const employmentTypeEnum = pgEnum("employment_type", [
   "full_time", "part_time", "contractor"
 ]);
 
+export const hrStatusEnum = pgEnum("hr_status", [
+  "trainee", "active", "quality_probation", "inactive",
+]);
+
 export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
   company_id: integer("company_id").references(() => companiesTable.id),
@@ -50,6 +54,11 @@ export const usersTable = pgTable("users", {
   emergency_contact_relation: text("emergency_contact_relation"),
   ssn_last4: text("ssn_last4"),
   notes: text("notes"),
+  hr_status: hrStatusEnum("hr_status").default("active"),
+  commission_rate_override: numeric("commission_rate_override", { precision: 6, scale: 2 }),
+  benefit_year_start: date("benefit_year_start"),
+  leave_balance_hours: numeric("leave_balance_hours", { precision: 8, scale: 2 }).default("0"),
+  leave_balance_activated: boolean("leave_balance_activated").default(false),
   invite_token: text("invite_token"),
   invite_sent_at: timestamp("invite_sent_at"),
   invite_accepted_at: timestamp("invite_accepted_at"),

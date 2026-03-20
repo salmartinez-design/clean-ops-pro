@@ -5,8 +5,9 @@ import { getAuthHeaders } from "@/lib/auth";
 import { applyTenantColor } from "@/lib/tenant-brand";
 import { useToast } from "@/hooks/use-toast";
 import { Upload, X, ImageIcon } from "lucide-react";
+import { HRPoliciesTab } from "./company/hr-policies";
 
-type Tab = 'general' | 'branding' | 'integrations' | 'payroll' | 'notifications' | 'clock-inout' | 'invoicing';
+type Tab = 'general' | 'branding' | 'integrations' | 'payroll' | 'notifications' | 'clock-inout' | 'invoicing' | 'hr-policies';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'general', label: 'General' },
@@ -16,6 +17,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'invoicing', label: 'Invoicing' },
   { id: 'integrations', label: 'Integrations' },
   { id: 'payroll', label: 'Payroll Options' },
+  { id: 'hr-policies', label: 'HR Policies' },
 ];
 
 export default function CompanyPage() {
@@ -61,6 +63,7 @@ export default function CompanyPage() {
         {activeTab === 'invoicing' && <InvoicingTab />}
         {activeTab === 'integrations' && <PlaceholderTab title="Integrations" desc="Connect QuickBooks, Stripe, and other services." />}
         {activeTab === 'payroll' && <PlaceholderTab title="Payroll Options" desc="Configure pay cadence and export settings." />}
+        {activeTab === 'hr-policies' && <HRPoliciesTab />}
       </div>
     </DashboardLayout>
   );

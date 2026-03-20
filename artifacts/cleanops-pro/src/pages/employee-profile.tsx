@@ -8,6 +8,7 @@ import {
   ArrowLeft, Camera, Plus, X, ChevronLeft, ChevronRight,
   Star, Save, Trash2, Edit2, Check, AlertCircle, Mail, Phone,
 } from "lucide-react";
+import { HRAttendanceTab, LeaveBalanceTab, DisciplineTab, QualityTab } from "./employee-profile-hr-tabs";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -58,6 +59,7 @@ const TABS = [
   'Information','Tags & Skills','Attendance','Availability',
   'User Account','Contacts','Scorecards','Additional Pay',
   'Contact Tickets','Jobs','Notes','Incentives',
+  'HR Attendance','Leave Balance','Discipline','Quality',
 ];
 
 const SKILLS_OPTIONS = [
@@ -1230,6 +1232,23 @@ export default function EmployeeProfilePage() {
               </div>
             </div>
           )}
+
+          {activeTab === 'HR Attendance' && user && (
+            <HRAttendanceTab employeeId={user.id} />
+          )}
+
+          {activeTab === 'Leave Balance' && user && (
+            <LeaveBalanceTab employeeId={user.id} />
+          )}
+
+          {activeTab === 'Discipline' && user && (
+            <DisciplineTab employeeId={user.id} />
+          )}
+
+          {activeTab === 'Quality' && user && (
+            <QualityTab employeeId={user.id} />
+          )}
+
         </div>
 
         {/* ── MODALS ── */}

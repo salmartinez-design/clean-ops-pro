@@ -1,8 +1,8 @@
-# CleanOps Pro
+# Qleno (formerly CleanOps Pro)
 
 ## Overview
 
-CleanOps Pro is a multi-tenant SaaS platform designed for residential and commercial cleaning businesses. It aims to be a comprehensive management solution, offering tools for managing jobs, employees, customers, invoicing, payroll, and marketing initiatives. The platform includes a dedicated client portal and robust reporting capabilities, intending to streamline operations, improve client satisfaction, and drive business growth.
+Qleno is a multi-tenant SaaS platform designed for residential and commercial cleaning businesses. It aims to be a comprehensive management solution, offering tools for managing jobs, employees, customers, invoicing, payroll, and marketing initiatives. The platform includes a dedicated client portal and robust reporting capabilities, intending to streamline operations, improve client satisfaction, and drive business growth.
 
 ## User Preferences
 
@@ -38,6 +38,7 @@ CleanOps Pro is built as a pnpm monorepo, separating the API server and the fron
 - **Dashboard:** Overview of operations, revenue, alerts, and employee status.
 - **Job Management:** 3-step wizard for job creation, dispatch, and duplication.
 - **Employee Management:** Detailed profiles (personal, skills, attendance, availability, payroll, performance) with invite flow.
+- **HR Policy Configuration:** Company Settings "HR Policies" tab with 4 accordion sections: Pay Structure (commission, mileage, training rates, overtime), Quality Enforcement (probation triggers, re-clean policy), Attendance Discipline (progressive discipline steps, NCNS policy, grace period), and Leave & Holidays (leave program, accrual/front-load, holiday list). Owner-only editing with persistent legal disclaimer banner. Employee profile gains 4 new tabs: HR Attendance (log tardy/absent/ncns/protected leave events with threshold auto-discipline), Leave Balance (hours balance + usage history), Discipline (progressive discipline records with pending-review workflow), and Quality (complaint logging + validation workflow). Dashboard HR Alerts widget shows same-day NCNS and absences for owner/admin. All backed by 7 new DB tables: company_pay_policy, company_attendance_policy, company_leave_policy, employee_attendance_log, employee_discipline_log, quality_complaints, employee_leave_usage. PHES seeded with: $0.70/mile mileage reimbursement (2025 IRS rate, must update annually), 10-min grace period, 4-step tardy discipline, 3-step absence discipline, NCNS policy on, 40-hr Paid Sick Leave (front-loaded, 90-day eligibility), 6 federal holidays.
 - **Customer Management:** Comprehensive client profiles with loyalty points, service history, and communication logs.
 - **Invoicing & Billing:** Invoice generation, status tracking, batch invoicing, and Stripe integration.
 - **Agreement Builder:** Native e-signature functionality with customizable templates and SHA-256 hashing.

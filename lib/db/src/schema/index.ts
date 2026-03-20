@@ -50,3 +50,5 @@ export * from "./job_add_ons";
 export * from "./route_sequences";
 export * from "./supply_items";
 export * from "./job_supplies";
+export * from "./hr_policies";
+export * from "./hr_logs";
