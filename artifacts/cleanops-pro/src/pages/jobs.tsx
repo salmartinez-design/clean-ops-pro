@@ -693,10 +693,11 @@ export default function JobsPage() {
   // ── MOBILE VIEW ──────────────────────────────────────────────────────────────
   if (isMobile) {
     return (
-      <>
-        <div style={{ display: "flex", flexDirection: "column", height: "100dvh", backgroundColor: "#F7F6F3", fontFamily: FF }}>
+      <DashboardLayout>
+        {/* Negative margins cancel DashboardLayout's main padding so sections go edge-to-edge */}
+        <div style={{ margin: "-16px -14px 0", fontFamily: FF }}>
           {/* Header */}
-          <div style={{ backgroundColor: "#FFFFFF", borderBottom: "1px solid #EEECE7", padding: "12px 16px 10px", flexShrink: 0 }}>
+          <div style={{ backgroundColor: "#FFFFFF", borderBottom: "1px solid #EEECE7", padding: "12px 16px 10px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
               <div style={{ fontSize: 16, fontWeight: 800, color: "#1A1917" }}>Dispatch</div>
               <button onClick={() => setShowWizard(true)}
@@ -719,7 +720,7 @@ export default function JobsPage() {
 
           {/* Summary strip */}
           {!loading && data && (
-            <div style={{ display: "flex", gap: 0, backgroundColor: "#FFFFFF", borderBottom: "1px solid #EEECE7", flexShrink: 0, overflowX: "auto" }}>
+            <div style={{ display: "flex", gap: 0, backgroundColor: "#FFFFFF", borderBottom: "1px solid #EEECE7", overflowX: "auto" }}>
               {[
                 { label: "Total", value: stats.total, color: "#1A1917" },
                 { label: "Done", value: stats.complete, color: "#16A34A" },
@@ -736,7 +737,7 @@ export default function JobsPage() {
           )}
 
           {/* Week strip */}
-          <div style={{ backgroundColor: "#FFFFFF", borderBottom: "1px solid #EEECE7", padding: "8px 12px", flexShrink: 0, display: "flex", gap: 4, overflowX: "auto" }}>
+          <div style={{ backgroundColor: "#FFFFFF", borderBottom: "1px solid #EEECE7", padding: "8px 12px", display: "flex", gap: 4, overflowX: "auto" }}>
             {Array.from({ length: 14 }, (_, i) => {
               const d = addDays(new Date(new Date().setHours(0, 0, 0, 0)), i - 3);
               const k = dateKey(d);
@@ -754,7 +755,7 @@ export default function JobsPage() {
 
           {/* Zone filter dots — mobile */}
           {zones.length > 0 && (
-            <div style={{ backgroundColor: "#FFFFFF", borderBottom: "1px solid #EEECE7", padding: "8px 14px", flexShrink: 0, display: "flex", gap: 6, overflowX: "auto", alignItems: "center" }}>
+            <div style={{ backgroundColor: "#FFFFFF", borderBottom: "1px solid #EEECE7", padding: "8px 14px", display: "flex", gap: 6, overflowX: "auto", alignItems: "center" }}>
               <button onClick={() => setSelectedZoneFilter(null)}
                 style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20, border: selectedZoneFilter === null ? "1.5px solid var(--brand)" : "1.5px solid #E5E2DC", backgroundColor: selectedZoneFilter === null ? "var(--brand-dim)" : "transparent", color: selectedZoneFilter === null ? "var(--brand)" : "#6B7280", cursor: "pointer", flexShrink: 0 }}>
                 All
@@ -770,7 +771,7 @@ export default function JobsPage() {
           )}
 
           {/* Job list */}
-          <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px" }}>
+          <div style={{ padding: "12px 14px" }}>
             {loading ? (
               <div style={{ textAlign: "center", padding: 48, color: "#9E9B94", fontSize: 13 }}>Loading...</div>
             ) : allJobs.length === 0 ? (
@@ -796,7 +797,7 @@ export default function JobsPage() {
           <JobPanel job={selectedJob} employees={data?.employees || []} onClose={() => setSelectedJob(null)} onUpdate={load} mobile />
         )}
         <JobWizard open={showWizard} onClose={() => setShowWizard(false)} onCreated={() => { setShowWizard(false); load(); }} />
-      </>
+      </DashboardLayout>
     );
   }
 
