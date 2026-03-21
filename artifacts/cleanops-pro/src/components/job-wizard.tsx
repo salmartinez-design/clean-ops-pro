@@ -76,7 +76,8 @@ interface JobWizardProps {
 }
 
 export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
-  const { activeBranchId } = useBranch();
+  const { activeBranchId, branches } = useBranch();
+  const [selectedBranchOverride, setSelectedBranchOverride] = useState<string | number>("all");
   const [step, setStep] = useState(0);
 
   // Step 0 — Type
@@ -155,6 +156,8 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
       setCommercialDuration(120); setCommercialFrequency("on_demand"); setCommercialNotes("");
       setSelectedEmployee(null); setSubmitting(false); setError("");
       setSuggestions([]); setSuggestionsLoading(false); setSuggestionsDismissed(false);
+    } else {
+      setSelectedBranchOverride(activeBranchId);
     }
   }, [open]);
 
@@ -287,7 +290,7 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
           billing_method: billingMethod,
           hourly_rate: billingMethod === "hourly" ? effectiveRate : undefined,
           estimated_hours: estimatedHours || undefined,
-          branch_id: activeBranchId !== "all" ? activeBranchId : undefined,
+          branch_id: selectedBranchOverride !== "all" ? selectedBranchOverride : undefined,
         };
       } else {
         if (!selectedClient) return;
@@ -302,7 +305,7 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
           notes: notes || undefined,
           assigned_user_id: selectedEmployee || undefined,
           status: "scheduled",
-          branch_id: activeBranchId !== "all" ? activeBranchId : undefined,
+          branch_id: selectedBranchOverride !== "all" ? selectedBranchOverride : undefined,
         };
       }
       const r = await fetch(`${API}/api/jobs`, {
@@ -861,6 +864,28 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
                   </p>
                 </div>
               </div>
+
+              {/* Location override */}
+              {branches.length >= 2 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.06em" }}>Location</label>
+                  <select
+                    value={String(selectedBranchOverride)}
+                    onChange={e => setSelectedBranchOverride(e.target.value === "all" ? "all" : parseInt(e.target.value))}
+                    style={{
+                      width: "100%", padding: "9px 12px", borderRadius: 8,
+                      border: "1px solid #E5E2DC", background: "#fff",
+                      fontSize: 13, fontWeight: 500, color: "#1A1917",
+                      fontFamily: "'Plus Jakarta Sans', sans-serif", cursor: "pointer",
+                    }}
+                  >
+                    <option value="all">All Locations</option>
+                    {branches.map(b => (
+                      <option key={b.id} value={String(b.id)}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Access notes reminder for commercial */}
               {clientType === "commercial" && selectedProperty?.access_notes && (

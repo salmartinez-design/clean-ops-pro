@@ -15,7 +15,7 @@ import {
   UserCheck, FileText, DollarSign, BarChart2, TrendingUp,
   ArrowUpCircle, Tag, BookOpen, Star, Settings, Clock,
   MoreHorizontal, Search, MessageSquare, X, ChevronRight,
-  MapPin, ChevronDown,
+  ChevronDown,
 } from "lucide-react";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -193,7 +193,6 @@ function BranchSwitcher({ role, compact = false }: { role?: string; compact?: bo
           whiteSpace: "nowrap",
         }}
       >
-        <MapPin size={compact ? 11 : 13} />
         {label}
         <ChevronDown size={compact ? 10 : 12} />
       </button>
