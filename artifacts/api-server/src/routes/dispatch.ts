@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, usersTable, clientsTable, timeclockTable, jobPhotosTable, serviceZonesTable, serviceZoneEmployeesTable } from "@workspace/db/schema";
+import { jobsTable, usersTable, clientsTable, timeclockTable, jobPhotosTable, serviceZonesTable, serviceZoneEmployeesTable, accountsTable, accountPropertiesTable } from "@workspace/db/schema";
 import { eq, and, count, sql, inArray } from "drizzle-orm";
 import { requireAuth } from "../lib/auth.js";
 
@@ -29,7 +29,7 @@ router.get("/", requireAuth, async (req, res) => {
       .select({
         id: jobsTable.id,
         client_id: jobsTable.client_id,
-        client_name: sql<string>`concat(${clientsTable.first_name}, ' ', ${clientsTable.last_name})`,
+        client_name: sql<string>`CASE WHEN ${jobsTable.account_id} IS NOT NULL THEN ${accountsTable.account_name} ELSE concat(${clientsTable.first_name}, ' ', ${clientsTable.last_name}) END`,
         address: clientsTable.address,
         city: clientsTable.city,
         assigned_user_id: jobsTable.assigned_user_id,
@@ -44,9 +44,24 @@ router.get("/", requireAuth, async (req, res) => {
         zone_id: jobsTable.zone_id,
         zone_color: serviceZonesTable.color,
         zone_name: serviceZonesTable.name,
+        account_id: jobsTable.account_id,
+        account_name: accountsTable.account_name,
+        billing_method: jobsTable.billing_method,
+        hourly_rate: jobsTable.hourly_rate,
+        estimated_hours: jobsTable.estimated_hours,
+        billed_hours: jobsTable.billed_hours,
+        billed_amount: jobsTable.billed_amount,
+        charge_failed_at: jobsTable.charge_failed_at,
+        charge_succeeded_at: jobsTable.charge_succeeded_at,
+        account_property_id: jobsTable.account_property_id,
+        property_address: accountPropertiesTable.address,
+        property_city: accountPropertiesTable.city,
+        property_access_notes: accountPropertiesTable.access_notes,
       })
       .from(jobsTable)
       .leftJoin(clientsTable, eq(jobsTable.client_id, clientsTable.id))
+      .leftJoin(accountsTable, eq(jobsTable.account_id, accountsTable.id))
+      .leftJoin(accountPropertiesTable, eq(jobsTable.account_property_id, accountPropertiesTable.id))
       .leftJoin(serviceZonesTable, eq(jobsTable.zone_id, serviceZonesTable.id))
       .where(and(
         eq(jobsTable.company_id, companyId),
@@ -125,11 +140,15 @@ router.get("/", requireAuth, async (req, res) => {
       const clock = clockMap.get(j.id);
       const photos = photoMap.get(j.id) || { before: 0, after: 0 };
       const durationMinutes = j.allowed_hours ? Math.round(parseFloat(j.allowed_hours) * 60) : 120;
+      const isCommercial = !!j.account_id;
+      const displayAddress = isCommercial
+        ? (j.property_address ? `${j.property_address}${j.property_city ? `, ${j.property_city}` : ""}` : null)
+        : (j.address ? `${j.address}${j.city ? `, ${j.city}` : ""}` : null);
       return {
         id: j.id,
         client_id: j.client_id,
         client_name: j.client_name,
-        address: j.address ? `${j.address}${j.city ? `, ${j.city}` : ""}` : null,
+        address: displayAddress,
         assigned_user_id: j.assigned_user_id,
         service_type: j.service_type,
         status: j.status,
@@ -144,6 +163,17 @@ router.get("/", requireAuth, async (req, res) => {
         zone_id: j.zone_id,
         zone_color: j.zone_color ?? null,
         zone_name: j.zone_name ?? null,
+        account_id: j.account_id ?? null,
+        account_name: j.account_name ?? null,
+        billing_method: j.billing_method ?? null,
+        hourly_rate: j.hourly_rate ? parseFloat(j.hourly_rate) : null,
+        estimated_hours: j.estimated_hours ? parseFloat(j.estimated_hours) : null,
+        billed_hours: j.billed_hours ? parseFloat(j.billed_hours) : null,
+        billed_amount: j.billed_amount ? parseFloat(j.billed_amount) : null,
+        charge_failed_at: j.charge_failed_at ?? null,
+        charge_succeeded_at: j.charge_succeeded_at ?? null,
+        property_address: displayAddress,
+        property_access_notes: j.property_access_notes ?? null,
         clock_entry: clock ? {
           id: clock.id,
           clock_in_at: clock.clock_in_at,

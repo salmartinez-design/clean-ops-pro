@@ -10,6 +10,7 @@ import {
 import {
   ChevronLeft, ChevronRight, Plus, Clock, Camera, X, MapPin, User,
   DollarSign, CheckCircle, AlertCircle, LayoutGrid, List, Calendar, Package,
+  Building2, AlertTriangle,
 } from "lucide-react";
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
@@ -37,7 +38,7 @@ const TIMES = Array.from({ length: TOTAL_SLOTS }, (_, i) => {
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 interface ClockEntry { id: number; clock_in_at: string | null; clock_out_at: string | null; distance_from_job_ft: number | null; is_flagged: boolean; }
-interface DispatchJob { id: number; client_id: number; client_name: string; address: string | null; assigned_user_id: number | null; assigned_user_name?: string; service_type: string; status: string; scheduled_date: string; scheduled_time: string | null; frequency: string; amount: number; duration_minutes: number; notes: string | null; before_photo_count: number; after_photo_count: number; clock_entry: ClockEntry | null; zone_id?: number | null; zone_color?: string | null; zone_name?: string | null; }
+interface DispatchJob { id: number; client_id: number; client_name: string; address: string | null; assigned_user_id: number | null; assigned_user_name?: string; service_type: string; status: string; scheduled_date: string; scheduled_time: string | null; frequency: string; amount: number; duration_minutes: number; notes: string | null; before_photo_count: number; after_photo_count: number; clock_entry: ClockEntry | null; zone_id?: number | null; zone_color?: string | null; zone_name?: string | null; account_id?: number | null; account_name?: string | null; billing_method?: string | null; hourly_rate?: number | null; estimated_hours?: number | null; billed_hours?: number | null; billed_amount?: number | null; charge_failed_at?: string | null; charge_succeeded_at?: string | null; property_access_notes?: string | null; }
 interface Employee { id: number; name: string; role: string; jobs: DispatchJob[]; zone?: { zone_id: number; zone_color: string; zone_name: string } | null; }
 interface DispatchData { employees: Employee[]; unassigned_jobs: DispatchJob[]; }
 
@@ -196,12 +197,51 @@ function JobPanel({ job, employees, onClose, onUpdate, mobile }: {
             <span style={{ fontSize: 12, fontWeight: 700, color: sc.text, textTransform: "capitalize" }}>{job.status.replace("_", " ")}</span>
           </div>
 
+            {job.account_id && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", background: "var(--brand-dim, #EBF4FF)", borderRadius: 8, marginBottom: 12, width: "fit-content" }}>
+              <Building2 size={13} color="var(--brand, #00C9A0)" />
+              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--brand, #00C9A0)" }}>{job.account_name || "Commercial Account"}</span>
+            </div>
+          )}
+
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
             <IR icon={<Clock size={14} />} label={`${fmtTime(job.scheduled_time)} – ${fmtTime(minsToStr(endMins))}`} />
             {job.address && <IR icon={<MapPin size={14} />} label={job.address} />}
             {(assignedEmp || job.assigned_user_name) && <IR icon={<User size={14} />} label={assignedEmp?.name || job.assigned_user_name || ""} />}
-            <IR icon={<DollarSign size={14} />} label={`$${(job.amount || 0).toFixed(2)}`} bold />
+            {job.billing_method === "hourly" && job.hourly_rate
+              ? <IR icon={<DollarSign size={14} />} label={`$${job.hourly_rate.toFixed(2)}/hr · Hourly${job.billed_hours ? ` · ${job.billed_hours}h billed` : job.estimated_hours ? ` · est. ${job.estimated_hours}h` : ""}`} bold />
+              : <IR icon={<DollarSign size={14} />} label={`$${(job.billed_amount ?? job.amount ?? 0).toFixed(2)}`} bold />
+            }
           </div>
+
+          {job.property_access_notes && (
+            <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 14 }}>
+              <AlertTriangle size={14} style={{ color: "#D97706", flexShrink: 0, marginTop: 1 }} />
+              <div>
+                <p style={{ fontSize: 10, fontWeight: 700, color: "#92400E", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 3px" }}>Building Access</p>
+                <p style={{ margin: 0, fontSize: 12, color: "#92400E", lineHeight: 1.5 }}>{job.property_access_notes}</p>
+              </div>
+            </div>
+          )}
+
+          {job.billing_method === "hourly" && job.billed_hours != null && job.estimated_hours != null && job.billed_hours > job.estimated_hours + 0.5 && (
+            <div style={{ background: "#FEF3C7", border: "1px solid #FCD34D", borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 14 }}>
+              <AlertTriangle size={14} style={{ color: "#92400E", flexShrink: 0, marginTop: 1 }} />
+              <p style={{ margin: 0, fontSize: 12, color: "#92400E", lineHeight: 1.5 }}>
+                Hours over budget: {(job.billed_hours - job.estimated_hours).toFixed(1)}h over estimate
+                {job.hourly_rate ? ` · ~$${((job.billed_hours - job.estimated_hours) * job.hourly_rate).toFixed(2)} additional` : ""}
+              </p>
+            </div>
+          )}
+
+          {job.charge_failed_at && !job.charge_succeeded_at && (
+            <div style={{ background: "#FEE2E2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+              <AlertTriangle size={14} style={{ color: "#EF4444", flexShrink: 0 }} />
+              <p style={{ margin: 0, fontSize: 12, color: "#991B1B" }}>
+                Charge failed{job.billed_amount ? ` — $${Number(job.billed_amount).toFixed(2)}` : ""} · Check card on file
+              </p>
+            </div>
+          )}
 
           {job.notes && (
             <PS label="Notes"><p style={{ margin: 0, fontSize: 13, color: "#6B7280", lineHeight: 1.6 }}>{job.notes}</p></PS>
@@ -354,6 +394,7 @@ function PBadge({ count, label, color, bg, border }: { count: number; label: str
 // ─── MOBILE JOB CARD ──────────────────────────────────────────────────────────
 function MobileJobCard({ job, onClick }: { job: DispatchJob; onClick: () => void }) {
   const sc = STATUS[job.status] || STATUS.scheduled;
+  const isCommercial = !!job.account_id;
   return (
     <div onClick={onClick} style={{
       backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 12,
@@ -362,7 +403,14 @@ function MobileJobCard({ job, onClick }: { job: DispatchJob; onClick: () => void
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: "#1A1917", marginBottom: 2 }}>{job.client_name}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#1A1917" }}>{job.client_name}</div>
+            {isCommercial && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "var(--brand-dim, #EBF4FF)", color: "var(--brand, #00C9A0)" }}>
+                <Building2 size={9}/> Comm.
+              </span>
+            )}
+          </div>
           <div style={{ fontSize: 12, color: "var(--brand)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>{fmtSvc(job.service_type)}</div>
         </div>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 20, backgroundColor: sc.bg, border: `1px solid ${sc.border}`, fontSize: 11, fontWeight: 700, color: sc.text, textTransform: "capitalize", flexShrink: 0, marginLeft: 10 }}>
@@ -409,7 +457,22 @@ function MobileJobCard({ job, onClick }: { job: DispatchJob; onClick: () => void
         </div>
       )}
       <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #F0EEE9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 14, fontWeight: 800, color: "#1A1917" }}>${(job.amount || 0).toFixed(2)}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {isCommercial && job.billing_method === "hourly" && job.hourly_rate
+            ? <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1917" }}>${job.hourly_rate.toFixed(0)}/hr{job.estimated_hours ? ` · est. ${job.estimated_hours}h` : ""}</span>
+            : <span style={{ fontSize: 14, fontWeight: 800, color: "#1A1917" }}>${(job.billed_amount ?? job.amount ?? 0).toFixed(2)}</span>
+          }
+          {job.charge_failed_at && !job.charge_succeeded_at && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "#FEE2E2", color: "#991B1B" }}>
+              <AlertTriangle size={9}/> Charge failed
+            </span>
+          )}
+          {isCommercial && job.property_access_notes && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "#FFFBEB", color: "#92400E" }}>
+              <AlertTriangle size={9}/> Access req.
+            </span>
+          )}
+        </div>
         <span style={{ fontSize: 11, color: "#9E9B94" }}>Tap to view &rarr;</span>
       </div>
     </div>

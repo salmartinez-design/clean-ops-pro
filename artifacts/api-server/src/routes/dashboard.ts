@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, usersTable, invoicesTable, timeclockTable, scorecardsTable } from "@workspace/db/schema";
+import { jobsTable, clientsTable, usersTable, invoicesTable, timeclockTable, scorecardsTable, accountsTable, accountPropertiesTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, lt, isNull, count, sum, avg, desc, sql, isNotNull } from "drizzle-orm";
 import { requireAuth } from "../lib/auth.js";
 
@@ -456,6 +456,121 @@ router.get("/kpis", requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.error("Dashboard kpis error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.get("/commercial-alerts", requireAuth, async (req, res) => {
+  try {
+    const companyId = req.auth!.companyId;
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    const [chargeFailedJobs, noCardAccounts, hoursVarianceJobs] = await Promise.all([
+      // Alert 1: Charge failed jobs
+      db.select({
+        id: jobsTable.id,
+        account_id: jobsTable.account_id,
+        account_name: accountsTable.account_name,
+        billed_amount: jobsTable.billed_amount,
+        charge_failed_at: jobsTable.charge_failed_at,
+        property_address: accountPropertiesTable.address,
+        property_city: accountPropertiesTable.city,
+      })
+      .from(jobsTable)
+      .leftJoin(accountsTable, eq(jobsTable.account_id, accountsTable.id))
+      .leftJoin(accountPropertiesTable, eq(jobsTable.account_property_id, accountPropertiesTable.id))
+      .where(and(
+        eq(jobsTable.company_id, companyId),
+        isNotNull(jobsTable.charge_failed_at),
+        isNull(jobsTable.charge_succeeded_at),
+        isNotNull(jobsTable.account_id),
+      )),
+
+      // Alert 2: Accounts expecting auto-charge but no card on file
+      db.select({
+        id: accountsTable.id,
+        account_name: accountsTable.account_name,
+      })
+      .from(accountsTable)
+      .where(and(
+        eq(accountsTable.company_id, companyId),
+        eq(accountsTable.is_active, true),
+        sql`${accountsTable.payment_method} = 'card_on_file'`,
+        isNull(accountsTable.stripe_customer_id),
+      )),
+
+      // Alert 3: Today's completed commercial jobs with hours overrun > 0.5
+      db.select({
+        id: jobsTable.id,
+        account_id: jobsTable.account_id,
+        account_name: accountsTable.account_name,
+        estimated_hours: jobsTable.estimated_hours,
+        billed_hours: jobsTable.billed_hours,
+        hourly_rate: jobsTable.hourly_rate,
+        property_address: accountPropertiesTable.address,
+        assigned_user_name: sql<string>`concat(${usersTable.first_name}, ' ', ${usersTable.last_name})`,
+        charge_attempted_at: jobsTable.charge_attempted_at,
+      })
+      .from(jobsTable)
+      .leftJoin(accountsTable, eq(jobsTable.account_id, accountsTable.id))
+      .leftJoin(accountPropertiesTable, eq(jobsTable.account_property_id, accountPropertiesTable.id))
+      .leftJoin(usersTable, eq(jobsTable.assigned_user_id, usersTable.id))
+      .where(and(
+        eq(jobsTable.company_id, companyId),
+        eq(jobsTable.status, "complete"),
+        eq(jobsTable.scheduled_date, todayStr),
+        isNotNull(jobsTable.account_id),
+        isNotNull(jobsTable.billed_hours),
+        isNotNull(jobsTable.estimated_hours),
+        isNull(jobsTable.charge_attempted_at),
+        sql`${jobsTable.billing_method} = 'hourly'`,
+        sql`${jobsTable.billed_hours}::numeric > ${jobsTable.estimated_hours}::numeric + 0.5`,
+      )),
+    ]);
+
+    const alerts: { level: string; type: string; text: string; job_id?: number; account_id?: number }[] = [];
+
+    for (const j of chargeFailedJobs) {
+      const amt = j.billed_amount ? `$${parseFloat(j.billed_amount).toFixed(2)}` : "unknown amount";
+      const date = j.charge_failed_at ? new Date(j.charge_failed_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
+      const addr = j.property_address ? `${j.property_address}${j.property_city ? `, ${j.property_city}` : ""}` : "";
+      alerts.push({
+        level: "red",
+        type: "charge_failed",
+        text: `${j.account_name} — ${amt} charge failed on ${date}${addr ? ` · ${addr}` : ""}`,
+        job_id: j.id,
+        account_id: j.account_id ?? undefined,
+      });
+    }
+
+    for (const j of hoursVarianceJobs) {
+      const est = j.estimated_hours ? parseFloat(j.estimated_hours) : 0;
+      const billed = j.billed_hours ? parseFloat(j.billed_hours) : 0;
+      const rate = j.hourly_rate ? parseFloat(j.hourly_rate) : 0;
+      const extra = Math.max(0, billed - est);
+      const extraCost = extra * rate;
+      const addr = j.property_address || "";
+      alerts.push({
+        level: "amber",
+        type: "hours_variance",
+        text: `${j.assigned_user_name} ran ${extra.toFixed(1)}h over at ${addr} · $${extraCost.toFixed(2)} additional billed`,
+        job_id: j.id,
+        account_id: j.account_id ?? undefined,
+      });
+    }
+
+    for (const a of noCardAccounts) {
+      alerts.push({
+        level: "amber",
+        type: "no_card_on_file",
+        text: `${a.account_name} — no card on file. Account expects auto-charge.`,
+        account_id: a.id,
+      });
+    }
+
+    return res.json({ alerts });
+  } catch (err) {
+    console.error("Commercial alerts error:", err);
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });

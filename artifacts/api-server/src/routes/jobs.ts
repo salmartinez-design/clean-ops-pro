@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, usersTable, jobPhotosTable, timeclockTable, invoicesTable, scorecardsTable, serviceZonesTable, serviceZoneEmployeesTable, companiesTable, accountsTable, accountRateCardsTable } from "@workspace/db/schema";
+import { jobsTable, clientsTable, usersTable, jobPhotosTable, timeclockTable, invoicesTable, scorecardsTable, serviceZonesTable, serviceZoneEmployeesTable, companiesTable, accountsTable, accountRateCardsTable, accountPropertiesTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, count, desc, sql, notExists, inArray, isNotNull } from "drizzle-orm";
 import { requireAuth } from "../lib/auth.js";
 import { generateJobCompletionPdf } from "../lib/generate-job-pdf.js";
@@ -99,49 +99,87 @@ router.get("/", requireAuth, async (req, res) => {
 
 router.post("/", requireAuth, async (req, res) => {
   try {
-    const { client_id, assigned_user_id, service_type, scheduled_date, scheduled_time, frequency, base_fee, allowed_hours, notes } = req.body;
+    const {
+      client_id, assigned_user_id, service_type, scheduled_date, scheduled_time,
+      frequency, base_fee, allowed_hours, notes,
+      account_id, account_property_id, billing_method, hourly_rate, estimated_hours,
+    } = req.body;
 
     const newJob = await db
       .insert(jobsTable)
       .values({
         company_id: req.auth!.companyId,
-        client_id,
+        client_id: client_id || null,
         assigned_user_id,
         service_type,
         scheduled_date,
         scheduled_time,
         frequency,
-        base_fee,
+        base_fee: base_fee ?? "0",
         allowed_hours,
         notes,
+        account_id: account_id || null,
+        account_property_id: account_property_id || null,
+        billing_method: billing_method || null,
+        hourly_rate: hourly_rate || null,
+        estimated_hours: estimated_hours || null,
       })
       .returning();
 
-    const jobWithClient = await db
-      .select({
-        client_name: sql<string>`concat(${clientsTable.first_name}, ' ', ${clientsTable.last_name})`,
-        assigned_user_name: sql<string>`concat(${usersTable.first_name}, ' ', ${usersTable.last_name})`,
-        address: clientsTable.address,
-        city: clientsTable.city,
-        state: clientsTable.state,
-        zip: clientsTable.zip,
-      })
-      .from(clientsTable)
-      .leftJoin(usersTable, eq(usersTable.id, assigned_user_id))
-      .where(eq(clientsTable.id, client_id))
-      .limit(1);
-
-    const client = jobWithClient[0];
     const jobId = newJob[0].id;
+    let geoAddress: string | null = null;
+    let geoZip: string | null = null;
+    let displayClientName = "";
+    let displayAssignedName: string | null = null;
 
-    if (client?.address) {
-      const fullAddress = [client.address, client.city, client.state, client.zip].filter(Boolean).join(", ");
-      const coords = await geocodeAddress(fullAddress);
+    if (account_property_id) {
+      // Commercial job — geocode from property address
+      const [prop] = await db
+        .select({ address: accountPropertiesTable.address, city: accountPropertiesTable.city, state: accountPropertiesTable.state, zip: accountPropertiesTable.zip })
+        .from(accountPropertiesTable)
+        .where(eq(accountPropertiesTable.id, account_property_id))
+        .limit(1);
+      if (prop) {
+        geoAddress = [prop.address, prop.city, prop.state, prop.zip].filter(Boolean).join(", ");
+        geoZip = prop.zip ?? null;
+      }
+      // Get account name for display
+      if (account_id) {
+        const [acc] = await db.select({ account_name: accountsTable.account_name }).from(accountsTable).where(eq(accountsTable.id, account_id)).limit(1);
+        displayClientName = acc?.account_name || "";
+      }
+    } else if (client_id) {
+      // Residential job — geocode from client address
+      const [clientRow] = await db
+        .select({
+          client_name: sql<string>`concat(${clientsTable.first_name}, ' ', ${clientsTable.last_name})`,
+          address: clientsTable.address,
+          city: clientsTable.city,
+          state: clientsTable.state,
+          zip: clientsTable.zip,
+        })
+        .from(clientsTable)
+        .where(eq(clientsTable.id, client_id))
+        .limit(1);
+      if (clientRow) {
+        geoAddress = clientRow.address ? [clientRow.address, clientRow.city, clientRow.state, clientRow.zip].filter(Boolean).join(", ") : null;
+        geoZip = clientRow.zip ?? null;
+        displayClientName = clientRow.client_name || "";
+      }
+    }
+
+    // Get assigned user name
+    if (assigned_user_id) {
+      const [emp] = await db
+        .select({ name: sql<string>`concat(${usersTable.first_name}, ' ', ${usersTable.last_name})` })
+        .from(usersTable).where(eq(usersTable.id, assigned_user_id)).limit(1);
+      displayAssignedName = emp?.name || null;
+    }
+
+    if (geoAddress) {
+      const coords = await geocodeAddress(geoAddress);
       if (coords) {
-        await db
-          .update(jobsTable)
-          .set({ job_lat: String(coords.lat), job_lng: String(coords.lng), geocode_failed: false })
-          .where(eq(jobsTable.id, jobId));
+        await db.update(jobsTable).set({ job_lat: String(coords.lat), job_lng: String(coords.lng), geocode_failed: false }).where(eq(jobsTable.id, jobId));
         newJob[0] = { ...newJob[0], job_lat: String(coords.lat) as any, job_lng: String(coords.lng) as any, geocode_failed: false };
       } else {
         await db.update(jobsTable).set({ geocode_failed: true }).where(eq(jobsTable.id, jobId));
@@ -149,9 +187,8 @@ router.post("/", requireAuth, async (req, res) => {
       }
     }
 
-    // Auto-assign zone from client's zip code
-    if (client?.zip) {
-      const zoneId = await resolveZoneForZip(req.auth!.companyId, client.zip);
+    if (geoZip) {
+      const zoneId = await resolveZoneForZip(req.auth!.companyId, geoZip);
       if (zoneId) {
         await db.update(jobsTable).set({ zone_id: zoneId }).where(eq(jobsTable.id, jobId));
         newJob[0] = { ...newJob[0], zone_id: zoneId } as any;
@@ -160,8 +197,8 @@ router.post("/", requireAuth, async (req, res) => {
 
     return res.status(201).json({
       ...newJob[0],
-      client_name: client?.client_name || "",
-      assigned_user_name: client?.assigned_user_name || null,
+      client_name: displayClientName,
+      assigned_user_name: displayAssignedName,
       before_photo_count: 0,
       after_photo_count: 0,
     });
@@ -181,11 +218,11 @@ router.get("/my-jobs", requireAuth, async (req, res) => {
       .select({
         id: jobsTable.id,
         client_id: jobsTable.client_id,
-        client_name: sql<string>`concat(${clientsTable.first_name}, ' ', ${clientsTable.last_name})`,
-        address: clientsTable.address,
-        city: clientsTable.city,
-        state: clientsTable.state,
-        zip: clientsTable.zip,
+        client_name: sql<string>`CASE WHEN ${jobsTable.account_id} IS NOT NULL THEN ${accountsTable.account_name} ELSE concat(${clientsTable.first_name}, ' ', ${clientsTable.last_name}) END`,
+        address: sql<string | null>`CASE WHEN ${jobsTable.account_property_id} IS NOT NULL THEN ${accountPropertiesTable.address} ELSE ${clientsTable.address} END`,
+        city: sql<string | null>`CASE WHEN ${jobsTable.account_property_id} IS NOT NULL THEN ${accountPropertiesTable.city} ELSE ${clientsTable.city} END`,
+        state: sql<string | null>`CASE WHEN ${jobsTable.account_property_id} IS NOT NULL THEN ${accountPropertiesTable.state} ELSE ${clientsTable.state} END`,
+        zip: sql<string | null>`CASE WHEN ${jobsTable.account_property_id} IS NOT NULL THEN ${accountPropertiesTable.zip} ELSE ${clientsTable.zip} END`,
         lat: clientsTable.lat,
         lng: clientsTable.lng,
         job_lat: jobsTable.job_lat,
@@ -198,9 +235,17 @@ router.get("/my-jobs", requireAuth, async (req, res) => {
         scheduled_time: jobsTable.scheduled_time,
         base_fee: jobsTable.base_fee,
         notes: jobsTable.notes,
+        account_id: jobsTable.account_id,
+        account_name: accountsTable.account_name,
+        billing_method: jobsTable.billing_method,
+        account_property_id: jobsTable.account_property_id,
+        property_name: accountPropertiesTable.property_name,
+        access_notes: accountPropertiesTable.access_notes,
       })
       .from(jobsTable)
       .leftJoin(clientsTable, eq(jobsTable.client_id, clientsTable.id))
+      .leftJoin(accountsTable, eq(jobsTable.account_id, accountsTable.id))
+      .leftJoin(accountPropertiesTable, eq(jobsTable.account_property_id, accountPropertiesTable.id))
       .where(and(
         eq(jobsTable.company_id, companyId),
         eq(jobsTable.assigned_user_id, userId),

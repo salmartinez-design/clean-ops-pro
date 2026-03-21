@@ -78,6 +78,12 @@ type Job = {
   status: string;
   scheduled_date: string;
   scheduled_time: string | null;
+  account_id: number | null;
+  account_name: string | null;
+  billing_method: string | null;
+  account_property_id: number | null;
+  property_name: string | null;
+  access_notes: string | null;
   base_fee: number;
   before_photo_count: number;
   after_photo_count: number;
@@ -354,7 +360,14 @@ function JobCard({ job, empPos, onRefresh }: { job: Job; empPos: { lat: number; 
         <span style={{ fontSize: 20, fontWeight: 700, color: "#1A1917" }}>${job.base_fee.toFixed(2)}</span>
       </div>
 
-      <p style={{ fontSize: 18, fontWeight: 700, color: "#1A1917", margin: "10px 0 4px" }}>{job.client_name}</p>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, marginBottom: 4 }}>
+        <p style={{ fontSize: 18, fontWeight: 700, color: "#1A1917", margin: 0 }}>{job.client_name}</p>
+        {job.account_id && (
+          <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "var(--brand-dim, #EBF4FF)", color: "var(--brand, #00C9A0)" }}>
+            Commercial
+          </span>
+        )}
+      </div>
       <p style={{ fontSize: 11, fontWeight: 600, color: "var(--brand)", textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 4px" }}>
         {formatServiceType(job.service_type)}
       </p>
@@ -366,6 +379,11 @@ function JobCard({ job, empPos, onRefresh }: { job: Job; empPos: { lat: number; 
           {job.address}{job.city ? `, ${job.city}` : ""}
         </p>
       )}
+      {job.account_id && job.property_name && (
+        <p style={{ fontSize: 11, color: "#9E9B94", margin: "2px 0 0" }}>
+          Property: {job.property_name}
+        </p>
+      )}
 
       <DistanceBadge jobLat={job.job_lat} jobLng={job.job_lng} empPos={empPos} />
 
@@ -375,7 +393,14 @@ function JobCard({ job, empPos, onRefresh }: { job: Job; empPos: { lat: number; 
         </p>
       )}
 
-      {job.client_notes && (
+      {job.access_notes && (
+        <div style={{ backgroundColor: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "10px 12px", marginTop: 12 }}>
+          <p style={{ fontSize: 10, fontWeight: 700, color: "#92400E", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 4px" }}>Building Access</p>
+          <p style={{ fontSize: 12, color: "#92400E", margin: 0, lineHeight: 1.5 }}>{job.access_notes}</p>
+        </div>
+      )}
+
+      {!job.access_notes && job.client_notes && (
         <div style={{ backgroundColor: "#F7F6F3", borderRadius: 8, padding: "10px 12px", marginTop: 12 }}>
           <p style={{ fontSize: 10, fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 4px" }}>Client Notes</p>
           <p style={{ fontSize: 12, color: "#1A1917", margin: 0 }}>{job.client_notes}</p>

@@ -3,7 +3,7 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { getAuthHeaders, useAuthStore } from "@/lib/auth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useLocation } from "wouter";
-import { ChevronRight, Calendar, ShieldAlert } from "lucide-react";
+import { ChevronRight, Calendar, ShieldAlert, Building2 } from "lucide-react";
 import { CloseDayModal } from "@/components/close-day-modal";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -300,6 +300,9 @@ export default function Dashboard() {
           )}
         </div>
 
+        {/* ── Commercial Alerts ── */}
+        {canAdmin && <CommercialAlertsBanner />}
+
         {/* ── HR Alerts widget (owner/admin only) ── */}
         {canAdmin && <HRAlertsBanner />}
 
@@ -355,6 +358,60 @@ export default function Dashboard() {
       </div>
       {showCloseDay && <CloseDayModal onClose={() => setShowCloseDay(false)} />}
     </DashboardLayout>
+  );
+}
+
+function CommercialAlertsBanner() {
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    fetch(`${base}/api/dashboard/commercial-alerts`, { headers: getAuthHeaders() })
+      .then(r => r.ok ? r.json() : { alerts: [] })
+      .then(d => setAlerts(d.alerts || []))
+      .catch(() => {});
+  }, []);
+
+  if (!alerts.length) return null;
+
+  const COLOR: Record<string, { bg: string; border: string; text: string; dot: string }> = {
+    red:   { bg: "#FEF2F2", border: "#FECACA", text: "#991B1B", dot: "#EF4444" },
+    amber: { bg: "#FFFBEB", border: "#FDE68A", text: "#92400E", dot: "#F59E0B" },
+    blue:  { bg: "#EFF6FF", border: "#BFDBFE", text: "#1E40AF", dot: "#3B82F6" },
+  };
+
+  return (
+    <div style={{ background: "#fff", border: "1px solid #E5E2DC", borderRadius: 10, padding: "14px 18px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <Building2 size={15} color="#6B7280" />
+        <span style={{ fontSize: 11, fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: FF }}>Commercial Alerts</span>
+        <span style={{ fontSize: 11, fontWeight: 700, background: alerts.some(a => a.level === "red") ? "#FEE2E2" : "#FEF3C7", color: alerts.some(a => a.level === "red") ? "#991B1B" : "#92400E", borderRadius: 10, padding: "1px 8px", fontFamily: FF }}>
+          {alerts.length}
+        </span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {alerts.map((a, i) => {
+          const c = COLOR[a.level] ?? COLOR.blue;
+          const href = a.job_id ? `/jobs` : a.account_id ? `/accounts/${a.account_id}` : null;
+          return (
+            <div
+              key={i}
+              onClick={() => href && navigate(href)}
+              style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "9px 12px",
+                background: c.bg, border: `1px solid ${c.border}`, borderRadius: 7,
+                cursor: href ? "pointer" : "default",
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: 3, background: c.dot, flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: c.text, fontFamily: FF, flex: 1, lineHeight: 1.4 }}>{a.text}</span>
+              {href && <ChevronRight size={13} color={c.text} style={{ flexShrink: 0 }} />}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

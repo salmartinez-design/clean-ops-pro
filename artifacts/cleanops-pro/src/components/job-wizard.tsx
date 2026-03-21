@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { getAuthHeaders } from "@/lib/auth";
-import { X, ChevronRight, ChevronLeft, Search, Check, Clock, User, Calendar, Sparkles, Zap, ArrowRightCircle, Home, RefreshCw, Wrench, Building2, LayoutGrid, MapPin } from "lucide-react";
+import { X, ChevronRight, ChevronLeft, Search, Check, Clock, User, Calendar, Sparkles, Zap, ArrowRightCircle, Home, RefreshCw, Wrench, Building2, LayoutGrid, MapPin, AlertTriangle, DollarSign } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 interface SuggestedTech {
@@ -34,15 +34,20 @@ const TIME_OPTIONS = [
 const DURATION_OPTIONS = [60, 90, 120, 150, 180, 210, 240, 300, 360];
 
 const FREQ_OPTIONS = [
-  { value: "one_time", label: "One Time" },
-  { value: "weekly",   label: "Weekly" },
-  { value: "biweekly", label: "Bi-Weekly" },
-  { value: "monthly",  label: "Monthly" },
+  { value: "on_demand", label: "One Time" },
+  { value: "weekly",    label: "Weekly" },
+  { value: "biweekly",  label: "Bi-Weekly" },
+  { value: "monthly",   label: "Monthly" },
 ];
 
 const STATUS_LABELS: Record<string, string> = {
   scheduled: "Scheduled", in_progress: "In Progress", complete: "Complete", cancelled: "Cancelled",
 };
+
+const COMMERCIAL_SERVICE_TYPES = [
+  "standard_clean", "deep_clean", "office_cleaning", "common_areas", "carpet_cleaning",
+  "window_cleaning", "move_out", "post_construction",
+];
 
 function formatTime(t: string) {
   const [h, m] = t.split(":").map(Number);
@@ -59,6 +64,10 @@ function todayStr() {
   return new Date().toISOString().split("T")[0];
 }
 
+function fmtSvcLabel(s: string) {
+  return s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
 interface JobWizardProps {
   open: boolean;
   onClose: () => void;
@@ -66,24 +75,54 @@ interface JobWizardProps {
 }
 
 export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(0);
 
-  // Step 1 — Client
+  // Step 0 — Type
+  const [clientType, setClientType] = useState<"residential" | "commercial">("residential");
+
+  // Step 1 — Residential Client
   const [clientQuery, setClientQuery] = useState("");
   const [clientResults, setClientResults] = useState<any[]>([]);
   const [selectedClient, setSelectedClient] = useState<any>(null);
   const [clientRecentJobs, setClientRecentJobs] = useState<any[]>([]);
   const clientDebounce = useRef<ReturnType<typeof setTimeout>>();
 
-  // Step 2 — Details
+  // Step 1 — Commercial Account
+  const [accountQuery, setAccountQuery] = useState("");
+  const [accountResults, setAccountResults] = useState<any[]>([]);
+  const [selectedAccount, setSelectedAccount] = useState<any>(null);
+  const accountDebounce = useRef<ReturnType<typeof setTimeout>>();
+
+  // Step 1B — Commercial Property
+  const [propertyQuery, setPropertyQuery] = useState("");
+  const [properties, setProperties] = useState<any[]>([]);
+  const [selectedProperty, setSelectedProperty] = useState<any>(null);
+
+  // Step 2 — Residential Details
   const [serviceType, setServiceType] = useState("standard_clean");
   const [scheduledDate, setScheduledDate] = useState(todayStr());
   const [scheduledTime, setScheduledTime] = useState("09:00");
   const [duration, setDuration] = useState(120);
   const [price, setPrice] = useState(120);
   const [priceOverridden, setPriceOverridden] = useState(false);
-  const [frequency, setFrequency] = useState("one_time");
+  const [frequency, setFrequency] = useState("on_demand");
   const [notes, setNotes] = useState("");
+
+  // Step 2 — Commercial Service + Rate
+  const [commercialServiceType, setCommercialServiceType] = useState("standard_clean");
+  const [rateLookup, setRateLookup] = useState<any>(null);
+  const [rateLookupLoading, setRateLookupLoading] = useState(false);
+  const [rateLookupDone, setRateLookupDone] = useState(false);
+  const [rateOverride, setRateOverride] = useState(false);
+  const [overrideRate, setOverrideRate] = useState("");
+  const [estimatedHours, setEstimatedHours] = useState("");
+  const [manualBillingMethod, setManualBillingMethod] = useState("hourly");
+  const [manualRate, setManualRate] = useState("");
+  const [commercialScheduledDate, setCommercialScheduledDate] = useState(todayStr());
+  const [commercialScheduledTime, setCommercialScheduledTime] = useState("09:00");
+  const [commercialDuration, setCommercialDuration] = useState(120);
+  const [commercialFrequency, setCommercialFrequency] = useState("on_demand");
+  const [commercialNotes, setCommercialNotes] = useState("");
 
   // Step 3 — Assign
   const [employees, setEmployees] = useState<any[]>([]);
@@ -96,30 +135,66 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
 
+  const maxStep = clientType === "commercial" ? 4 : 3;
+
   useEffect(() => {
     if (!open) {
-      setStep(1);
+      setStep(0);
+      setClientType("residential");
       setClientQuery(""); setClientResults([]); setSelectedClient(null); setClientRecentJobs([]);
+      setAccountQuery(""); setAccountResults([]); setSelectedAccount(null);
+      setPropertyQuery(""); setProperties([]); setSelectedProperty(null);
       setServiceType("standard_clean"); setScheduledDate(todayStr()); setScheduledTime("09:00");
-      setDuration(120); setPrice(120); setPriceOverridden(false); setFrequency("one_time"); setNotes("");
+      setDuration(120); setPrice(120); setPriceOverridden(false); setFrequency("on_demand"); setNotes("");
+      setCommercialServiceType("standard_clean"); setRateLookup(null); setRateLookupLoading(false);
+      setRateLookupDone(false); setRateOverride(false); setOverrideRate(""); setEstimatedHours("");
+      setManualBillingMethod("hourly"); setManualRate("");
+      setCommercialScheduledDate(todayStr()); setCommercialScheduledTime("09:00");
+      setCommercialDuration(120); setCommercialFrequency("on_demand"); setCommercialNotes("");
       setSelectedEmployee(null); setSubmitting(false); setError("");
       setSuggestions([]); setSuggestionsLoading(false); setSuggestionsDismissed(false);
     }
   }, [open]);
 
-  // Client search debounce
+  // Residential client search
   useEffect(() => {
     clearTimeout(clientDebounce.current);
-    if (clientQuery.length < 2) { setClientResults([]); return; }
+    if (clientType !== "residential" || clientQuery.length < 2) { setClientResults([]); return; }
     clientDebounce.current = setTimeout(async () => {
       try {
         const r = await fetch(`${API}/api/clients?search=${encodeURIComponent(clientQuery)}&limit=6`, { headers: getAuthHeaders() });
         if (r.ok) { const d = await r.json(); setClientResults(d.data || d || []); }
       } catch {}
     }, 250);
-  }, [clientQuery]);
+  }, [clientQuery, clientType]);
 
-  // Load last 3 jobs when client selected
+  // Commercial account search
+  useEffect(() => {
+    clearTimeout(accountDebounce.current);
+    if (clientType !== "commercial") { setAccountResults([]); return; }
+    accountDebounce.current = setTimeout(async () => {
+      try {
+        const r = await fetch(`${API}/api/accounts?active=true&limit=20`, { headers: getAuthHeaders() });
+        if (r.ok) {
+          const d = await r.json();
+          const all = d.data || d || [];
+          const q = accountQuery.trim().toLowerCase();
+          setAccountResults(q ? all.filter((a: any) => a.account_name?.toLowerCase().includes(q)) : all);
+        }
+      } catch {}
+    }, 200);
+  }, [accountQuery, clientType]);
+
+  // Load properties when account selected
+  useEffect(() => {
+    if (!selectedAccount) { setProperties([]); setSelectedProperty(null); return; }
+    fetch(`${API}/api/accounts/${selectedAccount.id}/properties`, { headers: getAuthHeaders() })
+      .then(r => r.ok ? r.json() : { data: [] })
+      .then(d => setProperties(d.data || d || []))
+      .catch(() => {});
+  }, [selectedAccount]);
+
+  // Load recent jobs when residential client selected
   useEffect(() => {
     if (!selectedClient) { setClientRecentJobs([]); return; }
     fetch(`${API}/api/jobs?client_id=${selectedClient.id}&limit=3&sort=desc`, { headers: getAuthHeaders() })
@@ -128,64 +203,104 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
       .catch(() => {});
   }, [selectedClient]);
 
+  // Rate lookup for commercial
+  useEffect(() => {
+    if (!selectedAccount || !commercialServiceType || clientType !== "commercial") return;
+    setRateLookup(null); setRateLookupDone(false); setRateLookupLoading(true);
+    fetch(`${API}/api/accounts/${selectedAccount.id}/rates/lookup?service_type=${encodeURIComponent(commercialServiceType)}`, { headers: getAuthHeaders() })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { setRateLookup(d?.rate || null); setRateLookupDone(true); })
+      .catch(() => { setRateLookupDone(true); })
+      .finally(() => setRateLookupLoading(false));
+  }, [selectedAccount, commercialServiceType, clientType]);
+
   // Load employees when entering step 3
   useEffect(() => {
     if (step !== 3) return;
-    fetch(`${API}/api/users?role=cleaner,employee&active=true`, { headers: getAuthHeaders() })
+    fetch(`${API}/api/users?is_active=true&limit=50`, { headers: getAuthHeaders() })
       .then(r => r.ok ? r.json() : null)
-      .then(d => setEmployees(d?.data || d || []))
+      .then(d => {
+        const all = d?.data || d || [];
+        setEmployees(all.filter((e: any) => e.role === "cleaner" || e.role === "employee" || e.role === "lead" || e.role === "admin"));
+      })
       .catch(() => {});
   }, [step]);
 
-  // Fetch smart suggestions when entering step 3 (or when date/time/duration changes while on step 3)
+  // Smart suggestions
+  const suggestZip = clientType === "commercial" ? selectedProperty?.zip : selectedClient?.zip;
+  const suggestDate = clientType === "commercial" ? commercialScheduledDate : scheduledDate;
+  const suggestTime = clientType === "commercial" ? commercialScheduledTime : scheduledTime;
+  const suggestDuration = clientType === "commercial" ? commercialDuration : duration;
+
   useEffect(() => {
     if (step !== 3) return;
-    const zip = selectedClient?.zip;
-    if (!scheduledDate || !scheduledTime || !duration || !zip) return;
-
-    // Compute end_time from start + duration
-    const [h, m] = scheduledTime.split(":").map(Number);
-    const endTotalMins = h * 60 + (m || 0) + duration;
+    if (!suggestDate || !suggestTime || !suggestDuration || !suggestZip) return;
+    const [h, m] = suggestTime.split(":").map(Number);
+    const endTotalMins = h * 60 + (m || 0) + suggestDuration;
     const endH = Math.floor(endTotalMins / 60) % 24;
     const endM = endTotalMins % 60;
     const endTime = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
-
     setSuggestionsLoading(true);
     setSuggestions([]);
     fetch(`${API}/api/jobs/suggest-tech`, {
       method: "POST",
       headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
-      body: JSON.stringify({ date: scheduledDate, start_time: scheduledTime, end_time: endTime, zip_code: zip }),
+      body: JSON.stringify({ date: suggestDate, start_time: suggestTime, end_time: endTime, zip_code: suggestZip }),
     })
       .then(r => r.ok ? r.json() : [])
       .then(d => setSuggestions(Array.isArray(d) ? d : []))
       .catch(() => setSuggestions([]))
       .finally(() => setSuggestionsLoading(false));
-  }, [step, scheduledDate, scheduledTime, duration, selectedClient?.zip]);
+  }, [step, suggestDate, suggestTime, suggestDuration, suggestZip]);
 
-  // Auto-price on service type change
+  // Auto-price on service type change (residential only)
   useEffect(() => {
-    if (priceOverridden) return;
+    if (clientType !== "residential" || priceOverridden) return;
     const svc = SERVICE_TYPES.find(s => s.value === serviceType);
     if (svc) { setPrice(svc.price); setDuration(svc.duration); }
-  }, [serviceType, priceOverridden]);
+  }, [serviceType, priceOverridden, clientType]);
 
   async function submit() {
-    if (!selectedClient) return;
     setSubmitting(true); setError("");
     try {
-      const body = {
-        client_id: selectedClient.id,
-        service_type: serviceType,
-        scheduled_date: scheduledDate,
-        scheduled_time: scheduledTime + ":00",
-        duration_minutes: duration,
-        base_fee: price,
-        frequency,
-        notes: notes || undefined,
-        assigned_user_id: selectedEmployee || undefined,
-        status: "scheduled",
-      };
+      let body: any;
+      if (clientType === "commercial") {
+        const billingMethod = rateLookup ? rateLookup.billing_method : manualBillingMethod;
+        const effectiveRate = rateOverride ? overrideRate : (rateLookup?.rate_amount || manualRate);
+        const baseFee = billingMethod === "flat_rate"
+          ? (parseFloat(effectiveRate) || 0)
+          : (parseFloat(effectiveRate) || 0) * (parseFloat(estimatedHours) || 1);
+        body = {
+          account_id: selectedAccount?.id,
+          account_property_id: selectedProperty?.id,
+          service_type: commercialServiceType,
+          scheduled_date: commercialScheduledDate,
+          scheduled_time: commercialScheduledTime + ":00",
+          duration_minutes: commercialDuration,
+          base_fee: baseFee || undefined,
+          frequency: commercialFrequency,
+          notes: commercialNotes || undefined,
+          assigned_user_id: selectedEmployee || undefined,
+          status: "scheduled",
+          billing_method: billingMethod,
+          hourly_rate: billingMethod === "hourly" ? effectiveRate : undefined,
+          estimated_hours: estimatedHours || undefined,
+        };
+      } else {
+        if (!selectedClient) return;
+        body = {
+          client_id: selectedClient.id,
+          service_type: serviceType,
+          scheduled_date: scheduledDate,
+          scheduled_time: scheduledTime + ":00",
+          duration_minutes: duration,
+          base_fee: price,
+          frequency,
+          notes: notes || undefined,
+          assigned_user_id: selectedEmployee || undefined,
+          status: "scheduled",
+        };
+      }
       const r = await fetch(`${API}/api/jobs`, {
         method: "POST",
         headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
@@ -204,6 +319,8 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
   if (!open) return null;
 
   const svcConfig = SERVICE_TYPES.find(s => s.value === serviceType)!;
+  const effectiveBillingMethod = rateOverride ? manualBillingMethod : (rateLookup?.billing_method || manualBillingMethod);
+  const effectiveRate = rateOverride ? overrideRate : (rateLookup?.rate_amount || manualRate);
 
   const OVERLAY: React.CSSProperties = {
     position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 9998,
@@ -215,18 +332,33 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
     maxHeight: "90vh", overflowY: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.18)",
     position: "relative",
   };
-  const STEP_LABEL = (n: number, label: string) => (
+
+  const resSteps = ["Client", "Details", "Assign"];
+  const comSteps = ["Account", "Service", "Assign", "Confirm"];
+  const stepLabels = clientType === "commercial" ? comSteps : resSteps;
+
+  const STEP_LABEL = (n: number, label: string, activeStep: number) => (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <div style={{
         width: 28, height: 28, borderRadius: 14,
-        background: step >= n ? "var(--brand, #5B9BD5)" : "#F3F4F6",
-        color: step >= n ? "#fff" : "#9E9B94",
+        background: activeStep >= n ? "var(--brand, #00C9A0)" : "#F3F4F6",
+        color: activeStep >= n ? "#fff" : "#9E9B94",
         display: "flex", alignItems: "center", justifyContent: "center",
         fontSize: 12, fontWeight: 700, flexShrink: 0,
-      }}>{step > n ? <Check size={13}/> : n}</div>
-      <span style={{ fontSize: 12, fontWeight: step === n ? 700 : 400, color: step === n ? "#1A1917" : "#9E9B94" }}>{label}</span>
+      }}>{activeStep > n ? <Check size={13}/> : n}</div>
+      <span style={{ fontSize: 12, fontWeight: activeStep === n ? 700 : 400, color: activeStep === n ? "#1A1917" : "#9E9B94" }}>{label}</span>
     </div>
   );
+
+  const displayStep = step; // 0 = type, 1..4 = wizard steps
+
+  function canGoNext() {
+    if (step === 0) return true;
+    if (step === 1 && clientType === "residential") return !!selectedClient;
+    if (step === 1 && clientType === "commercial") return !!selectedAccount && !!selectedProperty;
+    if (step === 2 && clientType === "commercial") return !!commercialServiceType && (rateLookupDone || !selectedAccount);
+    return true;
+  }
 
   return (
     <div style={OVERLAY} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
@@ -236,13 +368,16 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <p style={{ fontSize: 18, fontWeight: 700, color: "#1A1917", margin: "0 0 12px" }}>Create New Job</p>
-              <div style={{ display: "flex", gap: 24 }}>
-                {STEP_LABEL(1, "Client")}
-                <div style={{ width: 24, height: 1, background: "#E5E2DC", alignSelf: "center" }}/>
-                {STEP_LABEL(2, "Details")}
-                <div style={{ width: 24, height: 1, background: "#E5E2DC", alignSelf: "center" }}/>
-                {STEP_LABEL(3, "Assign")}
-              </div>
+              {step > 0 && (
+                <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+                  {stepLabels.map((label, idx) => (
+                    <div key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {STEP_LABEL(idx + 1, label, step)}
+                      {idx < stepLabels.length - 1 && <div style={{ width: 20, height: 1, background: "#E5E2DC" }}/>}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#9E9B94", padding: 4 }}><X size={20}/></button>
           </div>
@@ -250,8 +385,44 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
 
         <div style={{ padding: "20px 24px" }}>
 
-          {/* ── STEP 1: CLIENT ── */}
-          {step === 1 && (
+          {/* ── STEP 0: CLIENT TYPE ── */}
+          {step === 0 && (
+            <div>
+              <p style={{ fontSize: 13, color: "#6B7280", margin: "0 0 16px" }}>Who is this job for?</p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                {[
+                  { value: "residential", icon: Home, label: "Residential Client", sublabel: "Individual home, flat-rate billing" },
+                  { value: "commercial", icon: Building2, label: "Commercial Account", sublabel: "Property management, hourly billing" },
+                ].map(opt => {
+                  const Icon = opt.icon;
+                  const sel = clientType === opt.value;
+                  return (
+                    <button key={opt.value} onClick={() => setClientType(opt.value as any)}
+                      style={{
+                        padding: "20px 16px", border: `2px solid ${sel ? "var(--brand, #00C9A0)" : "#E5E2DC"}`,
+                        borderRadius: 12, background: sel ? "color-mix(in srgb, var(--brand) 8%, #fff)" : "#fff",
+                        cursor: "pointer", textAlign: "left", fontFamily: "inherit", transition: "all 0.15s",
+                      }}>
+                      <div style={{ marginBottom: 10 }}>
+                        <Icon size={24} color={sel ? "var(--brand, #00C9A0)" : "#6B7280"}/>
+                      </div>
+                      <p style={{ fontSize: 14, fontWeight: 700, color: sel ? "var(--brand, #00C9A0)" : "#1A1917", margin: "0 0 4px" }}>{opt.label}</p>
+                      <p style={{ fontSize: 12, color: "#9E9B94", margin: 0, lineHeight: 1.4 }}>{opt.sublabel}</p>
+                      {sel && (
+                        <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 4 }}>
+                          <Check size={13} color="var(--brand, #00C9A0)"/>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--brand, #00C9A0)" }}>Selected</span>
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── STEP 1: CLIENT (Residential) ── */}
+          {step === 1 && clientType === "residential" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div style={{ position: "relative" }}>
                 <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9E9B94" }}/>
@@ -269,7 +440,7 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
                   {clientResults.map((c, i) => (
                     <button key={c.id} onClick={() => { setSelectedClient(c); setClientQuery(`${c.first_name} ${c.last_name}`); setClientResults([]); }}
                       style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 14px", background: "#fff", border: "none", borderBottom: i < clientResults.length - 1 ? "1px solid #F3F4F6" : "none", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
-                      <div style={{ width: 34, height: 34, borderRadius: 17, background: "#EBF4FF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "var(--brand, #5B9BD5)", flexShrink: 0 }}>
+                      <div style={{ width: 34, height: 34, borderRadius: 17, background: "var(--brand-dim, #EBF4FF)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "var(--brand, #00C9A0)", flexShrink: 0 }}>
                         {c.first_name?.[0]}{c.last_name?.[0]}
                       </div>
                       <div>
@@ -282,8 +453,8 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
               )}
 
               {selectedClient && (
-                <div style={{ background: "#EBF4FF", border: "1px solid color-mix(in srgb, var(--brand) 30%, transparent)", borderRadius: 10, padding: "12px 14px", display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 18, background: "var(--brand, #5B9BD5)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+                <div style={{ background: "var(--brand-dim, #EBF4FF)", border: "1px solid color-mix(in srgb, var(--brand) 30%, transparent)", borderRadius: 10, padding: "12px 14px", display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 18, background: "var(--brand, #00C9A0)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
                     {selectedClient.first_name?.[0]}{selectedClient.last_name?.[0]}
                   </div>
                   <div style={{ flex: 1 }}>
@@ -314,26 +485,142 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
             </div>
           )}
 
-          {/* ── STEP 2: DETAILS ── */}
-          {step === 2 && (
+          {/* ── STEP 1: ACCOUNT + PROPERTY (Commercial) ── */}
+          {step === 1 && clientType === "commercial" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Account</p>
+                {!selectedAccount ? (
+                  <>
+                    <div style={{ position: "relative" }}>
+                      <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9E9B94" }}/>
+                      <input
+                        autoFocus
+                        value={accountQuery}
+                        onChange={e => setAccountQuery(e.target.value)}
+                        placeholder="Search accounts…"
+                        style={{ width: "100%", padding: "10px 12px 10px 34px", border: "1px solid #E5E2DC", borderRadius: 8, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}
+                      />
+                    </div>
+                    {accountResults.length > 0 && (
+                      <div style={{ border: "1px solid #E5E2DC", borderRadius: 10, overflow: "hidden", marginTop: 8 }}>
+                        {accountResults.slice(0, 8).map((a: any, i: number) => (
+                          <button key={a.id} onClick={() => { setSelectedAccount(a); setAccountQuery(""); }}
+                            style={{ display: "flex", alignItems: "flex-start", gap: 10, width: "100%", padding: "12px 14px", background: "#fff", border: "none", borderBottom: i < Math.min(accountResults.length, 8) - 1 ? "1px solid #F3F4F6" : "none", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+                            <div style={{ width: 32, height: 32, borderRadius: 8, background: "var(--brand-dim, #EBF4FF)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                              <Building2 size={15} color="var(--brand, #00C9A0)"/>
+                            </div>
+                            <div>
+                              <p style={{ fontSize: 13, fontWeight: 700, color: "#1A1917", margin: "0 0 2px" }}>{a.account_name}</p>
+                              <p style={{ fontSize: 11, color: "#9E9B94", margin: 0 }}>
+                                {a.stats?.active_properties || 0} properties · {(a.payment_method || "").replace(/_/g, " ")}
+                              </p>
+                            </div>
+                          </button>
+                        ))}
+                        <button onClick={() => window.open("/accounts", "_blank")}
+                          style={{ display: "block", width: "100%", padding: "10px 14px", background: "#F9F9F7", border: "none", borderTop: "1px solid #F3F4F6", cursor: "pointer", textAlign: "left", fontFamily: "inherit", fontSize: 12, color: "var(--brand, #00C9A0)", fontWeight: 600 }}>
+                          + Create new account
+                        </button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div style={{ background: "var(--brand-dim, #EBF4FF)", border: "1px solid color-mix(in srgb, var(--brand) 30%, transparent)", borderRadius: 10, padding: "12px 14px", display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--brand, #00C9A0)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Building2 size={16} color="#fff"/>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontSize: 14, fontWeight: 700, color: "#1A1917", margin: "0 0 2px" }}>{selectedAccount.account_name}</p>
+                      <p style={{ fontSize: 12, color: "#6B7280", margin: 0 }}>{(selectedAccount.payment_method || "").replace(/_/g, " ")}</p>
+                    </div>
+                    <button onClick={() => { setSelectedAccount(null); setSelectedProperty(null); setProperties([]); }}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "#9E9B94", padding: 4 }}><X size={14}/></button>
+                  </div>
+                )}
+              </div>
+
+              {selectedAccount && (
+                <div>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Property</p>
+                  {!selectedProperty ? (
+                    <>
+                      <div style={{ position: "relative" }}>
+                        <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9E9B94" }}/>
+                        <input
+                          value={propertyQuery}
+                          onChange={e => setPropertyQuery(e.target.value)}
+                          placeholder="Search properties…"
+                          style={{ width: "100%", padding: "10px 12px 10px 34px", border: "1px solid #E5E2DC", borderRadius: 8, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}
+                        />
+                      </div>
+                      {properties.length > 0 && (
+                        <div style={{ border: "1px solid #E5E2DC", borderRadius: 10, overflow: "hidden", marginTop: 8 }}>
+                          {properties
+                            .filter((p: any) => !propertyQuery || (p.property_name || p.address || "").toLowerCase().includes(propertyQuery.toLowerCase()))
+                            .slice(0, 8)
+                            .map((p: any, i: number, arr: any[]) => (
+                              <button key={p.id} onClick={() => setSelectedProperty(p)}
+                                style={{ display: "flex", alignItems: "flex-start", gap: 10, width: "100%", padding: "12px 14px", background: "#fff", border: "none", borderBottom: i < arr.length - 1 ? "1px solid #F3F4F6" : "none", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+                                <MapPin size={14} style={{ color: "#9E9B94", marginTop: 2, flexShrink: 0 }}/>
+                                <div>
+                                  <p style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", margin: "0 0 2px" }}>{p.property_name || p.address}</p>
+                                  <p style={{ fontSize: 11, color: "#9E9B94", margin: 0 }}>
+                                    {p.address}{p.city ? `, ${p.city}` : ""}{p.state ? `, ${p.state}` : ""}
+                                    {p.property_type && <span style={{ marginLeft: 6, padding: "1px 6px", background: "#F3F4F6", borderRadius: 4, fontSize: 10, fontWeight: 600, color: "#6B7280" }}>{p.property_type.replace(/_/g, " ")}</span>}
+                                  </p>
+                                </div>
+                              </button>
+                            ))}
+                          <button onClick={() => window.open(`/accounts/${selectedAccount.id}`, "_blank")}
+                            style={{ display: "block", width: "100%", padding: "10px 14px", background: "#F9F9F7", border: "none", borderTop: "1px solid #F3F4F6", cursor: "pointer", textAlign: "left", fontFamily: "inherit", fontSize: 12, color: "var(--brand, #00C9A0)", fontWeight: 600 }}>
+                            + Add property to this account
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ background: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: 10, padding: "12px 14px", display: "flex", alignItems: "center", gap: 12 }}>
+                        <MapPin size={15} style={{ color: "var(--brand, #00C9A0)", flexShrink: 0 }}/>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ fontSize: 13, fontWeight: 700, color: "#1A1917", margin: "0 0 2px" }}>{selectedProperty.property_name || selectedProperty.address}</p>
+                          <p style={{ fontSize: 12, color: "#6B7280", margin: 0 }}>{selectedProperty.address}{selectedProperty.city ? `, ${selectedProperty.city}` : ""}</p>
+                        </div>
+                        <button onClick={() => setSelectedProperty(null)}
+                          style={{ background: "none", border: "none", cursor: "pointer", color: "#9E9B94", padding: 4 }}><X size={14}/></button>
+                      </div>
+                      {selectedProperty.access_notes && (
+                        <div style={{ marginTop: 8, background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "10px 12px", display: "flex", alignItems: "flex-start", gap: 8 }}>
+                          <AlertTriangle size={14} style={{ color: "#D97706", flexShrink: 0, marginTop: 1 }}/>
+                          <p style={{ fontSize: 12, color: "#92400E", margin: 0 }}>Access: {selectedProperty.access_notes}</p>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── STEP 2: DETAILS (Residential) ── */}
+          {step === 2 && clientType === "residential" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-              {/* Service Type Grid */}
               <div>
                 <p style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Service Type</p>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
                   {SERVICE_TYPES.map(svc => (
                     <button key={svc.value} onClick={() => setServiceType(svc.value)}
-                      style={{ padding: "12px 8px", border: `2px solid ${serviceType === svc.value ? "var(--brand, #5B9BD5)" : "#E5E2DC"}`, borderRadius: 10, background: serviceType === svc.value ? "#EBF4FF" : "#fff", cursor: "pointer", textAlign: "center", fontFamily: "inherit", transition: "all 0.15s" }}>
+                      style={{ padding: "12px 8px", border: `2px solid ${serviceType === svc.value ? "var(--brand, #00C9A0)" : "#E5E2DC"}`, borderRadius: 10, background: serviceType === svc.value ? "var(--brand-dim, #EBF4FF)" : "#fff", cursor: "pointer", textAlign: "center", fontFamily: "inherit", transition: "all 0.15s" }}>
                       <div style={{ display: "flex", justifyContent: "center", marginBottom: 4 }}>
-                        <svc.icon size={18} color={serviceType === svc.value ? "var(--brand, #5B9BD5)" : "#6B7280"}/>
+                        <svc.icon size={18} color={serviceType === svc.value ? "var(--brand, #00C9A0)" : "#6B7280"}/>
                       </div>
-                      <p style={{ fontSize: 10, fontWeight: 600, color: serviceType === svc.value ? "var(--brand, #5B9BD5)" : "#6B7280", margin: 0, lineHeight: 1.3 }}>{svc.label}</p>
+                      <p style={{ fontSize: 10, fontWeight: 600, color: serviceType === svc.value ? "var(--brand, #00C9A0)" : "#6B7280", margin: 0, lineHeight: 1.3 }}>{svc.label}</p>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Date + Time */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                 <div>
                   <p style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Date</p>
@@ -345,7 +632,7 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                     {TIME_OPTIONS.map(t => (
                       <button key={t} onClick={() => setScheduledTime(t)}
-                        style={{ padding: "5px 10px", border: `1.5px solid ${scheduledTime === t ? "var(--brand, #5B9BD5)" : "#E5E2DC"}`, borderRadius: 6, background: scheduledTime === t ? "#EBF4FF" : "#fff", fontSize: 11, fontWeight: scheduledTime === t ? 700 : 400, color: scheduledTime === t ? "var(--brand, #5B9BD5)" : "#6B7280", cursor: "pointer", fontFamily: "inherit" }}>
+                        style={{ padding: "5px 10px", border: `1.5px solid ${scheduledTime === t ? "var(--brand, #00C9A0)" : "#E5E2DC"}`, borderRadius: 6, background: scheduledTime === t ? "var(--brand-dim, #EBF4FF)" : "#fff", fontSize: 11, fontWeight: scheduledTime === t ? 700 : 400, color: scheduledTime === t ? "var(--brand, #00C9A0)" : "#6B7280", cursor: "pointer", fontFamily: "inherit" }}>
                         {formatTime(t)}
                       </button>
                     ))}
@@ -353,14 +640,13 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
                 </div>
               </div>
 
-              {/* Duration + Price */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                 <div>
                   <p style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Duration</p>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                     {DURATION_OPTIONS.map(d => (
                       <button key={d} onClick={() => setDuration(d)}
-                        style={{ padding: "5px 10px", border: `1.5px solid ${duration === d ? "var(--brand, #5B9BD5)" : "#E5E2DC"}`, borderRadius: 6, background: duration === d ? "#EBF4FF" : "#fff", fontSize: 11, fontWeight: duration === d ? 700 : 400, color: duration === d ? "var(--brand, #5B9BD5)" : "#6B7280", cursor: "pointer", fontFamily: "inherit" }}>
+                        style={{ padding: "5px 10px", border: `1.5px solid ${duration === d ? "var(--brand, #00C9A0)" : "#E5E2DC"}`, borderRadius: 6, background: duration === d ? "var(--brand-dim, #EBF4FF)" : "#fff", fontSize: 11, fontWeight: duration === d ? 700 : 400, color: duration === d ? "var(--brand, #00C9A0)" : "#6B7280", cursor: "pointer", fontFamily: "inherit" }}>
                         {d >= 60 ? `${d / 60}h` : `${d}m`}
                       </button>
                     ))}
@@ -379,16 +665,15 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
                 </div>
               </div>
 
-              {/* Frequency + Notes */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                 <div>
                   <p style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Frequency</p>
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                     {FREQ_OPTIONS.map(f => (
                       <button key={f.value} onClick={() => setFrequency(f.value)}
-                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", border: `1.5px solid ${frequency === f.value ? "var(--brand, #5B9BD5)" : "#E5E2DC"}`, borderRadius: 8, background: frequency === f.value ? "#EBF4FF" : "#fff", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
-                        {frequency === f.value && <Check size={12} color="var(--brand, #5B9BD5)"/>}
-                        <span style={{ fontSize: 12, fontWeight: frequency === f.value ? 600 : 400, color: frequency === f.value ? "var(--brand, #5B9BD5)" : "#6B7280" }}>{f.label}</span>
+                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", border: `1.5px solid ${frequency === f.value ? "var(--brand, #00C9A0)" : "#E5E2DC"}`, borderRadius: 8, background: frequency === f.value ? "var(--brand-dim, #EBF4FF)" : "#fff", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+                        {frequency === f.value && <Check size={12} color="var(--brand, #00C9A0)"/>}
+                        <span style={{ fontSize: 12, fontWeight: frequency === f.value ? 600 : 400, color: frequency === f.value ? "var(--brand, #00C9A0)" : "#6B7280" }}>{f.label}</span>
                       </button>
                     ))}
                   </div>
@@ -402,32 +687,194 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
             </div>
           )}
 
+          {/* ── STEP 2: SERVICE + RATE (Commercial) ── */}
+          {step === 2 && clientType === "commercial" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Service Type</p>
+                <select value={commercialServiceType} onChange={e => { setCommercialServiceType(e.target.value); setRateLookup(null); setRateLookupDone(false); setRateOverride(false); }}
+                  style={{ width: "100%", padding: "9px 12px", border: "1px solid #E5E2DC", borderRadius: 8, fontSize: 13, fontFamily: "inherit", outline: "none", background: "#fff", boxSizing: "border-box" }}>
+                  {COMMERCIAL_SERVICE_TYPES.map(s => (
+                    <option key={s} value={s}>{fmtSvcLabel(s)}</option>
+                  ))}
+                </select>
+              </div>
+
+              {rateLookupLoading && (
+                <div style={{ background: "#F7F6F3", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#9E9B94" }}>Looking up rate…</div>
+              )}
+
+              {rateLookupDone && rateLookup && !rateOverride && (
+                <div style={{ background: "#F0FDF4", border: "1px solid #86EFAC", borderRadius: 8, padding: "12px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: "#166534", margin: "0 0 2px" }}>
+                        Rate: ${parseFloat(rateLookup.rate_amount || "0").toFixed(2)}{rateLookup.billing_method === "hourly" ? "/hr" : rateLookup.billing_method === "per_unit" ? `/${rateLookup.unit_label || "unit"}` : " flat"} — {fmtSvcLabel(rateLookup.service_type)}
+                      </p>
+                      <p style={{ fontSize: 11, color: "#166534", margin: 0 }}>From account rate card · {rateLookup.billing_method === "hourly" ? "Hourly" : rateLookup.billing_method === "flat_rate" ? "Flat rate" : "Per unit"}</p>
+                    </div>
+                    <Check size={16} color="#16A34A"/>
+                  </div>
+                  <button onClick={() => setRateOverride(true)}
+                    style={{ marginTop: 8, fontSize: 11, color: "#6B7280", background: "none", border: "1px solid #D1D5DB", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontFamily: "inherit" }}>
+                    Override for this job
+                  </button>
+                </div>
+              )}
+
+              {rateLookupDone && !rateLookup && (
+                <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "12px 14px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                    <AlertTriangle size={14} color="#D97706"/>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: "#92400E", margin: 0 }}>No rate configured for "{fmtSvcLabel(commercialServiceType)}" on this account.</p>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <div>
+                      <p style={{ fontSize: 11, fontWeight: 600, color: "#6B7280", margin: "0 0 6px" }}>Billing Method</p>
+                      <select value={manualBillingMethod} onChange={e => setManualBillingMethod(e.target.value)}
+                        style={{ width: "100%", padding: "8px 10px", border: "1px solid #E5E2DC", borderRadius: 6, fontSize: 12, fontFamily: "inherit", outline: "none", background: "#fff" }}>
+                        <option value="hourly">Hourly</option>
+                        <option value="flat_rate">Flat Rate</option>
+                      </select>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 11, fontWeight: 600, color: "#6B7280", margin: "0 0 6px" }}>Rate ($)</p>
+                      <div style={{ position: "relative" }}>
+                        <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: "#6B7280" }}>$</span>
+                        <input type="number" value={manualRate} onChange={e => setManualRate(e.target.value)} placeholder="0.00"
+                          style={{ width: "100%", padding: "8px 10px 8px 22px", border: "1px solid #E5E2DC", borderRadius: 6, fontSize: 12, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}/>
+                      </div>
+                    </div>
+                  </div>
+                  <button onClick={() => window.open(`/accounts/${selectedAccount?.id}`, "_blank")}
+                    style={{ marginTop: 8, fontSize: 11, color: "var(--brand, #00C9A0)", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit" }}>
+                    + Add to account rate card
+                  </button>
+                </div>
+              )}
+
+              {rateOverride && (
+                <div style={{ background: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: 8, padding: "12px 14px" }}>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "#1A1917", margin: "0 0 10px" }}>Override rate for this job</p>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <div>
+                      <p style={{ fontSize: 11, fontWeight: 600, color: "#6B7280", margin: "0 0 6px" }}>Billing Method</p>
+                      <select value={manualBillingMethod} onChange={e => setManualBillingMethod(e.target.value)}
+                        style={{ width: "100%", padding: "8px 10px", border: "1px solid #E5E2DC", borderRadius: 6, fontSize: 12, fontFamily: "inherit", outline: "none", background: "#fff" }}>
+                        <option value="hourly">Hourly</option>
+                        <option value="flat_rate">Flat Rate</option>
+                      </select>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 11, fontWeight: 600, color: "#6B7280", margin: "0 0 6px" }}>Rate ($)</p>
+                      <div style={{ position: "relative" }}>
+                        <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: "#6B7280" }}>$</span>
+                        <input type="number" value={overrideRate} onChange={e => setOverrideRate(e.target.value)} placeholder="0.00"
+                          style={{ width: "100%", padding: "8px 10px 8px 22px", border: "1px solid #E5E2DC", borderRadius: 6, fontSize: 12, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}/>
+                      </div>
+                    </div>
+                  </div>
+                  <button onClick={() => setRateOverride(false)}
+                    style={{ marginTop: 8, fontSize: 11, color: "#9E9B94", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit" }}>
+                    Cancel override
+                  </button>
+                </div>
+              )}
+
+              {(effectiveBillingMethod === "hourly") && (
+                <div>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", margin: "0 0 4px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Estimated Duration (hrs)</p>
+                  <input type="number" step="0.5" min="0.5" value={estimatedHours} onChange={e => setEstimatedHours(e.target.value)} placeholder="2.5"
+                    style={{ width: "100%", padding: "9px 12px", border: "1px solid #E5E2DC", borderRadius: 8, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}/>
+                  <p style={{ fontSize: 11, color: "#9E9B94", margin: "4px 0 0" }}>Used for scheduling only. Invoice calculated from actual clock time.</p>
+                </div>
+              )}
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <div>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Date</p>
+                  <input type="date" value={commercialScheduledDate} onChange={e => setCommercialScheduledDate(e.target.value)}
+                    style={{ width: "100%", padding: "9px 12px", border: "1px solid #E5E2DC", borderRadius: 8, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}/>
+                </div>
+                <div>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Time</p>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {TIME_OPTIONS.map(t => (
+                      <button key={t} onClick={() => setCommercialScheduledTime(t)}
+                        style={{ padding: "5px 10px", border: `1.5px solid ${commercialScheduledTime === t ? "var(--brand, #00C9A0)" : "#E5E2DC"}`, borderRadius: 6, background: commercialScheduledTime === t ? "var(--brand-dim, #EBF4FF)" : "#fff", fontSize: 11, fontWeight: commercialScheduledTime === t ? 700 : 400, color: commercialScheduledTime === t ? "var(--brand, #00C9A0)" : "#6B7280", cursor: "pointer", fontFamily: "inherit" }}>
+                        {formatTime(t)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <div>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Frequency</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    {FREQ_OPTIONS.map(f => (
+                      <button key={f.value} onClick={() => setCommercialFrequency(f.value)}
+                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", border: `1.5px solid ${commercialFrequency === f.value ? "var(--brand, #00C9A0)" : "#E5E2DC"}`, borderRadius: 8, background: commercialFrequency === f.value ? "var(--brand-dim, #EBF4FF)" : "#fff", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+                        {commercialFrequency === f.value && <Check size={12} color="var(--brand, #00C9A0)"/>}
+                        <span style={{ fontSize: 12, fontWeight: commercialFrequency === f.value ? 600 : 400, color: commercialFrequency === f.value ? "var(--brand, #00C9A0)" : "#6B7280" }}>{f.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Notes (optional)</p>
+                  <textarea value={commercialNotes} onChange={e => setCommercialNotes(e.target.value)} placeholder="Special instructions…"
+                    style={{ width: "100%", height: 130, padding: "10px 12px", border: "1px solid #E5E2DC", borderRadius: 8, fontSize: 12, fontFamily: "inherit", outline: "none", resize: "none", boxSizing: "border-box", lineHeight: 1.5 }}/>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ── STEP 3: ASSIGN ── */}
           {step === 3 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {/* Summary card */}
               <div style={{ background: "#F7F6F3", borderRadius: 10, padding: "14px 16px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
                 <div>
-                  <p style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", margin: "0 0 3px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Client</p>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", margin: 0 }}>{selectedClient?.first_name} {selectedClient?.last_name}</p>
+                  <p style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", margin: "0 0 3px", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                    {clientType === "commercial" ? "Account" : "Client"}
+                  </p>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", margin: 0 }}>
+                    {clientType === "commercial" ? selectedAccount?.account_name : `${selectedClient?.first_name} ${selectedClient?.last_name}`}
+                  </p>
                 </div>
                 <div>
                   <p style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", margin: "0 0 3px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Service</p>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", margin: 0 }}>{svcConfig?.label}</p>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", margin: 0 }}>
+                    {fmtSvcLabel(clientType === "commercial" ? commercialServiceType : serviceType)}
+                  </p>
                 </div>
                 <div>
                   <p style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", margin: "0 0 3px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Date & Time</p>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", margin: 0 }}>{formatDate(scheduledDate)} · {formatTime(scheduledTime)}</p>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", margin: 0 }}>
+                    {formatDate(clientType === "commercial" ? commercialScheduledDate : scheduledDate)} · {formatTime(clientType === "commercial" ? commercialScheduledTime : scheduledTime)}
+                  </p>
                 </div>
               </div>
 
-              {/* ── Smart Suggestions ── */}
-              {!suggestionsDismissed && (suggestionsLoading || suggestions.length > 0 || (!suggestionsLoading && selectedClient?.zip)) && (
+              {/* Access notes reminder for commercial */}
+              {clientType === "commercial" && selectedProperty?.access_notes && (
+                <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "flex-start", gap: 8 }}>
+                  <AlertTriangle size={14} style={{ color: "#D97706", flexShrink: 0, marginTop: 1 }}/>
+                  <div>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: "#92400E", margin: "0 0 2px" }}>Building access</p>
+                    <p style={{ fontSize: 12, color: "#92400E", margin: 0 }}>{selectedProperty.access_notes}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Smart Suggestions */}
+              {!suggestionsDismissed && (suggestionsLoading || suggestions.length > 0 || (!suggestionsLoading && suggestZip)) && (
                 <div style={{ border: "1px solid #E5E2DC", borderRadius: 12, overflow: "hidden" }}>
-                  {/* Header */}
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "#F7F6F3", borderBottom: "1px solid #E5E2DC" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                      <MapPin size={13} color="var(--brand, #5B9BD5)"/>
+                      <MapPin size={13} color="var(--brand, #00C9A0)"/>
                       <span style={{ fontSize: 11, fontWeight: 700, color: "#1A1917", textTransform: "uppercase", letterSpacing: "0.06em" }}>Smart Suggestions</span>
                     </div>
                     <button onClick={() => setSuggestionsDismissed(true)} style={{ background: "none", border: "none", cursor: "pointer", color: "#9E9B94", padding: 2, lineHeight: 1 }}>
@@ -435,12 +882,11 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
                     </button>
                   </div>
 
-                  {/* Loading skeletons */}
                   {suggestionsLoading && (
                     <div style={{ display: "flex", flexDirection: "column" }}>
                       {[0, 1, 2].map(i => (
                         <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", borderBottom: i < 2 ? "1px solid #F3F4F6" : "none" }}>
-                          <div style={{ width: 34, height: 34, borderRadius: 17, background: "#F3F4F6", flexShrink: 0, animation: "pulse 1.5s ease-in-out infinite" }}/>
+                          <div style={{ width: 34, height: 34, borderRadius: 17, background: "#F3F4F6", flexShrink: 0 }}/>
                           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
                             <div style={{ height: 11, width: "55%", background: "#F3F4F6", borderRadius: 4 }}/>
                             <div style={{ height: 9, width: "35%", background: "#F3F4F6", borderRadius: 4 }}/>
@@ -451,7 +897,6 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
                     </div>
                   )}
 
-                  {/* Suggestion rows */}
                   {!suggestionsLoading && suggestions.length > 0 && (
                     <div style={{ display: "flex", flexDirection: "column" }}>
                       {suggestions.map((s, i) => {
@@ -460,18 +905,14 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
                         return (
                           <div key={s.employee_id} style={{
                             display: "flex", alignItems: "center", gap: 12, padding: "11px 14px",
-                            borderLeft: isTop ? "3px solid var(--brand, #5B9BD5)" : "3px solid transparent",
+                            borderLeft: isTop ? "3px solid var(--brand, #00C9A0)" : "3px solid transparent",
                             borderBottom: i < suggestions.length - 1 ? "1px solid #F3F4F6" : "none",
-                            background: selectedEmployee === s.employee_id ? "#EBF4FF" : "#fff",
+                            background: selectedEmployee === s.employee_id ? "var(--brand-dim, #EBF4FF)" : "#fff",
                           }}>
-                            {/* Avatar */}
                             {s.avatar_url
                               ? <img src={s.avatar_url} style={{ width: 34, height: 34, borderRadius: 17, objectFit: "cover", flexShrink: 0 }}/>
-                              : <div style={{ width: 34, height: 34, borderRadius: 17, background: isTop ? "#EBF4FF" : "#F3F4F6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: isTop ? "var(--brand, #5B9BD5)" : "#6B7280", flexShrink: 0 }}>
-                                  {initials}
-                                </div>
+                              : <div style={{ width: 34, height: 34, borderRadius: 17, background: isTop ? "var(--brand-dim, #EBF4FF)" : "#F3F4F6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: isTop ? "var(--brand, #00C9A0)" : "#6B7280", flexShrink: 0 }}>{initials}</div>
                             }
-                            {/* Info */}
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
                                 <span style={{ fontSize: 13, fontWeight: 600, color: "#1A1917" }}>{s.name}</span>
@@ -482,35 +923,16 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
                                   </span>
                                 )}
                               </div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                <span style={{
-                                  fontSize: 10, fontWeight: 600, padding: "1px 7px", borderRadius: 10,
-                                  background: s.tier === 1 ? "#DCFCE7" : s.tier === 2 ? "#EBF4FF" : s.tier === 3 ? "#FEF3C7" : "#F3F4F6",
-                                  color: s.tier === 1 ? "#16A34A" : s.tier === 2 ? "var(--brand, #5B9BD5)" : s.tier === 3 ? "#D97706" : "#6B7280",
-                                }}>
-                                  {s.reason}
-                                </span>
-                                {s.last_job_end_time && (
-                                  <span style={{ fontSize: 10, color: "#9E9B94" }}>Free after {s.last_job_end_time}</span>
-                                )}
-                                {!s.last_job_end_time && (
-                                  <span style={{ fontSize: 10, color: "#9E9B94" }}>Available all day</span>
-                                )}
-                              </div>
+                              <span style={{
+                                fontSize: 10, fontWeight: 600, padding: "1px 7px", borderRadius: 10,
+                                background: s.tier === 1 ? "#DCFCE7" : s.tier === 2 ? "var(--brand-dim, #EBF4FF)" : s.tier === 3 ? "#FEF3C7" : "#F3F4F6",
+                                color: s.tier === 1 ? "#16A34A" : s.tier === 2 ? "var(--brand, #00C9A0)" : s.tier === 3 ? "#D97706" : "#6B7280",
+                              }}>
+                                {s.reason}
+                              </span>
                             </div>
-                            {/* Assign button */}
-                            <button
-                              onClick={() => {
-                                setSelectedEmployee(s.employee_id);
-                                setSuggestionsDismissed(true);
-                              }}
-                              style={{
-                                padding: "6px 12px", borderRadius: 7, border: "none", cursor: "pointer", fontFamily: "inherit",
-                                fontSize: 11, fontWeight: 700, flexShrink: 0,
-                                background: selectedEmployee === s.employee_id ? "var(--brand, #5B9BD5)" : "#F3F4F6",
-                                color: selectedEmployee === s.employee_id ? "#fff" : "#1A1917",
-                              }}
-                            >
+                            <button onClick={() => setSelectedEmployee(selectedEmployee === s.employee_id ? null : s.employee_id)}
+                              style={{ padding: "6px 14px", border: `1.5px solid ${selectedEmployee === s.employee_id ? "var(--brand, #00C9A0)" : "#E5E2DC"}`, borderRadius: 8, background: selectedEmployee === s.employee_id ? "var(--brand, #00C9A0)" : "#fff", color: selectedEmployee === s.employee_id ? "#fff" : "#6B7280", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
                               {selectedEmployee === s.employee_id ? "Assigned" : "Assign"}
                             </button>
                           </div>
@@ -518,17 +940,10 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
                       })}
                     </div>
                   )}
-
-                  {/* No suggestions */}
-                  {!suggestionsLoading && suggestions.length === 0 && (
-                    <div style={{ padding: "16px 14px", textAlign: "center" }}>
-                      <p style={{ fontSize: 12, color: "#9E9B94", margin: 0 }}>No techs available in this window — adjust time or date</p>
-                    </div>
-                  )}
                 </div>
               )}
 
-              {/* ── Full employee list ── */}
+              {/* Full employee list */}
               <div>
                 <p style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.06em" }}>
                   {suggestions.length > 0 && !suggestionsDismissed ? "All Technicians" : "Choose Assignee (optional)"}
@@ -539,7 +954,7 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {employees.map((e: any) => (
                     <button key={e.id} onClick={() => setSelectedEmployee(selectedEmployee === e.id ? null : e.id)}
-                      style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", border: `2px solid ${selectedEmployee === e.id ? "var(--brand, #5B9BD5)" : "#E5E2DC"}`, borderRadius: 10, background: selectedEmployee === e.id ? "#EBF4FF" : "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+                      style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", border: `2px solid ${selectedEmployee === e.id ? "var(--brand, #00C9A0)" : "#E5E2DC"}`, borderRadius: 10, background: selectedEmployee === e.id ? "var(--brand-dim, #EBF4FF)" : "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
                       {e.avatar_url
                         ? <img src={e.avatar_url} style={{ width: 36, height: 36, borderRadius: 18, objectFit: "cover", flexShrink: 0 }}/>
                         : <div style={{ width: 36, height: 36, borderRadius: 18, background: "#E5E2DC", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#6B7280", flexShrink: 0 }}>
@@ -550,11 +965,58 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
                         <p style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", margin: "0 0 2px" }}>{e.first_name} {e.last_name}</p>
                         <p style={{ fontSize: 11, color: "#9E9B94", margin: 0, textTransform: "capitalize" }}>{e.role?.replace(/_/g, " ")}</p>
                       </div>
-                      {selectedEmployee === e.id && <Check size={16} color="var(--brand, #5B9BD5)"/>}
+                      {selectedEmployee === e.id && <Check size={16} color="var(--brand, #00C9A0)"/>}
                     </button>
                   ))}
                 </div>
               </div>
+
+              {clientType === "residential" && error && (
+                <p style={{ fontSize: 12, color: "#DC2626", background: "#FEE2E2", borderRadius: 6, padding: "8px 12px", margin: 0 }}>{error}</p>
+              )}
+            </div>
+          )}
+
+          {/* ── STEP 4: CONFIRMATION (Commercial only) ── */}
+          {step === 4 && clientType === "commercial" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ background: "#F7F6F3", borderRadius: 12, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+                <p style={{ fontSize: 12, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 4px" }}>Job Summary</p>
+                {[
+                  { label: "Account", value: selectedAccount?.account_name },
+                  { label: "Property", value: `${selectedProperty?.address}${selectedProperty?.city ? `, ${selectedProperty.city}` : ""}` },
+                  { label: "Service", value: fmtSvcLabel(commercialServiceType) },
+                  {
+                    label: "Billing",
+                    value: effectiveBillingMethod === "hourly"
+                      ? `$${parseFloat(effectiveRate || "0").toFixed(2)}/hr · Hourly${estimatedHours ? ` · est. ${estimatedHours}h` : ""}`
+                      : `$${parseFloat(effectiveRate || "0").toFixed(2)} · Flat Rate`,
+                  },
+                  { label: "Scheduled", value: `${formatDate(commercialScheduledDate)} · ${formatTime(commercialScheduledTime)}` },
+                  { label: "Frequency", value: FREQ_OPTIONS.find(f => f.value === commercialFrequency)?.label || commercialFrequency },
+                  { label: "Team", value: employees.find(e => e.id === selectedEmployee)?.first_name ? `${employees.find(e => e.id === selectedEmployee)?.first_name} ${employees.find(e => e.id === selectedEmployee)?.last_name}` : "Unassigned" },
+                  { label: "Payment", value: selectedAccount?.payment_method === "card_on_file" ? "Card on file — auto-charge on completion" : selectedAccount?.payment_method === "invoice_only" ? `Invoice only` : (selectedAccount?.payment_method || "").replace(/_/g, " ") },
+                ].map(row => (
+                  <div key={row.label} style={{ display: "flex", gap: 16, justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 12, color: "#9E9B94", minWidth: 80 }}>{row.label}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", textAlign: "right" }}>{row.value || "—"}</span>
+                  </div>
+                ))}
+              </div>
+
+              {effectiveBillingMethod === "hourly" && (
+                <div style={{ background: "#DBEAFE", border: "1px solid #93C5FD", borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "flex-start", gap: 8 }}>
+                  <DollarSign size={14} style={{ color: "#1D4ED8", flexShrink: 0, marginTop: 1 }}/>
+                  <p style={{ fontSize: 12, color: "#1E40AF", margin: 0 }}>Final invoice amount calculated from actual clock in/out time on completion.</p>
+                </div>
+              )}
+
+              {selectedProperty?.access_notes && (
+                <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "flex-start", gap: 8 }}>
+                  <AlertTriangle size={14} style={{ color: "#D97706", flexShrink: 0, marginTop: 1 }}/>
+                  <p style={{ fontSize: 12, color: "#92400E", margin: 0 }}>Building access: {selectedProperty.access_notes}</p>
+                </div>
+              )}
 
               {error && <p style={{ fontSize: 12, color: "#DC2626", background: "#FEE2E2", borderRadius: 6, padding: "8px 12px", margin: 0 }}>{error}</p>}
             </div>
@@ -563,24 +1025,26 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
 
         {/* Footer */}
         <div style={{ padding: "16px 24px", borderTop: "1px solid #F3F4F6", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <button onClick={() => step > 1 ? setStep(s => s - 1) : onClose()}
+          <button
+            onClick={() => step > 0 ? setStep(s => s - 1) : onClose()}
             style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 18px", border: "1px solid #E5E2DC", borderRadius: 8, background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#6B7280", fontFamily: "inherit" }}>
-            <ChevronLeft size={14}/> {step === 1 ? "Cancel" : "Back"}
+            <ChevronLeft size={14}/> {step === 0 ? "Cancel" : "Back"}
           </button>
 
-          {step < 3
-            ? <button onClick={() => {
-                if (step === 1 && !selectedClient) return;
-                setStep(s => s + 1);
-              }}
-              disabled={step === 1 && !selectedClient}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 20px", border: "none", borderRadius: 8, background: (step === 1 && !selectedClient) ? "#E5E2DC" : "var(--brand, #5B9BD5)", cursor: (step === 1 && !selectedClient) ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700, color: "#fff", fontFamily: "inherit" }}>
-              Next <ChevronRight size={14}/>
-            </button>
+          {step < maxStep
+            ? <button
+                onClick={() => {
+                  if (!canGoNext()) return;
+                  setStep(s => s + 1);
+                }}
+                disabled={!canGoNext()}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 20px", border: "none", borderRadius: 8, background: canGoNext() ? "var(--brand, #00C9A0)" : "#E5E2DC", cursor: canGoNext() ? "pointer" : "not-allowed", fontSize: 13, fontWeight: 700, color: canGoNext() ? "#fff" : "#9E9B94", fontFamily: "inherit" }}>
+                Next <ChevronRight size={14}/>
+              </button>
             : <button onClick={submit} disabled={submitting}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 22px", border: "none", borderRadius: 8, background: submitting ? "#9E9B94" : "var(--brand, #5B9BD5)", cursor: submitting ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700, color: "#fff", fontFamily: "inherit" }}>
-              {submitting ? "Creating…" : "Create Job"}
-            </button>
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 22px", border: "none", borderRadius: 8, background: submitting ? "#9E9B94" : "var(--brand, #00C9A0)", cursor: submitting ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700, color: "#fff", fontFamily: "inherit" }}>
+                {submitting ? "Creating…" : "Create Job"}
+              </button>
           }
         </div>
       </div>
