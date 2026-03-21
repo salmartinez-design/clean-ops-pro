@@ -1,9 +1,8 @@
 import {
-  LogOut, X, LayoutDashboard, CalendarDays, ClipboardList, Clock,
+  LogOut, X, LayoutDashboard, CalendarDays,
   Briefcase, Users, UserCheck, FileText, DollarSign,
-  BarChart2, TrendingUp, ArrowUpCircle, Tag,
-  BookOpen, Star, Settings, Building2, CreditCard, PenLine, LayoutTemplate, Calculator, FileText as FileTextIcon, MapPin,
-  AlertTriangle, HeartPulse, Smile, Gift, Share2, Route, Package, Target,
+  BarChart2, TrendingUp, FileText as FileTextIcon,
+  BookOpen, Settings, AlertTriangle, HeartPulse,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useAuthStore } from "@/lib/auth";
@@ -12,37 +11,28 @@ import { QlenoLogo } from "@/components/brand/QlenoLogo";
 
 const NAV_SECTIONS = [
   {
-    label: "Today",
+    label: "Operations",
     items: [
-      { title: "Dashboard",        url: "/dashboard",         icon: LayoutDashboard },
-      { title: "Dispatch Board",   url: "/jobs",              icon: CalendarDays },
-      { title: "My Jobs",          url: "/my-jobs",           icon: ClipboardList, roles: ["technician", "team_lead"] },
-      { title: "Route Sequences",  url: "/route-sequences",   icon: Route, roles: ["owner", "admin", "office", "team_lead"] },
-      { title: "Clock Monitor",    url: "/employees/clocks",  icon: Clock, roles: ["owner", "admin"] },
+      { title: "Dashboard",      url: "/dashboard",  icon: LayoutDashboard },
+      { title: "Dispatch Board", url: "/jobs",       icon: CalendarDays },
+      { title: "Jobs",           url: "/jobs",       icon: Briefcase },
+      { title: "Customers",      url: "/customers",  icon: Users },
+      { title: "Employees",      url: "/employees",  icon: UserCheck },
     ],
   },
   {
-    label: "Manage",
+    label: "Money",
     items: [
-      { title: "Jobs",       url: "/jobs",       icon: Briefcase },
-      { title: "Quotes",     url: "/quotes",     icon: FileTextIcon, roles: ["owner", "admin", "office"] },
-      { title: "Customers",  url: "/customers",  icon: Users },
-      { title: "Employees",  url: "/employees",  icon: UserCheck },
-      { title: "Invoices",   url: "/invoices",   icon: FileText },
-      { title: "Payroll",    url: "/payroll",    icon: DollarSign, roles: ["owner", "admin"] },
+      { title: "Invoices", url: "/invoices", icon: FileText },
+      { title: "Payroll",  url: "/payroll",  icon: DollarSign, roles: ["owner", "admin"] },
+      { title: "Quotes",   url: "/quotes",   icon: FileTextIcon, roles: ["owner", "admin", "office"] },
     ],
   },
   {
     label: "Grow",
     items: [
-      { title: "Reports",       url: "/reports",                  icon: BarChart2,    roles: ["owner", "admin", "office"] },
-      { title: "Revenue Goal",  url: "/reports/revenue-goal",     icon: Target,       roles: ["owner", "admin"] },
-      { title: "Core KPIs",     url: "/reports/insights",         icon: TrendingUp,   roles: ["owner", "admin", "office"] },
-      { title: "NPS & Surveys", url: "/reports/satisfaction",     icon: Smile,        roles: ["owner", "admin", "office"] },
-      { title: "Incentives",    url: "/reports/incentives",       icon: Gift,         roles: ["owner", "admin"] },
-      { title: "Referrals",     url: "/reports/referrals",        icon: Share2,       roles: ["owner", "admin", "office"] },
-      { title: "Rate Increase", url: "/discounts",                icon: ArrowUpCircle, roles: ["owner", "admin"] },
-      { title: "Discounts",     url: "/discounts",                icon: Tag,          roles: ["owner", "admin"] },
+      { title: "Reports",   url: "/reports",           icon: BarChart2,  roles: ["owner", "admin", "office"] },
+      { title: "Core KPIs", url: "/reports/insights",  icon: TrendingUp, roles: ["owner", "admin", "office"] },
     ],
   },
   {
@@ -53,23 +43,10 @@ const NAV_SECTIONS = [
     ],
   },
   {
-    label: "Tools",
-    items: [
-      { title: "Cleancyclopedia", url: "/cleancyclopedia", icon: BookOpen },
-      { title: "Loyalty",         url: "/loyalty",          icon: Star,     roles: ["owner", "admin"] },
-    ],
-  },
-  {
     label: "Company",
     items: [
-      { title: "Settings",          url: "/company",                    icon: Settings,   roles: ["owner", "admin"] },
-      { title: "Billing",           url: "/company/billing",            icon: CreditCard, roles: ["owner"] },
-      { title: "Property Groups",   url: "/company/property-groups",    icon: Building2,  roles: ["owner", "admin"] },
-      { title: "Agreements",        url: "/company/agreements",         icon: PenLine,        roles: ["owner", "admin"] },
-      { title: "Forms",             url: "/company/forms",              icon: LayoutTemplate, roles: ["owner", "admin"] },
-      { title: "Quoting",           url: "/company/quoting",            icon: Calculator,     roles: ["owner", "admin"] },
-      { title: "Service Zones",     url: "/company/zones",              icon: MapPin,         roles: ["owner"] },
-      { title: "Add-On Catalog",    url: "/company/addons",             icon: Package,        roles: ["owner", "admin"] },
+      { title: "Settings",        url: "/company",         icon: Settings, roles: ["owner", "admin"] },
+      { title: "Cleancyclopedia", url: "/cleancyclopedia", icon: BookOpen },
     ],
   },
 ];
