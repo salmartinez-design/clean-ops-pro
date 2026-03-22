@@ -55,6 +55,14 @@ export const companiesTable = pgTable("companies", {
   zip: text("zip"),
   business_hours: text("business_hours"),
   booking_policies: text("booking_policies"),
+  invoice_sequence_start: integer("invoice_sequence_start").notNull().default(1),
+  qb_access_token: text("qb_access_token"),
+  qb_refresh_token: text("qb_refresh_token"),
+  qb_realm_id: text("qb_realm_id"),
+  qb_token_expires_at: timestamp("qb_token_expires_at"),
+  qb_connected: boolean("qb_connected").notNull().default(false),
+  qb_last_sync_at: timestamp("qb_last_sync_at"),
+  qb_company_name: text("qb_company_name"),
   created_at: timestamp("created_at").notNull().defaultNow(),
 });
 

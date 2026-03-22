@@ -56,6 +56,7 @@ import documentRequestsRouter from "./document-requests.js";
 import mileageRequestsRouter from "./mileage-requests.js";
 import pricingRouter from "./pricing.js";
 import publicRouter from "./public.js";
+import quickbooksRouter from "./integrations/quickbooks.js";
 
 const router: IRouter = Router();
 
@@ -116,5 +117,6 @@ router.use("/document-requests", documentRequestsRouter);
 router.use("/mileage-requests", mileageRequestsRouter);
 router.use("/pricing", pricingRouter);
 router.use("/public", publicRouter);
+router.use("/integrations/quickbooks", quickbooksRouter);
 
 export default router;

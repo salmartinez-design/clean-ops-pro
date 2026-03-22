@@ -1,14 +1,40 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { invoicesTable, clientsTable, jobsTable, paymentsTable, notificationLogTable, usersTable } from "@workspace/db/schema";
+import { invoicesTable, clientsTable, jobsTable, paymentsTable, notificationLogTable, usersTable, companiesTable } from "@workspace/db/schema";
 import { eq, and, desc, count, sum, sql, lt, isNull, or, ne, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
+import { syncInvoice, syncPayment, queueSync } from "../services/quickbooks-sync.js";
 
 const router = Router();
 
 function generateInvoiceNumber(id: number): string {
   const year = new Date().getFullYear();
   return `INV-${year}-${String(id).padStart(4, "0")}`;
+}
+
+async function getNextInvoiceNumber(companyId: number, fallbackId: number): Promise<string> {
+  try {
+    const [company] = await db
+      .select({ invoice_sequence_start: companiesTable.invoice_sequence_start })
+      .from(companiesTable)
+      .where(eq(companiesTable.id, companyId))
+      .limit(1);
+
+    const seqStart = company?.invoice_sequence_start ?? 1;
+
+    // Get max numeric invoice number for this company
+    const [maxRow] = await db.execute(
+      sql`SELECT COALESCE(MAX(CAST(invoice_number AS INTEGER)), 0) as max_num
+          FROM invoices
+          WHERE company_id = ${companyId}
+          AND invoice_number ~ '^[0-9]+$'`
+    );
+    const maxNum = parseInt((maxRow as any)?.max_num ?? "0") || 0;
+    const next = Math.max(maxNum + 1, seqStart);
+    return String(next);
+  } catch {
+    return generateInvoiceNumber(fallbackId);
+  }
 }
 
 function daysOverdue(dueDateStr: string | null): number {
@@ -207,8 +233,11 @@ router.post("/", requireAuth, requireRole("owner", "admin", "office"), async (re
       })
       .returning();
 
-    const invNumber = generateInvoiceNumber(newInvoice.id);
+    const invNumber = await getNextInvoiceNumber(req.auth!.companyId, newInvoice.id);
     await db.update(invoicesTable).set({ invoice_number: invNumber }).where(eq(invoicesTable.id, newInvoice.id));
+
+    // QB sync (fire and forget)
+    queueSync(() => syncInvoice(req.auth!.companyId, newInvoice.id));
 
     const client = clientRecord;
 
@@ -359,6 +388,12 @@ router.put("/:id", requireAuth, async (req, res) => {
       .returning();
 
     if (!updated) return res.status(404).json({ error: "Not Found", message: "Invoice not found" });
+
+    // QB sync on update (fire and forget)
+    queueSync(() => syncInvoice(req.auth!.companyId, invoiceId));
+    if (status === "paid") {
+      queueSync(() => syncPayment(req.auth!.companyId, invoiceId));
+    }
 
     const [client] = await db
       .select({ first_name: clientsTable.first_name, last_name: clientsTable.last_name, email: clientsTable.email })
@@ -521,6 +556,12 @@ router.post("/:id/mark-paid", requireAuth, requireRole("owner", "admin", "office
       trigger: "payment_collected",
       status: "sent",
       metadata: { invoice_id: invoiceId, amount: payAmount, method } as any,
+    });
+
+    // QB sync (fire and forget)
+    queueSync(async () => {
+      await syncInvoice(req.auth!.companyId, invoiceId);
+      await syncPayment(req.auth!.companyId, invoiceId);
     });
 
     return res.json(formatInvoice({ ...updated, client_name: null }));

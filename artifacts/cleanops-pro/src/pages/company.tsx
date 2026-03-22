@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { useGetMyCompany, useUpdateMyCompany } from "@workspace/api-client-react";
 import { getAuthHeaders } from "@/lib/auth";
 import { applyTenantColor } from "@/lib/tenant-brand";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, X, ImageIcon } from "lucide-react";
+import { Upload, X, ImageIcon, CheckCircle, AlertCircle, RefreshCw, Link, Unlink, Clock, BarChart2 } from "lucide-react";
 import { HRPoliciesTab } from "./company/hr-policies";
 import { DocumentsTab } from "./company/documents";
 import { PricingTab } from "./company/pricing";
@@ -65,7 +65,7 @@ export default function CompanyPage() {
         {activeTab === 'notifications' && <NotificationsTab />}
         {activeTab === 'clock-inout' && <ClockInOutTab />}
         {activeTab === 'invoicing' && <InvoicingTab />}
-        {activeTab === 'integrations' && <PlaceholderTab title="Integrations" desc="Connect QuickBooks, Stripe, and other services." />}
+        {activeTab === 'integrations' && <IntegrationsTab />}
         {activeTab === 'payroll' && <PayrollOptionsTab />}
         {activeTab === 'pricing' && <PricingTab />}
         {activeTab === 'hr-policies' && <HRPoliciesTab />}
@@ -406,6 +406,249 @@ function Section({ title, desc, children }: { title: string; desc: string; child
       <h3 style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: '13px', color: '#1A1917', margin: '0 0 4px 0' }}>{title}</h3>
       {desc && <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 300, fontSize: '12px', color: '#6B7280', margin: '0 0 12px 0' }}>{desc}</p>}
       {children}
+    </div>
+  );
+}
+
+// ─── QB Integrations Tab ──────────────────────────────────────────────────────
+
+interface QbStatus {
+  connected: boolean;
+  company_name: string | null;
+  last_sync_at: string | null;
+  realm_id: string | null;
+  invoice_sequence_start: number | null;
+}
+
+interface QbLogEntry {
+  id: number;
+  entity_type: string;
+  entity_id: number;
+  status: string;
+  error_message: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+function IntegrationsTab() {
+  const { toast } = useToast();
+  const [status, setStatus] = useState<QbStatus | null>(null);
+  const [logs, setLogs] = useState<QbLogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  const f = (path: string, opts?: RequestInit) =>
+    fetch(`${API}/api/integrations/quickbooks${path}`, {
+      headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+      ...opts,
+    });
+
+  const loadStatus = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [sRes, lRes] = await Promise.all([f("/status"), f("/log")]);
+      if (sRes.ok) setStatus(await sRes.json());
+      if (lRes.ok) setLogs(await lRes.json());
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadStatus(); }, [loadStatus]);
+
+  const handleConnect = () => {
+    window.location.href = `${API}/api/integrations/quickbooks/connect`;
+  };
+
+  const handleDisconnect = async () => {
+    if (!confirm("Disconnect QuickBooks? Sync will stop until you reconnect.")) return;
+    setDisconnecting(true);
+    try {
+      const res = await f("/disconnect", { method: "POST" });
+      if (res.ok) {
+        toast({ title: "QuickBooks disconnected" });
+        loadStatus();
+      } else {
+        toast({ title: "Failed to disconnect", variant: "destructive" });
+      }
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await f("/sync", { method: "POST" });
+      if (res.ok) {
+        toast({ title: "Full sync started", description: "Customers, invoices, and payments are being synced." });
+        setTimeout(loadStatus, 3000);
+      } else {
+        toast({ title: "Sync failed", variant: "destructive" });
+      }
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const S: Record<string, React.CSSProperties> = {
+    card: { background: '#fff', border: '1px solid #E5E2DC', borderRadius: '12px', padding: '24px', marginBottom: '16px' },
+    row: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: '12px' },
+    label: { fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: '14px', color: '#1A1917' },
+    sub: { fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 400, fontSize: '13px', color: '#6B7280', marginTop: '2px' },
+    btn: { fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: '13px', padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' },
+    btnPrimary: { background: '#00C9A0', color: '#fff' },
+    btnDanger: { background: '#FEE2E2', color: '#DC2626' },
+    btnGhost: { background: '#F5F4F1', color: '#1A1917' },
+    badge: { display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: 600, fontFamily: "'Plus Jakarta Sans', sans-serif" },
+    badgeGreen: { background: '#D1FAF0', color: '#059669' },
+    badgeGray: { background: '#F3F4F6', color: '#6B7280' },
+  };
+
+  if (loading) {
+    return (
+      <div style={{ padding: '48px', textAlign: 'center', fontFamily: "'Plus Jakarta Sans', sans-serif", color: '#6B7280' }}>
+        Loading integrations...
+      </div>
+    );
+  }
+
+  const connected = status?.connected ?? false;
+  const lastSync = status?.last_sync_at ? new Date(status.last_sync_at).toLocaleString() : "Never";
+
+  return (
+    <div>
+      {/* QB Card */}
+      <div style={S.card}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            {/* QB Logo placeholder — green square with "QB" */}
+            <div style={{ width: '48px', height: '48px', borderRadius: '10px', background: '#2CA01C', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: '16px', color: '#fff', letterSpacing: '-0.5px' }}>QB</span>
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={S.label}>QuickBooks Online</span>
+                <span style={{ ...S.badge, ...(connected ? S.badgeGreen : S.badgeGray) }}>
+                  {connected ? <CheckCircle size={11} /> : <AlertCircle size={11} />}
+                  {connected ? "Connected" : "Not connected"}
+                </span>
+              </div>
+              {connected && status?.company_name && (
+                <div style={S.sub}>{status.company_name}</div>
+              )}
+              {!connected && (
+                <div style={S.sub}>Connect to sync customers, invoices, and payments automatically.</div>
+              )}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' as const }}>
+            {connected ? (
+              <>
+                <button style={{ ...S.btn, ...S.btnGhost }} onClick={handleSync} disabled={syncing}>
+                  <RefreshCw size={14} style={{ animation: syncing ? 'spin 1s linear infinite' : undefined }} />
+                  {syncing ? "Syncing..." : "Sync Now"}
+                </button>
+                <button style={{ ...S.btn, ...S.btnDanger }} onClick={handleDisconnect} disabled={disconnecting}>
+                  <Unlink size={14} />
+                  {disconnecting ? "Disconnecting..." : "Disconnect"}
+                </button>
+              </>
+            ) : (
+              <button style={{ ...S.btn, ...S.btnPrimary }} onClick={handleConnect}>
+                <Link size={14} />
+                Connect QuickBooks
+              </button>
+            )}
+          </div>
+        </div>
+
+        {connected && (
+          <div style={{ marginTop: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+            <div style={{ background: '#F9F8F6', borderRadius: '8px', padding: '12px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                <Clock size={13} color="#6B7280" />
+                <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: '12px', color: '#6B7280' }}>Last Synced</span>
+              </div>
+              <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: '13px', color: '#1A1917' }}>{lastSync}</div>
+            </div>
+            <div style={{ background: '#F9F8F6', borderRadius: '8px', padding: '12px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                <BarChart2 size={13} color="#6B7280" />
+                <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: '12px', color: '#6B7280' }}>Invoice Start #</span>
+              </div>
+              <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: '13px', color: '#1A1917' }}>
+                {status?.invoice_sequence_start ?? "—"}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Sync Log */}
+      {connected && logs.length > 0 && (
+        <div style={S.card}>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: '15px', color: '#1A1917', marginBottom: '14px' }}>Recent Sync Activity</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0px' }}>
+            {logs.slice(0, 15).map((entry, i) => (
+              <div
+                key={entry.id}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 0',
+                  borderBottom: i < Math.min(logs.length, 15) - 1 ? '1px solid #F5F4F1' : 'none',
+                  gap: '12px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                  <span
+                    style={{
+                      ...S.badge,
+                      ...(entry.status === 'success' ? S.badgeGreen : { background: '#FEE2E2', color: '#DC2626' }),
+                      flexShrink: 0,
+                    }}
+                  >
+                    {entry.status === 'success' ? <CheckCircle size={10} /> : <AlertCircle size={10} />}
+                    {entry.status}
+                  </span>
+                  <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: '13px', color: '#1A1917', textTransform: 'capitalize' }}>
+                    {entry.entity_type.replace(/_/g, ' ')} #{entry.entity_id}
+                  </span>
+                  {entry.error_message && (
+                    <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: '12px', color: '#DC2626', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      — {entry.error_message}
+                    </span>
+                  )}
+                </div>
+                <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: '12px', color: '#9CA3AF', flexShrink: 0 }}>
+                  {new Date(entry.created_at).toLocaleString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!connected && (
+        <div style={{ ...S.card, background: '#F9F8F6', border: '1px dashed #D1D5DB' }}>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: '14px', color: '#6B7280', marginBottom: '8px' }}>What syncs automatically</div>
+          {[
+            "New clients are created as QuickBooks customers",
+            "Invoices are pushed to QuickBooks when created or updated",
+            "Payments are recorded in QuickBooks when invoices are marked paid",
+            "Invoice numbers start at your configured sequence (PHES: 6082)",
+          ].map((item) => (
+            <div key={item} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '6px' }}>
+              <CheckCircle size={14} color="#00C9A0" style={{ marginTop: '1px', flexShrink: 0 }} />
+              <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: '13px', color: '#4B5563' }}>{item}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

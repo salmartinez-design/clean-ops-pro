@@ -8,6 +8,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, and, ilike, or, count, sum, desc, sql, gte, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
+import { syncCustomer, queueSync } from "../services/quickbooks-sync.js";
 import { resolveZoneForZip } from "./zones.js";
 import crypto from "crypto";
 
@@ -156,6 +157,12 @@ router.post("/", requireAuth, async (req, res) => {
       ...(geo && { lat: geo.lat, lng: geo.lng }),
       ...(zoneId && { zone_id: zoneId }),
     }).returning();
+
+    // QB sync (fire and forget)
+    if (newClient[0]) {
+      queueSync(() => syncCustomer(req.auth!.companyId, newClient[0].id));
+    }
+
     return res.status(201).json(newClient[0]);
   } catch (err) {
     console.error("Create client error:", err);
@@ -315,6 +322,10 @@ router.put("/:id", requireAuth, async (req, res) => {
       ...(newZoneId !== undefined && { zone_id: newZoneId }),
     }).where(and(eq(clientsTable.id, clientId), eq(clientsTable.company_id, req.auth!.companyId))).returning();
     if (!updated[0]) return res.status(404).json({ error: "Not Found" });
+
+    // QB sync (fire and forget)
+    queueSync(() => syncCustomer(req.auth!.companyId, clientId));
+
     return res.json(updated[0]);
   } catch (err) {
     console.error("Update client error:", err);
