@@ -63,9 +63,19 @@ export async function seedIfNeeded() {
       companyId = existingCompany[0].id;
       await db
         .update(companiesTable)
-        .set({ brand_color: "#5B9BD5" })
+        .set({
+          name: "PHES Cleaning LLC",
+          brand_color: "#5B9BD5",
+          phone: "(708) 555-0142",
+          email: "hello@phescleaning.com",
+          address: "4800 W 95th St",
+          city: "Oak Lawn",
+          state: "IL",
+          zip: "60453",
+          business_hours: "Mon–Fri: 8:00 AM – 5:00 PM\nSat: 9:00 AM – 2:00 PM\nSun: Closed",
+        })
         .where(eq(companiesTable.slug, "phes-cleaning"));
-      console.log("[seed] PHES Cleaning already seeded — brand color ensured");
+      console.log("[seed] PHES Cleaning already seeded — name, brand color, and contact info ensured");
 
       const owner = await db
         .select({ id: usersTable.id })

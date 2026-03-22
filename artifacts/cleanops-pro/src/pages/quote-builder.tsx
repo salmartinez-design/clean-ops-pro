@@ -21,6 +21,12 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+// Stable references — must live outside the component so useEffect deps never spuriously change
+const EMPTY_SCOPES: PricingScope[] = [];
+const EMPTY_FREQUENCIES: PricingFrequency[] = [];
+const EMPTY_ADDONS: PricingAddon[] = [];
+
 async function apiFetch(path: string, opts: { method?: string; body?: any; headers?: any } = {}) {
   const { body, headers: extraHeaders, ...rest } = opts;
   const r = await fetch(`${API}${path}`, { headers: { ...getAuthHeaders(), "Content-Type": "application/json", ...extraHeaders }, ...rest, ...(body !== undefined && { body: JSON.stringify(body) }) });
@@ -142,18 +148,18 @@ export default function QuoteBuilderPage() {
     queryFn: () => apiFetch("/api/clients?limit=200").then((r: any) => r.data ?? r),
   });
 
-  const { data: scopes = [] } = useQuery<PricingScope[]>({
+  const { data: scopes = EMPTY_SCOPES } = useQuery<PricingScope[]>({
     queryKey: ["pricing-scopes"],
     queryFn: () => apiFetch("/api/pricing/scopes"),
   });
 
-  const { data: frequencies = [] } = useQuery<PricingFrequency[]>({
+  const { data: frequencies = EMPTY_FREQUENCIES } = useQuery<PricingFrequency[]>({
     queryKey: ["pricing-frequencies", scopeId],
     queryFn: () => apiFetch(`/api/pricing/scopes/${scopeId}/frequencies`),
     enabled: Boolean(scopeId),
   });
 
-  const { data: scopeAddons = [] } = useQuery<PricingAddon[]>({
+  const { data: scopeAddons = EMPTY_ADDONS } = useQuery<PricingAddon[]>({
     queryKey: ["pricing-addons", scopeId],
     queryFn: () => apiFetch(`/api/pricing/scopes/${scopeId}/addons`),
     enabled: Boolean(scopeId),
@@ -193,15 +199,18 @@ export default function QuoteBuilderPage() {
     }
   }, [existingQuote]);
 
-  // ── Auto-default frequency when scope changes ────────────────────────────────
+  // ── Reset add-ons when scope changes (isolated so frequencies ref changes don't re-trigger)
+  useEffect(() => {
+    if (scopeId !== null) setSelectedAddonIds([]);
+  }, [scopeId]);
 
+  // ── Auto-default frequency once frequencies load for this scope ──────────────
   useEffect(() => {
     if (scopeId && frequencies.length > 0 && !frequencyStr) {
       const oneTime = frequencies.find(f => f.frequency.toLowerCase().includes("one") || f.frequency.toLowerCase().includes("single"));
       setFrequencyStr(oneTime?.frequency ?? frequencies[0].frequency);
     }
-    if (scopeId) setSelectedAddonIds([]);
-  }, [scopeId, frequencies]);
+  }, [scopeId, frequencies, frequencyStr]);
 
   // ── Live price calculation (debounced 200ms) ─────────────────────────────────
 

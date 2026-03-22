@@ -272,6 +272,8 @@ function ClientSidebar({ client, stats, jobs, onPortalInvite }: { client: any; s
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
 function OverviewTab({ client, onUpdate, refetch }: { client: any; onUpdate: (data: any) => Promise<void>; refetch: () => void }) {
+  const { data: companyMe } = useQuery<any>({ queryKey: ["company-me"], queryFn: () => apiFetch("/api/companies/me") });
+  const companySlug = companyMe?.slug ?? "phes-cleaning";
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ first_name: client.first_name, last_name: client.last_name, email: client.email || "", phone: client.phone || "", company_name: client.company_name || "", notes: client.notes || "", base_fee: client.base_fee || "", allowed_hours: client.allowed_hours || "", frequency: client.frequency || "", service_type: client.service_type || "" });
 
@@ -422,11 +424,19 @@ function OverviewTab({ client, onUpdate, refetch }: { client: any; onUpdate: (da
       <div style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: "10px", padding: "16px" }}>
         <h3 style={{ margin: "0 0 12px", fontSize: "13px", fontWeight: 700, color: "#1A1917" }}>Quick Actions</h3>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          {[{ icon: MessageSquare, label: "Send SMS" }, { icon: Mail, label: "Send Email" }, { icon: StickyNote, label: "Add Note" }, { icon: Plus, label: "Create Job" }, { icon: Globe, label: "View Portal" }].map(({ icon: Icon, label }) => (
+          {[{ icon: MessageSquare, label: "Send SMS" }, { icon: Mail, label: "Send Email" }, { icon: StickyNote, label: "Add Note" }, { icon: Plus, label: "Create Job" }].map(({ icon: Icon, label }) => (
             <button key={label} style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 14px", border: "1px solid #E5E2DC", borderRadius: "8px", background: "#FFFFFF", color: "#1A1917", fontSize: "13px", cursor: "pointer" }}>
               <Icon size={13} strokeWidth={1.5} /> {label}
             </button>
           ))}
+          <a
+            href={`${API}/portal/${companySlug}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 14px", border: "1px solid #E5E2DC", borderRadius: "8px", background: "#FFFFFF", color: "#1A1917", fontSize: "13px", cursor: "pointer", textDecoration: "none" }}
+          >
+            <Globe size={13} strokeWidth={1.5} /> View Portal
+          </a>
         </div>
       </div>
     </div>
