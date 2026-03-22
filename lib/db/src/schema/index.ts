@@ -61,3 +61,4 @@ export * from "./document_templates";
 export * from "./document_signatures";
 export * from "./document_requests";
 export * from "./mileage_requests";
+export * from "./pricing";

@@ -7,12 +7,14 @@ import { useToast } from "@/hooks/use-toast";
 import { Upload, X, ImageIcon } from "lucide-react";
 import { HRPoliciesTab } from "./company/hr-policies";
 import { DocumentsTab } from "./company/documents";
+import { PricingTab } from "./company/pricing";
 
-type Tab = 'general' | 'branding' | 'integrations' | 'payroll' | 'notifications' | 'clock-inout' | 'invoicing' | 'hr-policies' | 'documents';
+type Tab = 'general' | 'branding' | 'integrations' | 'payroll' | 'notifications' | 'clock-inout' | 'invoicing' | 'hr-policies' | 'documents' | 'pricing';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'general', label: 'General' },
   { id: 'branding', label: 'Branding' },
+  { id: 'pricing', label: 'Pricing & Scopes' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'clock-inout', label: 'Clock In/Out' },
   { id: 'invoicing', label: 'Invoicing' },
@@ -65,6 +67,7 @@ export default function CompanyPage() {
         {activeTab === 'invoicing' && <InvoicingTab />}
         {activeTab === 'integrations' && <PlaceholderTab title="Integrations" desc="Connect QuickBooks, Stripe, and other services." />}
         {activeTab === 'payroll' && <PayrollOptionsTab />}
+        {activeTab === 'pricing' && <PricingTab />}
         {activeTab === 'hr-policies' && <HRPoliciesTab />}
         {activeTab === 'documents' && <DocumentsTab />}
       </div>

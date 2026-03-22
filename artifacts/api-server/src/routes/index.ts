@@ -54,6 +54,7 @@ import accountsRouter from "./accounts.js";
 import documentTemplatesRouter from "./document-templates.js";
 import documentRequestsRouter from "./document-requests.js";
 import mileageRequestsRouter from "./mileage-requests.js";
+import pricingRouter from "./pricing.js";
 
 const router: IRouter = Router();
 
@@ -112,5 +113,6 @@ router.use("/branches", branchesRouter);
 router.use("/document-templates", documentTemplatesRouter);
 router.use("/document-requests", documentRequestsRouter);
 router.use("/mileage-requests", mileageRequestsRouter);
+router.use("/pricing", pricingRouter);
 
 export default router;
