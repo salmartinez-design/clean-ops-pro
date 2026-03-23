@@ -102,7 +102,14 @@ function JobPanel({ job, employees, onClose, onUpdate, mobile }: {
   const [selectedTechId, setSelectedTechId] = useState<number | null>(job.assigned_user_id);
   const [rescheduleBusy, setRescheduleBusy] = useState(false);
   const [rescheduleSuccess, setRescheduleSuccess] = useState("");
+  const [rescheduleCount, setRescheduleCount] = useState<number | null>(null);
   const _API2 = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+  useEffect(() => {
+    if (!rescheduleOpen) return;
+    fetch(`${_API2}/api/cancellations/reschedule-count?client_id=${job.client_id}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json()).then(d => setRescheduleCount(d.count ?? 0)).catch(() => setRescheduleCount(0));
+  }, [rescheduleOpen]);
 
   useEffect(() => {
     if (!rescheduleOpen || !rescheduleDate) { setAvailSlots([]); return; }
@@ -371,7 +378,7 @@ function JobPanel({ job, employees, onClose, onUpdate, mobile }: {
           <button onClick={() => {
             setRescheduleOpen(true); setRescheduleSuccess(""); setRescheduleReason(""); setRescheduleReasonOther("");
             setRescheduleDate(job.scheduled_date || ""); setRescheduleHour(null);
-            setAvailSlots([]); setTechList([]); setSelectedTechId(job.assigned_user_id);
+            setAvailSlots([]); setTechList([]); setSelectedTechId(job.assigned_user_id); setRescheduleCount(null);
           }}
             style={{ padding: "10px 12px", border: "1px solid #BFDBFE", borderRadius: 8, backgroundColor: "#EFF6FF", color: "#1D4ED8", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FF }}>
             Reschedule
@@ -408,12 +415,22 @@ function JobPanel({ job, employees, onClose, onUpdate, mobile }: {
             const patch: Record<string, unknown> = { scheduled_date: rescheduleDate, scheduled_time: rescheduleTime, status: newStatus };
             if (selectedTechId !== null) patch.assigned_user_id = selectedTechId;
             await patchJob(job.id, patch, token);
-            const finalReason = rescheduleReason === "other" ? (rescheduleReasonOther || "Other") : (REASONS.find(r => r.value === rescheduleReason)?.label || rescheduleReason);
+            const reasonLabel = rescheduleReason === "other" ? (rescheduleReasonOther || "Other") : (REASONS.find(r => r.value === rescheduleReason)?.label || rescheduleReason);
+            const notesText = `Rescheduled to ${rescheduleDate} at ${fmtHour(rescheduleHour)} — ${reasonLabel}`;
             await fetch(`${_API2}/api/cancellations`, {
               method: "POST",
               headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ job_id: job.id, customer_id: job.client_id, cancel_reason: finalReason, notes: `Rescheduled to ${rescheduleDate} at ${fmtHour(rescheduleHour)}` }),
+              body: JSON.stringify({ job_id: job.id, customer_id: job.client_id, cancel_reason: rescheduleReason, notes: notesText }),
             }).catch(() => {});
+            const newCount = (rescheduleCount ?? 0) + 1;
+            const isRecurring = job.frequency && job.frequency !== "on_demand";
+            if (isRecurring && newCount >= 3) {
+              fetch(`${_API2}/api/churn/flag/${job.client_id}`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ reschedule_count: newCount }),
+              }).catch(() => {});
+            }
             const techName = techList.find(t => t.id === selectedTechId)?.name || (selectedTechId === job.assigned_user_id ? currentTechName : "");
             const fmtNew = new Date(rescheduleDate + "T12:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
             setRescheduleSuccess(`Job rescheduled to ${fmtNew} at ${fmtHour(rescheduleHour)}${techName ? ` with ${techName}` : ""}`);
@@ -463,6 +480,20 @@ function JobPanel({ job, employees, onClose, onUpdate, mobile }: {
                         {currentTechName && <><span style={{ color: "#9E9B94", margin: "0 6px" }}>—</span><span style={{ color: "#6B6860" }}>{currentTechName}</span></>}
                         {job.amount > 0 && <><span style={{ color: "#9E9B94", margin: "0 6px" }}>—</span><span style={{ color: "#6B6860" }}>${Number(job.amount).toFixed(2)}</span></>}
                       </div>
+                      {rescheduleCount !== null && rescheduleCount > 0 && (() => {
+                        const rc = rescheduleCount;
+                        const bg = rc >= 4 ? "#FEE2E2" : rc >= 2 ? "#FEF3C7" : "#DCFCE7";
+                        const txt = rc >= 4 ? "#991B1B" : rc >= 2 ? "#92400E" : "#15803D";
+                        const border = rc >= 4 ? "#FCA5A5" : rc >= 2 ? "#FCD34D" : "#86EFAC";
+                        return (
+                          <div style={{ marginTop: 10, padding: "6px 10px", borderRadius: 8, backgroundColor: bg, border: `1px solid ${border}`, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            <AlertTriangle size={12} color={txt} />
+                            <span style={{ fontSize: 12, fontWeight: 600, color: txt }}>
+                              {job.client_name.split(" ")[0]} has rescheduled {rc} time{rc !== 1 ? "s" : ""} in the last 90 days
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Section 2 — Reason */}

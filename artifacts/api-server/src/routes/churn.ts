@@ -162,4 +162,37 @@ router.get("/scores/:customer_id", requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/churn/flag/:customer_id — flag a specific client for excessive rescheduling
+router.post("/flag/:customer_id", requireAuth, requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const companyId = req.auth!.companyId;
+    const customerId = parseInt(req.params.customer_id);
+    const { reschedule_count = 3 } = req.body;
+
+    const existing = await db.select().from(churnScoresTable)
+      .where(and(eq(churnScoresTable.company_id, companyId), eq(churnScoresTable.customer_id, customerId)))
+      .limit(1);
+
+    const prevSignals = (existing[0]?.signals as Record<string, unknown>) ?? {};
+    const prevScore = existing[0]?.score ?? 0;
+    const newScore = Math.min(100, Math.max(prevScore, 65));
+    const signals = { ...prevSignals, excessive_rescheduling: true, reschedule_count_90d: reschedule_count };
+
+    await db.delete(churnScoresTable).where(and(eq(churnScoresTable.company_id, companyId), eq(churnScoresTable.customer_id, customerId)));
+    const [row] = await db.insert(churnScoresTable).values({
+      company_id: companyId,
+      customer_id: customerId,
+      score: newScore,
+      risk_level: newScore >= 75 ? "critical" : "high",
+      signals,
+      calculated_at: new Date(),
+    }).returning();
+
+    return res.json(row);
+  } catch (err) {
+    console.error("[churn/flag]", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
 export default router;
