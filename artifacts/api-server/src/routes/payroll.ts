@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { usersTable, timeclockTable, additionalPayTable, jobsTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, sum, count, sql } from "drizzle-orm";
+import { eq, and, gte, lte, sum, count, sql, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
 
 const router = Router();
@@ -140,6 +140,84 @@ router.get("/summary", requireAuth, requireRole("owner", "admin", "office"), asy
   } catch (err) {
     console.error("Payroll summary error:", err);
     return res.status(500).json({ error: "Internal Server Error", message: "Failed to get payroll summary" });
+  }
+});
+
+// ── Pay Templates ─────────────────────────────────────────────────────────────
+
+router.get("/templates", requireAuth, requireRole("owner", "admin", "office"), async (req, res) => {
+  try {
+    const rows = await db.execute(
+      sql`SELECT * FROM pay_templates WHERE company_id = ${req.auth!.companyId} ORDER BY id`
+    );
+    return res.json({ data: rows.rows });
+  } catch (err) {
+    console.error("GET /payroll/templates:", err);
+    return res.status(500).json({ error: "Failed to load templates" });
+  }
+});
+
+router.post("/templates", requireAuth, requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const { name, type, amount, notes } = req.body;
+    if (!name || !type || !amount) return res.status(400).json({ error: "name, type, amount required" });
+    const rows = await db.execute(
+      sql`INSERT INTO pay_templates (company_id, name, type, amount, notes) VALUES (${req.auth!.companyId}, ${name}, ${type}, ${parseFloat(amount)}, ${notes || null}) RETURNING *`
+    );
+    return res.json({ data: rows.rows[0] });
+  } catch (err) {
+    console.error("POST /payroll/templates:", err);
+    return res.status(500).json({ error: "Failed to create template" });
+  }
+});
+
+router.delete("/templates/:id", requireAuth, requireRole("owner", "admin"), async (req, res) => {
+  try {
+    await db.execute(
+      sql`DELETE FROM pay_templates WHERE id = ${parseInt(req.params.id)} AND company_id = ${req.auth!.companyId}`
+    );
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("DELETE /payroll/templates/:id:", err);
+    return res.status(500).json({ error: "Failed to delete template" });
+  }
+});
+
+// ── Bulk Pay ──────────────────────────────────────────────────────────────────
+
+router.post("/bulk-pay", requireAuth, requireRole("owner", "admin", "office"), async (req, res) => {
+  try {
+    const { employee_ids, type, amount, notes } = req.body;
+    if (!Array.isArray(employee_ids) || !employee_ids.length || !type || !amount) {
+      return res.status(400).json({ error: "employee_ids (array), type, amount required" });
+    }
+    const companyId = req.auth!.companyId;
+    const parsedAmount = parseFloat(amount);
+
+    // Verify all employees belong to this company
+    const emps = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(eq(usersTable.company_id, companyId), inArray(usersTable.id, employee_ids)));
+
+    if (emps.length !== employee_ids.length) {
+      return res.status(403).json({ error: "One or more employees not found in your company" });
+    }
+
+    const inserts = emps.map(e => ({
+      company_id: companyId,
+      user_id: e.id,
+      type,
+      amount: parsedAmount.toFixed(2),
+      notes: notes || null,
+      status: "pending" as const,
+    }));
+
+    await db.insert(additionalPayTable).values(inserts);
+    return res.json({ success: true, count: inserts.length });
+  } catch (err) {
+    console.error("POST /payroll/bulk-pay:", err);
+    return res.status(500).json({ error: "Failed to create bulk pay entries" });
   }
 });
 

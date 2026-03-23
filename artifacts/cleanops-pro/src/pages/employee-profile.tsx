@@ -7,7 +7,7 @@ import { getAuthHeaders, getTokenRole } from "@/lib/auth";
 import {
   ArrowLeft, Camera, Plus, X, ChevronLeft, ChevronRight,
   Star, Save, Trash2, Edit2, Check, AlertCircle, Mail, Phone, Eye,
-  Ban, ChevronDown, ChevronUp, DollarSign, Clock, TrendingUp,
+  Ban, ChevronDown, ChevronUp, DollarSign, Clock, TrendingUp, Download, Users,
 } from "lucide-react";
 import { useEmployeeView } from "@/contexts/employee-view-context";
 import { HRAttendanceTab, LeaveBalanceTab, DisciplineTab, QualityTab } from "./employee-profile-hr-tabs";
@@ -529,10 +529,24 @@ export default function EmployeeProfilePage() {
     enabled: activeTab === 'Payroll History',
   });
 
+  const { data: allEmployeesData } = useQuery({
+    queryKey: ['all-employees-bulk'],
+    queryFn: () => apiFetch('/users?is_active=true&limit=200'),
+    enabled: bulkPayModal,
+  });
+
   const [expandedPeriod, setExpandedPeriod] = useState<string | null>(null);
   const [voidingId, setVoidingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [bulkPayModal, setBulkPayModal] = useState(false);
+  const [bulkStep, setBulkStep] = useState<1|2|3>(1);
+  const [bulkSelectedEmps, setBulkSelectedEmps] = useState<number[]>([]);
+  const [bulkPayType, setBulkPayType] = useState('bonus');
+  const [bulkAmount, setBulkAmount] = useState('');
+  const [bulkNotes, setBulkNotes] = useState('');
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const [bulkEmpSearch, setBulkEmpSearch] = useState('');
+  const [printRecord, setPrintRecord] = useState<any | null>(null);
 
   const { data: scorecardsData, refetch: refetchScores } = useQuery({
     queryKey: ['scorecards-emp', userId],
@@ -621,6 +635,21 @@ export default function EmployeeProfilePage() {
     setPayModal(false); setNewPay({ type: 'bonus', amount: '', notes: '' });
     refetchPay();
     showToast('Pay entry added');
+  }
+
+  async function bulkPay() {
+    if (!bulkSelectedEmps.length || !bulkAmount) return;
+    setBulkSubmitting(true);
+    try {
+      const result = await apiFetch('/payroll/bulk-pay', {
+        method: 'POST',
+        body: JSON.stringify({ employee_ids: bulkSelectedEmps, type: bulkPayType, amount: bulkAmount, notes: bulkNotes }),
+      });
+      setBulkPayModal(false);
+      refetchPay();
+      showToast(`Bulk pay added for ${result.count} employee${result.count !== 1 ? 's' : ''}`);
+    } catch { showToast('Failed to submit bulk pay'); }
+    setBulkSubmitting(false);
   }
 
   async function voidPay(payId: number) {
@@ -1239,8 +1268,12 @@ export default function EmployeeProfilePage() {
                   ))}
                 </div>
 
-                {/* Header + add button */}
-                <div style={{ display:'flex', justifyContent:'flex-end' }}>
+                {/* Header + action buttons */}
+                <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}>
+                  <button onClick={() => { setBulkStep(1); setBulkSelectedEmps([]); setBulkPayType('bonus'); setBulkAmount(''); setBulkNotes(''); setBulkEmpSearch(''); setBulkPayModal(true); }}
+                    style={{ display:'flex',alignItems:'center',gap:6,padding:'8px 16px',background:'#FFFFFF',color:'#1A1917',border:'1px solid #E5E2DC',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit' }}>
+                    <Users size={14}/> Bulk Pay
+                  </button>
                   <button onClick={() => setPayModal(true)}
                     style={{ display:'flex',alignItems:'center',gap:6,padding:'8px 16px',background:'var(--brand)',color:'#FFFFFF',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit' }}>
                     <Plus size={14}/> Add Pay Entry
@@ -1393,7 +1426,7 @@ export default function EmployeeProfilePage() {
                           </div>
                           <span style={{ fontSize:12, color:'#9E9B94' }}>{start} — {end}</span>
                         </div>
-                        <div style={{ display:'flex', alignItems:'center', gap:24 }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:16 }}>
                           {/* Quick stats */}
                           <div style={{ textAlign:'right' as const }}>
                             <div style={{ fontSize:11, color:'#9E9B94', marginBottom:2 }}>Gross Wage</div>
@@ -1403,6 +1436,12 @@ export default function EmployeeProfilePage() {
                             <div style={{ fontSize:11, color:'#9E9B94', marginBottom:2 }}>Job Hours</div>
                             <div style={{ fontSize:18, fontWeight:800, color:'var(--brand)' }}>{fmtH(r.total_job_hours)}</div>
                           </div>
+                          <button
+                            onClick={e => { e.stopPropagation(); setPrintRecord({ ...r, periodName, start, end }); }}
+                            title="Download PDF"
+                            style={{ display:'flex',alignItems:'center',gap:5,padding:'6px 12px',border:'1px solid #E5E2DC',borderRadius:8,background:'#FFFFFF',cursor:'pointer',fontSize:12,fontWeight:600,color:'#6B7280',fontFamily:'inherit' }}>
+                            <Download size={13}/> PDF
+                          </button>
                           {isExpanded
                             ? <ChevronUp size={18} style={{ color:'#9E9B94' }}/>
                             : <ChevronDown size={18} style={{ color:'#9E9B94' }}/>
@@ -1716,6 +1755,271 @@ export default function EmployeeProfilePage() {
             </div>
           </div>
         )}
+
+        {/* ── BULK PAY MODAL ── */}
+        {bulkPayModal && (() => {
+          const allEmps: any[] = (allEmployeesData?.data || []).filter((e: any) => e.role !== 'owner');
+          const filtered = allEmps.filter((e: any) =>
+            !bulkEmpSearch || `${e.first_name} ${e.last_name}`.toLowerCase().includes(bulkEmpSearch.toLowerCase())
+          );
+          const selectedEmpObjects = allEmps.filter((e: any) => bulkSelectedEmps.includes(e.id));
+
+          return (
+            <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1100 }}>
+              <div style={{ background:'#FFFFFF',borderRadius:14,width:520,maxHeight:'85vh',display:'flex',flexDirection:'column',boxShadow:'0 24px 64px rgba(0,0,0,0.22)' }}>
+                {/* Header */}
+                <div style={{ padding:'20px 24px 16px', borderBottom:'1px solid #EEECE7' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                      <Users size={18} style={{ color:'var(--brand)' }}/>
+                      <span style={{ fontSize:16, fontWeight:700, color:'#1A1917' }}>Bulk Pay</span>
+                    </div>
+                    <button onClick={() => setBulkPayModal(false)} style={{ background:'none',border:'none',cursor:'pointer',color:'#9E9B94',padding:4 }}><X size={18}/></button>
+                  </div>
+                  {/* Step indicators */}
+                  <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                    {(['Select Employees','Pay Details','Confirm'] as const).map((label, i) => (
+                      <div key={i} style={{ display:'flex', alignItems:'center', gap:6 }}>
+                        <div style={{ width:22,height:22,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,background: bulkStep > i+1 ? 'var(--brand)' : bulkStep === i+1 ? 'var(--brand)' : '#E5E2DC',color: bulkStep >= i+1 ? '#fff' : '#9E9B94' }}>{i+1}</div>
+                        <span style={{ fontSize:11,fontWeight:600,color: bulkStep === i+1 ? '#1A1917' : '#9E9B94' }}>{label}</span>
+                        {i < 2 && <div style={{ width:20,height:1,background:'#E5E2DC' }}/>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Body */}
+                <div style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>
+                  {/* STEP 1: Employee Selection */}
+                  {bulkStep === 1 && (
+                    <div>
+                      <p style={{ fontSize:13,color:'#6B7280',margin:'0 0 12px 0' }}>Select employees who will receive this pay entry.</p>
+                      <input
+                        value={bulkEmpSearch}
+                        onChange={e => setBulkEmpSearch(e.target.value)}
+                        placeholder="Search employees…"
+                        style={{ width:'100%',height:36,padding:'0 12px',border:'1px solid #E5E2DC',borderRadius:8,fontSize:13,outline:'none',marginBottom:10,fontFamily:'inherit' }}
+                      />
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+                        <span style={{ fontSize:11,color:'#9E9B94',fontWeight:600 }}>{bulkSelectedEmps.length} selected</span>
+                        <button onClick={() => setBulkSelectedEmps(bulkSelectedEmps.length === allEmps.length ? [] : allEmps.map((e: any) => e.id))}
+                          style={{ fontSize:11,fontWeight:600,color:'var(--brand)',background:'none',border:'none',cursor:'pointer',padding:0 }}>
+                          {bulkSelectedEmps.length === allEmps.length ? 'Deselect All' : 'Select All'}
+                        </button>
+                      </div>
+                      <div style={{ border:'1px solid #E5E2DC',borderRadius:8,overflow:'hidden',maxHeight:260,overflowY:'auto' }}>
+                        {filtered.map((e: any) => {
+                          const isChecked = bulkSelectedEmps.includes(e.id);
+                          return (
+                            <label key={e.id} style={{ display:'flex',alignItems:'center',gap:12,padding:'10px 14px',borderBottom:'1px solid #F3F4F6',cursor:'pointer',background: isChecked ? '#F0FBF8' : '#FFFFFF' }}>
+                              <input type="checkbox" checked={isChecked} onChange={() => setBulkSelectedEmps(prev => isChecked ? prev.filter(id => id !== e.id) : [...prev, e.id])}
+                                style={{ accentColor:'var(--brand)',width:15,height:15,flexShrink:0 }}/>
+                              <div style={{ width:30,height:30,borderRadius:'50%',background:'var(--brand-dim)',color:'var(--brand)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0 }}>
+                                {e.first_name?.[0]}{e.last_name?.[0]}
+                              </div>
+                              <div>
+                                <div style={{ fontSize:13,fontWeight:600,color:'#1A1917' }}>{e.first_name} {e.last_name}</div>
+                                <div style={{ fontSize:11,color:'#9E9B94',textTransform:'capitalize' }}>{e.role}</div>
+                              </div>
+                            </label>
+                          );
+                        })}
+                        {!filtered.length && <div style={{ padding:'24px',textAlign:'center',color:'#9E9B94',fontSize:13 }}>No employees found</div>}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* STEP 2: Pay Details */}
+                  {bulkStep === 2 && (
+                    <div style={{ display:'flex',flexDirection:'column',gap:14 }}>
+                      <p style={{ fontSize:13,color:'#6B7280',margin:'0 0 4px 0' }}>Choose pay type and amount for <strong>{bulkSelectedEmps.length}</strong> employee{bulkSelectedEmps.length !== 1 ? 's' : ''}.</p>
+                      <Field label="Pay Type">
+                        <select value={bulkPayType} onChange={e => setBulkPayType(e.target.value)}
+                          style={{ height:38,padding:'0 10px',border:'1px solid #E5E2DC',borderRadius:8,fontSize:13,color:'#1A1917',background:'#FFFFFF',outline:'none',width:'100%' }}>
+                          {PAY_GROUPS.map(g => (
+                            <optgroup key={g.label} label={g.label}>
+                              {g.types.map(t => <option key={t} value={t}>{PAY_LABELS[t]}</option>)}
+                            </optgroup>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Amount ($) — per employee">
+                        <Input type="number" value={bulkAmount} onChange={v => setBulkAmount(v)} placeholder="0.00"/>
+                      </Field>
+                      <Field label="Notes (optional)">
+                        <Input value={bulkNotes} onChange={v => setBulkNotes(v)} placeholder="Reason or reference…"/>
+                      </Field>
+                      <div style={{ background:'#FEF3C7',border:'1px solid #FDE68A',borderRadius:8,padding:'10px 14px',fontSize:12,color:'#92400E',fontWeight:600 }}>
+                        Each entry will be marked Pending until the next day is closed.
+                      </div>
+                    </div>
+                  )}
+
+                  {/* STEP 3: Confirm */}
+                  {bulkStep === 3 && (
+                    <div>
+                      <p style={{ fontSize:13,color:'#6B7280',margin:'0 0 12px 0' }}>Review before submitting.</p>
+                      <div style={{ background:'#F7F6F3',borderRadius:8,padding:'12px 16px',marginBottom:12 }}>
+                        <div style={{ fontSize:12,color:'#9E9B94',marginBottom:2 }}>Pay Type</div>
+                        <div style={{ fontSize:14,fontWeight:700,color:'#1A1917' }}>{PAY_LABELS[bulkPayType] || bulkPayType}</div>
+                        <div style={{ fontSize:12,color:'#9E9B94',marginTop:8,marginBottom:2 }}>Amount per Employee</div>
+                        <div style={{ fontSize:22,fontWeight:800,color:'var(--brand)' }}>${parseFloat(bulkAmount||'0').toFixed(2)}</div>
+                        <div style={{ fontSize:12,color:'#9E9B94',marginTop:8 }}>Total payout: <strong style={{ color:'#1A1917' }}>${(parseFloat(bulkAmount||'0') * bulkSelectedEmps.length).toFixed(2)}</strong></div>
+                        {bulkNotes && <div style={{ fontSize:12,color:'#6B7280',marginTop:8 }}>Note: {bulkNotes}</div>}
+                      </div>
+                      <div style={{ border:'1px solid #E5E2DC',borderRadius:8,overflow:'hidden',maxHeight:220,overflowY:'auto' }}>
+                        {selectedEmpObjects.map((e: any) => (
+                          <div key={e.id} style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'9px 14px',borderBottom:'1px solid #F3F4F6' }}>
+                            <div style={{ display:'flex',alignItems:'center',gap:10 }}>
+                              <div style={{ width:28,height:28,borderRadius:'50%',background:'var(--brand-dim)',color:'var(--brand)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700 }}>
+                                {e.first_name?.[0]}{e.last_name?.[0]}
+                              </div>
+                              <span style={{ fontSize:13,fontWeight:600,color:'#1A1917' }}>{e.first_name} {e.last_name}</span>
+                            </div>
+                            <span style={{ fontSize:13,fontWeight:700,color:'#166534' }}>${parseFloat(bulkAmount||'0').toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div style={{ padding:'16px 24px', borderTop:'1px solid #EEECE7', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <button onClick={() => bulkStep === 1 ? setBulkPayModal(false) : setBulkStep(s => (s - 1) as 1|2|3)}
+                    style={{ padding:'8px 18px',border:'1px solid #E5E2DC',borderRadius:8,fontSize:13,background:'#FFFFFF',cursor:'pointer',fontFamily:'inherit',color:'#1A1917' }}>
+                    {bulkStep === 1 ? 'Cancel' : 'Back'}
+                  </button>
+                  {bulkStep < 3 ? (
+                    <button
+                      disabled={bulkStep === 1 ? !bulkSelectedEmps.length : !bulkAmount}
+                      onClick={() => setBulkStep(s => (s + 1) as 1|2|3)}
+                      style={{ padding:'8px 22px',background:'var(--brand)',color:'#FFFFFF',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit',opacity:(bulkStep === 1 ? !bulkSelectedEmps.length : !bulkAmount) ? 0.5 : 1 }}>
+                      Next
+                    </button>
+                  ) : (
+                    <button onClick={bulkPay} disabled={bulkSubmitting}
+                      style={{ padding:'8px 22px',background:'var(--brand)',color:'#FFFFFF',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit',opacity:bulkSubmitting?0.6:1 }}>
+                      {bulkSubmitting ? 'Submitting…' : `Submit (${bulkSelectedEmps.length})`}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── PRINT PAYROLL PDF ── */}
+        {printRecord && (() => {
+          const r = printRecord;
+          const empName = user ? `${user.first_name} ${user.last_name}` : 'Employee';
+          const fmt2 = (v: any) => `$${parseFloat(v||0).toFixed(2)}`;
+          const fmtH2 = (v: any) => `${parseFloat(v||0).toFixed(1)} hrs`;
+          const rows = [
+            { label:'Total Job Hours',  val: fmtH2(r.total_job_hours) },
+            { label:'Clock Hours',      val: fmtH2(r.clock_hours) },
+            { label:'Overtime Hours',   val: fmtH2(r.overtime_hours) },
+            { label:'Commission Pay',   val: fmt2(r.commission_pay) },
+            { label:'Hourly Pay',       val: fmt2(r.hourly_pay) },
+            { label:'Tips',             val: fmt2(r.tips) },
+            { label:'Bonus',            val: fmt2(r.bonus) },
+            { label:'Overtime Pay',     val: fmt2(r.overtime) },
+            { label:'Sick Pay',         val: fmt2(r.sick_pay) },
+            { label:'Holiday Pay',      val: fmt2(r.holiday_pay) },
+            { label:'Vacation Pay',     val: fmt2(r.vacation_pay) },
+            { label:'Reimbursements',   val: fmt2(r.reimbursements) },
+            { label:'Gross Wage',       val: fmt2(r.gross_wage), bold: true },
+            { label:'Avg Wage/Hr',      val: fmt2(r.avg_wage) },
+          ];
+
+          function triggerPrint() {
+            const styleId = 'qleno-print-style';
+            if (!document.getElementById(styleId)) {
+              const s = document.createElement('style');
+              s.id = styleId;
+              s.innerHTML = `@media print { body > *:not(#qleno-print-root) { display:none!important; } #qleno-print-root { display:block!important; position:fixed;inset:0;z-index:99999;background:#fff;padding:40px; font-family:'Plus Jakarta Sans',sans-serif; } }`;
+              document.head.appendChild(s);
+            }
+            const el = document.getElementById('qleno-print-root');
+            if (el) el.style.display = 'none';
+            setTimeout(() => { window.print(); }, 50);
+          }
+
+          return (
+            <>
+              {/* Hidden print-only element */}
+              <div id="qleno-print-root" style={{ display:'none' }}>
+                <div style={{ maxWidth:540,margin:'0 auto',fontFamily:"'Plus Jakarta Sans',sans-serif" }}>
+                  <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:28,paddingBottom:16,borderBottom:'2px solid #00C9A0' }}>
+                    <div>
+                      <div style={{ fontSize:22,fontWeight:800,color:'#0A0E1A',letterSpacing:'-0.5px' }}>QLENO</div>
+                      <div style={{ fontSize:11,color:'#9E9B94',marginTop:2 }}>PHES Cleaning LLC</div>
+                    </div>
+                    <div style={{ textAlign:'right' }}>
+                      <div style={{ fontSize:13,fontWeight:700,color:'#1A1917' }}>Payroll Summary</div>
+                      <div style={{ fontSize:11,color:'#9E9B94' }}>Printed {new Date().toLocaleDateString()}</div>
+                    </div>
+                  </div>
+                  <div style={{ marginBottom:20 }}>
+                    <div style={{ fontSize:18,fontWeight:800,color:'#1A1917' }}>{empName}</div>
+                    <div style={{ fontSize:13,fontWeight:600,color:'#00C9A0',marginTop:2 }}>{r.periodName}</div>
+                    <div style={{ fontSize:11,color:'#9E9B94',marginTop:2 }}>{r.start} — {r.end}</div>
+                  </div>
+                  <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
+                    <tbody>
+                      {rows.map(row => (
+                        <tr key={row.label} style={{ borderBottom:'1px solid #F3F4F6' }}>
+                          <td style={{ padding:'8px 0',color: row.bold ? '#1A1917' : '#6B7280',fontWeight: row.bold ? 700 : 400 }}>{row.label}</td>
+                          <td style={{ padding:'8px 0',textAlign:'right',fontWeight: row.bold ? 800 : 600,color: row.bold ? '#00C9A0' : '#1A1917' }}>{row.val}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div style={{ marginTop:24,paddingTop:12,borderTop:'1px solid #E5E2DC',fontSize:10,color:'#C4C0B8',textAlign:'center' }}>
+                    Data imported from MaidCentral · Generated by Qleno
+                  </div>
+                </div>
+              </div>
+
+              {/* Preview modal */}
+              <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1100 }}>
+                <div style={{ background:'#FFFFFF',borderRadius:14,width:500,boxShadow:'0 24px 64px rgba(0,0,0,0.22)' }}>
+                  <div style={{ padding:'20px 24px 16px',borderBottom:'1px solid #EEECE7',display:'flex',justifyContent:'space-between',alignItems:'center' }}>
+                    <div style={{ display:'flex',alignItems:'center',gap:8 }}>
+                      <Download size={16} style={{ color:'var(--brand)' }}/>
+                      <span style={{ fontSize:15,fontWeight:700,color:'#1A1917' }}>Payroll PDF — {r.periodName}</span>
+                    </div>
+                    <button onClick={() => setPrintRecord(null)} style={{ background:'none',border:'none',cursor:'pointer',color:'#9E9B94' }}><X size={18}/></button>
+                  </div>
+                  <div style={{ padding:'20px 24px' }}>
+                    <p style={{ fontSize:13,color:'#6B7280',margin:'0 0 16px 0' }}>
+                      Ready to print: <strong style={{ color:'#1A1917' }}>{empName} · {r.periodName}</strong> ({r.start} — {r.end})
+                    </p>
+                    <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16 }}>
+                      {[
+                        { label:'Gross Wage',  val: fmt2(r.gross_wage) },
+                        { label:'Job Hours',   val: fmtH2(r.total_job_hours) },
+                      ].map(s => (
+                        <div key={s.label} style={{ background:'#F7F6F3',borderRadius:8,padding:'12px 14px' }}>
+                          <div style={{ fontSize:11,color:'#9E9B94',marginBottom:4 }}>{s.label}</div>
+                          <div style={{ fontSize:18,fontWeight:800,color:'#1A1917' }}>{s.val}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display:'flex',gap:10,justifyContent:'flex-end' }}>
+                      <button onClick={() => setPrintRecord(null)}
+                        style={{ padding:'8px 18px',border:'1px solid #E5E2DC',borderRadius:8,fontSize:13,background:'#FFFFFF',cursor:'pointer',fontFamily:'inherit' }}>Cancel</button>
+                      <button onClick={() => { triggerPrint(); setPrintRecord(null); }}
+                        style={{ display:'flex',alignItems:'center',gap:6,padding:'8px 20px',background:'var(--brand)',color:'#FFFFFF',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit' }}>
+                        <Download size={13}/> Print / Save PDF
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          );
+        })()}
 
         {/* ── TOAST ── */}
         {toast && (
