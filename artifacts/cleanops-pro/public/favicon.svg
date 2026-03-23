@@ -1,8 +1,25 @@
-<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-  <rect width="32" height="32" rx="7" fill="#0A0E1A"/>
-  <g transform="translate(-9, -9) scale(0.484)" stroke="#00C9A0" stroke-linecap="round" fill="none" stroke-width="5.5">
-    <path d="M43,38 A19,19 0 1 0 46,30"/>
-    <line x1="43" y1="38" x2="51" y2="52"/>
-    <line x1="45" y1="56" x2="57" y2="49"/>
-  </g>
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- Mint green rounded square background -->
+  <rect width="64" height="64" rx="14" fill="#00C9A0"/>
+
+  <!-- Three white shine lines — left side -->
+  <!-- Upper-left (~10 o'clock), diagonal 45° -->
+  <line x1="23" y1="20" x2="13" y2="10"
+    stroke="white" stroke-width="5" stroke-linecap="round" opacity="0.88"/>
+  <!-- Left — perfectly horizontal -->
+  <line x1="20" y1="32" x2="8" y2="32"
+    stroke="white" stroke-width="5" stroke-linecap="round" opacity="0.88"/>
+  <!-- Lower-left (~8 o'clock), diagonal 45° -->
+  <line x1="23" y1="44" x2="13" y2="54"
+    stroke="white" stroke-width="5" stroke-linecap="round" opacity="0.88"/>
+
+  <!-- Bold white Q, centered right of center -->
+  <text
+    x="40" y="32"
+    font-family="'Helvetica Neue', Arial, sans-serif"
+    font-weight="800"
+    font-size="36"
+    fill="white"
+    text-anchor="middle"
+    dominant-baseline="central">Q</text>
 </svg>
