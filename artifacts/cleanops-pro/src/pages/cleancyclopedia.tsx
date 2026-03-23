@@ -89,7 +89,7 @@ export default function CleancyclopediaPage() {
                     <div style={{ padding: '0 20px 20px', borderTop: '1px solid #EEECE7' }}>
                       <div style={{ paddingTop: '16px' }}>
                         <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 300, fontSize: '13px', color: '#6B7280', lineHeight: 1.7, margin: 0 }}>
-                          {article.desc} This article contains step-by-step instructions, best practices, and quality checkpoints developed by the PHES Cleaning LLC operations team.
+                          {article.desc} This article contains step-by-step instructions, best practices, and quality checkpoints developed by the Phes operations team.
                         </p>
                         <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
                           <button style={{ padding: '7px 16px', backgroundColor: 'var(--brand)', color: '#FFFFFF', borderRadius: '6px', fontSize: '12px', fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, border: 'none', cursor: 'pointer' }}>

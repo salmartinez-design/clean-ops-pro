@@ -494,7 +494,7 @@ router.post("/:id/remind", requireAuth, requireRole("owner", "admin", "office"),
         html: `<p>Hi ${client?.first_name || "there"},</p>
                <p>This is a friendly reminder that invoice <strong>${invNum}</strong> for <strong>$${parseFloat(invoice.total || "0").toFixed(2)}</strong> is due.</p>
                <p><a href="${payLink}">Pay Now</a></p>
-               <p>Thank you,<br>PHES Cleaning LLC</p>`,
+               <p>Thank you,<br>Phes</p>`,
       });
     }
 

@@ -49,7 +49,7 @@ export async function seedIfNeeded() {
       }
     }
 
-    // ── PHES Cleaning LLC ───────────────────────────────────────────────────
+    // ── Phes ────────────────────────────────────────────────────────────────
     const existingCompany = await db
       .select({ id: companiesTable.id })
       .from(companiesTable)
@@ -64,10 +64,10 @@ export async function seedIfNeeded() {
       await db
         .update(companiesTable)
         .set({
-          name: "PHES Cleaning LLC",
+          name: "Phes",
           brand_color: "#5B9BD5",
-          phone: "(708) 555-0142",
-          email: "hello@phescleaning.com",
+          phone: "(773) 706-6000",
+          email: "info@phes.io",
           address: "4800 W 95th St",
           city: "Oak Lawn",
           state: "IL",
@@ -75,7 +75,7 @@ export async function seedIfNeeded() {
           business_hours: "Mon–Fri: 8:00 AM – 5:00 PM\nSat: 9:00 AM – 2:00 PM\nSun: Closed",
         })
         .where(eq(companiesTable.slug, "phes-cleaning"));
-      console.log("[seed] PHES Cleaning already seeded — name, brand color, and contact info ensured");
+      console.log("[seed] Phes already seeded — name, brand color, and contact info ensured");
 
       const owner = await db
         .select({ id: usersTable.id })
@@ -84,12 +84,12 @@ export async function seedIfNeeded() {
         .limit(1);
       ownerId = owner[0]?.id ?? 0;
     } else {
-      console.log("[seed] Seeding PHES Cleaning LLC...");
+      console.log("[seed] Seeding Phes...");
 
       const [company] = await db
         .insert(companiesTable)
         .values({
-          name: "PHES Cleaning LLC",
+          name: "Phes",
           slug: "phes-cleaning",
           brand_color: "#5B9BD5",
           subscription_status: "active",
@@ -118,7 +118,7 @@ export async function seedIfNeeded() {
       }).returning({ id: usersTable.id });
 
       ownerId = ownerRow.id;
-      console.log("[seed] PHES Cleaning seeded — login: salmartinez@phes.io");
+      console.log("[seed] Phes seeded — login: salmartinez@phes.io");
     }
 
     // ── Branches: Oak Lawn (default) + Schaumburg ───────────────────────────

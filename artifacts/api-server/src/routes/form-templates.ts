@@ -26,7 +26,7 @@ SERVICE GUIDELINES
 We will begin services on the agreed start date. Your service includes a per-visit minimum and covers all standard cleaning tasks as discussed. Additional hours beyond the base rate are billed at the agreed hourly rate.
 
 ADD-ONS AND TRADES POLICY
-Additional services (deep cleaning, move-in/out, appliance interiors, etc.) must be scheduled in advance and will be billed separately. PHES Cleaning LLC does not subcontract trades or maintenance work.
+Additional services (deep cleaning, move-in/out, appliance interiors, etc.) must be scheduled in advance and will be billed separately. Phes does not subcontract trades or maintenance work.
 
 LOCKOUT POLICY
 If our technicians arrive and are unable to gain access to the property, a lockout fee equal to the full service charge will apply. Please ensure access is available at the time of your scheduled service.
@@ -35,7 +35,7 @@ CANCELLATION AND RESCHEDULING
 We require 48 hours advance notice to cancel or reschedule your appointment. Cancellations made within 48 hours of your scheduled service time during business hours (Monday–Friday 9:00 AM – 6:00 PM, Saturday 9:00 AM – 12:00 PM) will be charged a cancellation fee equal to 100% of the service cost. Exceptions may be made in cases of genuine emergency at management's discretion.
 
 TERMINATION OF SERVICES
-Either party may terminate recurring services with 30 days written notice. PHES Cleaning LLC reserves the right to terminate service immediately in cases of safety concerns, payment default, or hostile work environment.
+Either party may terminate recurring services with 30 days written notice. Phes reserves the right to terminate service immediately in cases of safety concerns, payment default, or hostile work environment.
 
 PAYMENT TERMS
 Payment is due on the day of service. We accept all major credit and debit cards. Your card on file will be automatically charged on the day of your scheduled service. Unpaid balances are subject to a late fee of $25 after 7 days.
@@ -44,13 +44,13 @@ SICK POLICY
 For the health and safety of all our clients and staff, we will reschedule your service if a technician is ill. We will provide as much notice as possible and accommodate your rescheduling needs promptly at no penalty to you.
 
 SAFETY AND WINTER ACCESS
-In winter months, please ensure driveways and walkways are clear of snow and ice before your service. PHES Cleaning LLC reserves the right to reschedule services if conditions are deemed unsafe for our technicians. No cancellation fee will apply in these cases.
+In winter months, please ensure driveways and walkways are clear of snow and ice before your service. Phes reserves the right to reschedule services if conditions are deemed unsafe for our technicians. No cancellation fee will apply in these cases.
 
 BODILY FLUIDS AND EXCLUSIONS
 Our standard service does not include cleaning of bodily fluids, biohazardous materials, mold remediation, or pest-related cleanup. These require specialized services and will be declined or quoted separately.
 
 SURFACE CARE DISCLAIMER
-We take care with all surfaces, however PHES Cleaning LLC is not responsible for damage to improperly sealed, compromised, or pre-existing damaged surfaces. Please inform us of any fragile items or surfaces requiring special care before service.
+We take care with all surfaces, however Phes is not responsible for damage to improperly sealed, compromised, or pre-existing damaged surfaces. Please inform us of any fragile items or surfaces requiring special care before service.
 
 SERVICE SUSPENSION POLICY
 Clients may suspend recurring service for up to 90 days while retaining their scheduled appointment slot. Requests must be made with 48 hours notice. Suspension beyond 90 days may result in loss of your recurring time slot.
@@ -62,22 +62,22 @@ RECURRING RATE PROTECTION
 Your rate is locked as long as you maintain your recurring schedule and frequency. Rate changes will be communicated with 30 days advance notice.
 
 ANNUAL RATE REVIEW
-PHES Cleaning LLC reserves the right to adjust rates annually in January based on labor costs, supply costs, and market conditions. Clients will be notified 30 days in advance of any rate change.
+Phes reserves the right to adjust rates annually in January based on labor costs, supply costs, and market conditions. Clients will be notified 30 days in advance of any rate change.
 
 RATE CHANGES BASED ON CLEANING TIME
 After your first 2–3 months of service, your rate may be adjusted to reflect the actual time required to clean your home to our standards. We will communicate any adjustment to you before it takes effect.
 
 WEATHER POLICY
-PHES Cleaning LLC may reschedule services due to severe weather conditions that pose safety risks to our staff. We will notify you as early as possible and reschedule at no penalty to you.
+Phes may reschedule services due to severe weather conditions that pose safety risks to our staff. We will notify you as early as possible and reschedule at no penalty to you.
 
 HOLIDAY CLOSURES
-PHES Cleaning LLC observes the following holidays: New Year's Day, Memorial Day, Fourth of July, Labor Day, Thanksgiving Day, and Christmas Day. Services falling on these dates will be rescheduled.
+Phes observes the following holidays: New Year's Day, Memorial Day, Fourth of July, Labor Day, Thanksgiving Day, and Christmas Day. Services falling on these dates will be rescheduled.
 
 24-HOUR SATISFACTION GUARANTEE
 If you are not completely satisfied with your cleaning, please contact us within 24 hours and we will return to address any concerns at no additional charge. We stand behind our work.
 
 BREAKAGE AND DAMAGE POLICY
-PHES Cleaning LLC carries liability insurance. In the event of accidental damage caused by our technicians, please report it within 24 hours. We do not accept liability for items weighing over 25 lbs or items that were pre-existing in a damaged condition. Damage claims are handled on a case-by-case basis.`;
+Phes carries liability insurance. In the event of accidental damage caused by our technicians, please report it within 24 hours. We do not accept liability for items weighing over 25 lbs or items that were pre-existing in a damaged condition. Damage claims are handled on a case-by-case basis.`;
 
 router.get("/", requireAuth, async (req, res) => {
   try {
@@ -200,10 +200,10 @@ TERMINATION
 Either party may terminate with 60 days written notice. Immediate termination may occur for non-payment or breach of contract.
 
 PERFORMANCE STANDARDS
-PHES Cleaning LLC maintains professional cleaning standards. Clients may request inspection access to verify service quality.
+Phes maintains professional cleaning standards. Clients may request inspection access to verify service quality.
 
 LIABILITY
-PHES Cleaning LLC carries commercial general liability insurance. Certificate of insurance available upon request.
+Phes carries commercial general liability insurance. Certificate of insurance available upon request.
 
 CONFIDENTIALITY
 All client information and property details will be kept strictly confidential.`,
