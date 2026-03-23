@@ -55,6 +55,10 @@ function fmtTime(t: string | null): string {
 }
 function fmtSvc(s: string) { return s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()); }
 function useIsMobile() { const [m, setM] = useState(window.innerWidth < 1024); useEffect(() => { const h = () => setM(window.innerWidth < 1024); window.addEventListener("resize", h); return () => window.removeEventListener("resize", h); }, []); return m; }
+function fmtHour(h: number) { if (h === 12) return "12 PM"; if (h === 0) return "12 AM"; return h < 12 ? `${h} AM` : `${h - 12} PM`; }
+function slotBg(count: number) { if (count === 0) return "#DCFCE7"; if (count <= 2) return "#FEF3C7"; return "#FEE2E2"; }
+function slotTxt(count: number) { if (count === 0) return "#15803D"; if (count <= 2) return "#92400E"; return "#991B1B"; }
+function slotLbl(count: number) { if (count === 0) return "Open"; if (count <= 2) return `${count} job${count === 1 ? "" : "s"}`; return `Full (${count})`; }
 
 async function patchJob(id: number, patch: object, token: string) {
   const API = (window as any).__API_BASE__ || "";
@@ -87,10 +91,33 @@ function JobPanel({ job, employees, onClose, onUpdate, mobile }: {
   const [cancelNote, setCancelNote] = useState("");
 
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
-  const [rescheduleDate, setRescheduleDate] = useState(job.scheduled_date || "");
-  const [rescheduleTime, setRescheduleTime] = useState(job.scheduled_time?.slice(0, 5) || "09:00");
+  const [rescheduleReason, setRescheduleReason] = useState("");
+  const [rescheduleReasonOther, setRescheduleReasonOther] = useState("");
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleHour, setRescheduleHour] = useState<number | null>(null);
+  const [availSlots, setAvailSlots] = useState<{ hour: number; count: number }[]>([]);
+  const [availLoading, setAvailLoading] = useState(false);
+  const [techList, setTechList] = useState<{ id: number; name: string; role: string; jobs_today: number; has_conflict: boolean }[]>([]);
+  const [techLoading, setTechLoading] = useState(false);
+  const [selectedTechId, setSelectedTechId] = useState<number | null>(job.assigned_user_id);
   const [rescheduleBusy, setRescheduleBusy] = useState(false);
   const [rescheduleSuccess, setRescheduleSuccess] = useState("");
+  const _API2 = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+  useEffect(() => {
+    if (!rescheduleOpen || !rescheduleDate) { setAvailSlots([]); return; }
+    setAvailLoading(true);
+    fetch(`${_API2}/api/jobs/availability?date=${rescheduleDate}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json()).then(d => setAvailSlots(d.slots || [])).catch(() => {}).finally(() => setAvailLoading(false));
+  }, [rescheduleOpen, rescheduleDate]);
+
+  useEffect(() => {
+    if (!rescheduleOpen || !rescheduleDate || rescheduleHour === null) { setTechList([]); return; }
+    setTechLoading(true);
+    const timeStr = `${String(rescheduleHour).padStart(2, "0")}:00`;
+    fetch(`${_API2}/api/users/available?date=${rescheduleDate}&time=${timeStr}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json()).then(d => setTechList(d.employees || [])).catch(() => {}).finally(() => setTechLoading(false));
+  }, [rescheduleOpen, rescheduleDate, rescheduleHour]);
 
   // Supply logging state
   const [supplyName, setSupplyName] = useState("");
@@ -341,7 +368,11 @@ function JobPanel({ job, employees, onClose, onUpdate, mobile }: {
               Flag
             </button>
           )}
-          <button onClick={() => { setRescheduleOpen(true); setRescheduleSuccess(""); }}
+          <button onClick={() => {
+            setRescheduleOpen(true); setRescheduleSuccess(""); setRescheduleReason(""); setRescheduleReasonOther("");
+            setRescheduleDate(job.scheduled_date || ""); setRescheduleHour(null);
+            setAvailSlots([]); setTechList([]); setSelectedTechId(job.assigned_user_id);
+          }}
             style={{ padding: "10px 12px", border: "1px solid #BFDBFE", borderRadius: 8, backgroundColor: "#EFF6FF", color: "#1D4ED8", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FF }}>
             Reschedule
           </button>
@@ -355,69 +386,185 @@ function JobPanel({ job, employees, onClose, onUpdate, mobile }: {
       </div>
 
       {/* Reschedule modal */}
-      {rescheduleOpen && (
-        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, fontFamily: FF, padding: "0 16px" }}>
-          <div style={{ backgroundColor: "#FFFFFF", borderRadius: 12, padding: 28, width: "100%", maxWidth: 420, boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
-            <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 700, color: "#1A1917" }}>Reschedule Job</h3>
-            <p style={{ margin: "0 0 20px", fontSize: 13, color: "#6B7280" }}>
-              {job.client_name} — currently {job.scheduled_date ? new Date(job.scheduled_date + "T12:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "unscheduled"}
-            </p>
-            {rescheduleSuccess ? (
-              <div>
-                <p style={{ fontSize: 14, fontWeight: 600, color: "#16A34A", textAlign: "center", padding: "16px 0 20px" }}>{rescheduleSuccess}</p>
-                <button onClick={() => { setRescheduleOpen(false); setRescheduleSuccess(""); onUpdate(); onClose(); }}
-                  style={{ width: "100%", padding: "10px", border: "none", borderRadius: 8, background: "#16A34A", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: FF }}>
-                  Done
+      {rescheduleOpen && (() => {
+        const canConfirm = !!rescheduleReason && !!rescheduleDate && rescheduleHour !== null && !!selectedTechId && !rescheduleBusy;
+        const currentTechName = job.assigned_user_name || (employees.find(e => e.id === job.assigned_user_id)?.name) || "";
+        const fmtJobDate = job.scheduled_date ? new Date(job.scheduled_date + "T12:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : "Unscheduled";
+        const REASONS = [
+          { value: "client_request", label: "Client Request" },
+          { value: "no_show_client", label: "No Show — Client" },
+          { value: "no_show_tech", label: "No Show — Tech" },
+          { value: "weather", label: "Weather" },
+          { value: "tech_unavailable", label: "Tech Unavailable" },
+          { value: "emergency", label: "Emergency" },
+          { value: "other", label: "Other" },
+        ];
+        const handleConfirm = async () => {
+          if (!canConfirm || rescheduleHour === null) return;
+          setRescheduleBusy(true);
+          const rescheduleTime = `${String(rescheduleHour).padStart(2, "0")}:00:00`;
+          try {
+            const newStatus = job.status === "cancelled" ? "scheduled" : job.status;
+            const patch: Record<string, unknown> = { scheduled_date: rescheduleDate, scheduled_time: rescheduleTime, status: newStatus };
+            if (selectedTechId !== null) patch.assigned_user_id = selectedTechId;
+            await patchJob(job.id, patch, token);
+            const finalReason = rescheduleReason === "other" ? (rescheduleReasonOther || "Other") : (REASONS.find(r => r.value === rescheduleReason)?.label || rescheduleReason);
+            await fetch(`${_API2}/api/cancellations`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ job_id: job.id, customer_id: job.client_id, cancel_reason: finalReason, notes: `Rescheduled to ${rescheduleDate} at ${fmtHour(rescheduleHour)}` }),
+            }).catch(() => {});
+            const techName = techList.find(t => t.id === selectedTechId)?.name || (selectedTechId === job.assigned_user_id ? currentTechName : "");
+            const fmtNew = new Date(rescheduleDate + "T12:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+            setRescheduleSuccess(`Job rescheduled to ${fmtNew} at ${fmtHour(rescheduleHour)}${techName ? ` with ${techName}` : ""}`);
+            onUpdate();
+          } catch {
+            toast({ title: "Error", description: "Could not reschedule", variant: "destructive" });
+            setRescheduleOpen(false);
+          } finally { setRescheduleBusy(false); }
+        };
+        return (
+          <>
+            <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.5)", zIndex: 299 }} onClick={() => !rescheduleBusy && setRescheduleOpen(false)} />
+            <div style={mobile
+              ? { position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 300, backgroundColor: "#F7F6F3", borderRadius: "16px 16px 0 0", maxHeight: "92vh", display: "flex", flexDirection: "column", fontFamily: FF }
+              : { position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 300, backgroundColor: "#F7F6F3", borderRadius: 16, width: "100%", maxWidth: 620, maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 64px rgba(0,0,0,0.25)", fontFamily: FF }
+            }>
+              {/* Sticky header */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 20px 16px", backgroundColor: "#FFFFFF", borderRadius: mobile ? "16px 16px 0 0" : "16px 16px 0 0", borderBottom: "1px solid #E5E2DC", flexShrink: 0 }}>
+                <span style={{ fontSize: 16, fontWeight: 700, color: "#1A1917" }}>Reschedule Job</span>
+                <button onClick={() => !rescheduleBusy && setRescheduleOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, display: "flex", alignItems: "center" }} type="button">
+                  <X size={18} color="#6B6860" />
                 </button>
               </div>
-            ) : (
-              <>
-                <div style={{ marginBottom: 14 }}>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>New Date</label>
-                  <input type="date" value={rescheduleDate} onChange={e => setRescheduleDate(e.target.value)}
-                    style={{ width: "100%", height: 40, padding: "0 12px", border: "1px solid #E5E2DC", borderRadius: 8, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: FF }} />
-                </div>
-                <div style={{ marginBottom: 24 }}>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>New Time</label>
-                  <input type="time" value={rescheduleTime} onChange={e => setRescheduleTime(e.target.value)}
-                    style={{ width: "100%", height: 40, padding: "0 12px", border: "1px solid #E5E2DC", borderRadius: 8, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: FF }} />
-                </div>
-                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-                  <button onClick={() => setRescheduleOpen(false)}
-                    style={{ padding: "8px 16px", border: "1px solid #E5E2DC", borderRadius: 8, fontSize: 13, background: "#FFFFFF", cursor: "pointer", fontFamily: FF }}>
-                    Cancel
-                  </button>
-                  <button disabled={rescheduleBusy || !rescheduleDate || !rescheduleTime}
-                    onClick={async () => {
-                      if (!rescheduleDate || !rescheduleTime) return;
-                      setRescheduleBusy(true);
-                      const API2 = import.meta.env.BASE_URL.replace(/\/$/, "");
-                      try {
-                        const newStatus = job.status === "cancelled" ? "scheduled" : job.status;
-                        await patchJob(job.id, { scheduled_date: rescheduleDate, scheduled_time: rescheduleTime + ":00", status: newStatus }, token);
-                        await fetch(`${API2}/api/cancellations`, {
-                          method: "POST",
-                          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-                          body: JSON.stringify({ job_id: job.id, customer_id: job.client_id, cancel_reason: "rescheduled", notes: `Rescheduled to ${rescheduleDate} at ${rescheduleTime}` }),
-                        }).catch(() => {});
-                        const d = new Date(rescheduleDate + "T12:00");
-                        const formatted = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-                        const [h, m] = rescheduleTime.split(":").map(Number);
-                        const hFmt = h === 0 ? 12 : h > 12 ? h - 12 : h;
-                        const timeFmt = `${hFmt}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
-                        setRescheduleSuccess(`Job rescheduled to ${formatted} at ${timeFmt}`);
-                      } catch { toast({ title: "Error", description: "Could not reschedule", variant: "destructive" }); setRescheduleOpen(false); }
-                      finally { setRescheduleBusy(false); }
-                    }}
-                    style={{ padding: "8px 20px", background: "#1D4ED8", color: "#FFFFFF", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: rescheduleBusy ? "not-allowed" : "pointer", fontFamily: FF, opacity: rescheduleBusy ? 0.7 : 1 }}>
+
+              {/* Scrollable body */}
+              <div style={{ overflowY: "auto", flex: 1, padding: "0 0 8px" }}>
+                {rescheduleSuccess ? (
+                  <div style={{ padding: "32px 20px", textAlign: "center" }}>
+                    <CheckCircle size={40} color="#16A34A" style={{ marginBottom: 12 }} />
+                    <p style={{ fontSize: 15, fontWeight: 600, color: "#15803D", marginBottom: 20 }}>{rescheduleSuccess}</p>
+                    <button onClick={() => { setRescheduleOpen(false); setRescheduleSuccess(""); onClose(); }}
+                      style={{ width: "100%", padding: "12px", border: "none", borderRadius: 10, background: "#16A34A", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: FF }}>
+                      Done
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {/* Section 1 — Job Summary */}
+                    <div style={{ margin: "16px 20px 0", backgroundColor: "#FFFFFF", borderRadius: 12, border: "1px solid #E5E2DC", padding: "14px 16px" }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.07em", display: "block", marginBottom: 8 }}>Job Summary</span>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 0", fontSize: 13, color: "#1A1917", fontWeight: 500, lineHeight: 1.6 }}>
+                        <span style={{ fontWeight: 700 }}>{job.client_name}</span>
+                        <span style={{ color: "#9E9B94", margin: "0 6px" }}>—</span>
+                        <span>{fmtSvc(job.service_type)}</span>
+                        <span style={{ color: "#9E9B94", margin: "0 6px" }}>—</span>
+                        <span style={{ color: "#6B6860" }}>{fmtJobDate}{job.scheduled_time ? ` at ${fmtTime(job.scheduled_time)}` : ""}</span>
+                        {currentTechName && <><span style={{ color: "#9E9B94", margin: "0 6px" }}>—</span><span style={{ color: "#6B6860" }}>{currentTechName}</span></>}
+                        {job.amount > 0 && <><span style={{ color: "#9E9B94", margin: "0 6px" }}>—</span><span style={{ color: "#6B6860" }}>${Number(job.amount).toFixed(2)}</span></>}
+                      </div>
+                    </div>
+
+                    {/* Section 2 — Reason */}
+                    <div style={{ margin: "14px 20px 0", backgroundColor: "#FFFFFF", borderRadius: 12, border: "1px solid #E5E2DC", padding: "14px 16px" }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.07em", display: "block", marginBottom: 10 }}>Reason for Reschedule <span style={{ color: "#EF4444" }}>*</span></span>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {REASONS.map(r => (
+                          <button key={r.value} type="button" onClick={() => setRescheduleReason(r.value)}
+                            style={{ padding: "10px 14px", borderRadius: 8, border: `1.5px solid ${rescheduleReason === r.value ? "var(--brand, #00C9A0)" : "#E5E2DC"}`, backgroundColor: rescheduleReason === r.value ? "rgba(0,201,160,0.08)" : "#F7F6F3", fontSize: 13, fontWeight: rescheduleReason === r.value ? 600 : 400, color: rescheduleReason === r.value ? "var(--brand, #00C9A0)" : "#1A1917", cursor: "pointer", textAlign: "left", fontFamily: FF, touchAction: "manipulation", minHeight: 44 }}>
+                            {r.label}
+                          </button>
+                        ))}
+                        {rescheduleReason === "other" && (
+                          <input value={rescheduleReasonOther} onChange={e => setRescheduleReasonOther(e.target.value)}
+                            placeholder="Describe the reason..."
+                            style={{ padding: "10px 12px", border: "1px solid #E5E2DC", borderRadius: 8, fontSize: 13, fontFamily: FF, outline: "none", color: "#1A1917" }} />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Section 3 — New Date + Availability */}
+                    <div style={{ margin: "14px 20px 0", backgroundColor: "#FFFFFF", borderRadius: 12, border: "1px solid #E5E2DC", padding: "14px 16px" }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.07em", display: "block", marginBottom: 10 }}>New Date & Time <span style={{ color: "#EF4444" }}>*</span></span>
+                      <input type="date" value={rescheduleDate} onChange={e => { setRescheduleDate(e.target.value); setRescheduleHour(null); }}
+                        style={{ width: "100%", height: 44, padding: "0 12px", border: "1px solid #E5E2DC", borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: FF, backgroundColor: "#F7F6F3" }} />
+                      {rescheduleDate && (
+                        <div style={{ marginTop: 14 }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "#6B6860", display: "block", marginBottom: 8 }}>
+                            {availLoading ? "Loading availability..." : "Tap a time slot to select"}
+                          </span>
+                          {!availLoading && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                              {availSlots.map(slot => {
+                                const isSelected = rescheduleHour === slot.hour;
+                                return (
+                                  <button key={slot.hour} type="button" onClick={() => setRescheduleHour(slot.hour)}
+                                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", minHeight: 44, borderRadius: 8, border: `1.5px solid ${isSelected ? "var(--brand, #00C9A0)" : "#E5E2DC"}`, backgroundColor: isSelected ? "var(--brand, #00C9A0)" : slotBg(slot.count), cursor: "pointer", fontFamily: FF, touchAction: "manipulation" }}>
+                                    <span style={{ fontSize: 13, fontWeight: 600, color: isSelected ? "#FFFFFF" : "#1A1917" }}>{fmtHour(slot.hour)}</span>
+                                    <span style={{ fontSize: 12, fontWeight: 600, color: isSelected ? "#FFFFFF" : slotTxt(slot.count), padding: "2px 10px", borderRadius: 20, backgroundColor: isSelected ? "rgba(255,255,255,0.25)" : "transparent" }}>{slotLbl(slot.count)}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Section 4 — Team Assignment */}
+                    {rescheduleHour !== null && (
+                      <div style={{ margin: "14px 20px 0", backgroundColor: "#FFFFFF", borderRadius: 12, border: "1px solid #E5E2DC", padding: "14px 16px" }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.07em", display: "block", marginBottom: 10 }}>Team Assignment</span>
+                        {techLoading ? (
+                          <p style={{ fontSize: 13, color: "#6B6860", margin: 0 }}>Loading team availability...</p>
+                        ) : techList.length === 0 ? (
+                          <p style={{ fontSize: 13, color: "#6B6860", margin: 0 }}>No team members found.</p>
+                        ) : (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            {[...techList].sort((a, b) => (b.id === job.assigned_user_id ? 1 : 0) - (a.id === job.assigned_user_id ? 1 : 0)).map(tech => {
+                              const isSelected = selectedTechId === tech.id;
+                              const isCurrent = tech.id === job.assigned_user_id;
+                              return (
+                                <button key={tech.id} type="button" onClick={() => setSelectedTechId(tech.id)}
+                                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", minHeight: 52, borderRadius: 10, border: `1.5px solid ${isSelected ? "var(--brand, #00C9A0)" : "#E5E2DC"}`, backgroundColor: isSelected ? "rgba(0,201,160,0.07)" : "#F7F6F3", cursor: "pointer", textAlign: "left", fontFamily: FF, touchAction: "manipulation", width: "100%" }}>
+                                  <div>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                      <span style={{ fontSize: 13, fontWeight: 600, color: "#1A1917" }}>{tech.name}</span>
+                                      {isCurrent && <span style={{ fontSize: 10, fontWeight: 700, color: "#6B6860", backgroundColor: "#E5E2DC", padding: "2px 7px", borderRadius: 20 }}>Currently assigned</span>}
+                                    </div>
+                                    <span style={{ fontSize: 11, color: "#9E9B94" }}>{tech.jobs_today} job{tech.jobs_today !== 1 ? "s" : ""} today</span>
+                                  </div>
+                                  {tech.has_conflict && (
+                                    <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 8px", borderRadius: 6, backgroundColor: "#FEE2E2", border: "1px solid #FCA5A5" }}>
+                                      <AlertTriangle size={12} color="#991B1B" />
+                                      <span style={{ fontSize: 11, fontWeight: 600, color: "#991B1B" }}>Conflict</span>
+                                    </div>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div style={{ height: 16 }} />
+                  </>
+                )}
+              </div>
+
+              {/* Sticky confirm button */}
+              {!rescheduleSuccess && (
+                <div style={{ padding: "12px 20px", borderTop: "1px solid #E5E2DC", backgroundColor: "#FFFFFF", flexShrink: 0 }}>
+                  <button type="button" disabled={!canConfirm} onClick={handleConfirm}
+                    style={{ width: "100%", padding: "14px", border: "none", borderRadius: 10, background: canConfirm ? "var(--brand, #00C9A0)" : "#E5E2DC", color: canConfirm ? "#FFFFFF" : "#9E9B94", fontSize: 14, fontWeight: 700, cursor: canConfirm ? "pointer" : "not-allowed", fontFamily: FF, touchAction: "manipulation", transition: "background 0.15s" }}>
                     {rescheduleBusy ? "Saving..." : "Confirm Reschedule"}
                   </button>
                 </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+              )}
+            </div>
+          </>
+        );
+      })()}
 
       {/* Cancel modal */}
       {cancelOpen && (

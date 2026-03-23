@@ -463,6 +463,37 @@ router.post("/suggest-tech", requireAuth, async (req, res) => {
   }
 });
 
+router.get("/availability", requireAuth, async (req, res) => {
+  try {
+    const { date } = req.query;
+    if (!date) return res.status(400).json({ error: "date required" });
+    const companyId = req.auth!.companyId;
+    const jobs = await db
+      .select({ scheduled_time: jobsTable.scheduled_time })
+      .from(jobsTable)
+      .where(and(
+        eq(jobsTable.company_id, companyId),
+        eq(jobsTable.scheduled_date, date as string),
+        sql`${jobsTable.status} NOT IN ('cancelled')`,
+      ));
+    const countsByHour: Record<number, number> = {};
+    for (const job of jobs) {
+      if (job.scheduled_time) {
+        const hour = parseInt(job.scheduled_time.split(":")[0]);
+        if (!isNaN(hour)) countsByHour[hour] = (countsByHour[hour] || 0) + 1;
+      }
+    }
+    const slots = [];
+    for (let hour = 7; hour <= 17; hour++) {
+      slots.push({ hour, count: countsByHour[hour] || 0 });
+    }
+    return res.json({ slots });
+  } catch (err) {
+    console.error("[jobs/availability]", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
 router.get("/:id", requireAuth, async (req, res) => {
   try {
     const jobId = parseInt(req.params.id);

@@ -337,6 +337,57 @@ router.post("/invite/:token/accept", async (req, res) => {
   }
 });
 
+router.get("/available", requireAuth, async (req, res) => {
+  try {
+    const { date, time } = req.query;
+    const companyId = req.auth!.companyId;
+    const emps = await db
+      .select({ id: usersTable.id, first_name: usersTable.first_name, last_name: usersTable.last_name, role: usersTable.role })
+      .from(usersTable)
+      .where(and(
+        eq(usersTable.company_id, companyId),
+        eq(usersTable.is_active, true),
+      ));
+    if (!emps.length) return res.json({ employees: [] });
+    const dayJobs = date
+      ? await db
+          .select({ assigned_user_id: jobsTable.assigned_user_id, scheduled_time: jobsTable.scheduled_time, allowed_hours: jobsTable.allowed_hours })
+          .from(jobsTable)
+          .where(and(
+            eq(jobsTable.company_id, companyId),
+            eq(jobsTable.scheduled_date, date as string),
+            sql`${jobsTable.status} NOT IN ('cancelled')`,
+          ))
+      : [];
+    let selectedMins: number | null = null;
+    if (time) {
+      const parts = (time as string).split(":");
+      const h = parseInt(parts[0]);
+      const m = parseInt(parts[1] || "0");
+      if (!isNaN(h)) selectedMins = h * 60 + (isNaN(m) ? 0 : m);
+    }
+    const result = emps.map(emp => {
+      const empJobs = dayJobs.filter(j => j.assigned_user_id === emp.id);
+      let has_conflict = false;
+      if (selectedMins !== null) {
+        for (const j of empJobs) {
+          if (!j.scheduled_time) continue;
+          const [jh, jm] = j.scheduled_time.split(":").map(Number);
+          const jStart = jh * 60 + (isNaN(jm) ? 0 : jm);
+          const durationMins = j.allowed_hours ? Math.round(parseFloat(j.allowed_hours) * 60) : 90;
+          const jEnd = jStart + durationMins;
+          if (selectedMins >= jStart && selectedMins < jEnd) { has_conflict = true; break; }
+        }
+      }
+      return { id: emp.id, name: `${emp.first_name ?? ""} ${emp.last_name ?? ""}`.trim(), role: emp.role, jobs_today: empJobs.length, has_conflict };
+    });
+    return res.json({ employees: result });
+  } catch (err) {
+    console.error("[users/available]", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
 router.post("/:id/employee-view-log", requireAuth, async (req, res) => {
   if (req.auth!.role !== "owner") {
     return res.status(403).json({ error: "Owner only" });
