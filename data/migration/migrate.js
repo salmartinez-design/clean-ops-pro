@@ -3,9 +3,12 @@
 // ─── MIGRATION: PHES Oak Lawn from MaidCentral → Qleno ───────────────────────
 // Run: node data/migration/migrate.js
 // Stops after dry run — type YES to proceed.
+// Employees are inserted with a placeholder password_hash so they cannot log
+// in until a password-reset / invite flow is completed.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const { Client } = require('/home/runner/workspace/node_modules/.pnpm/pg@8.20.0/node_modules/pg');
+const crypto = require('crypto');
 const XLSX = require('/home/runner/workspace/node_modules/.pnpm/xlsx@0.18.5/node_modules/xlsx');
 const readline = require('readline');
 
@@ -158,7 +161,8 @@ function parseEmpList(rows) {
     const role     = ROLE_MAP[email] || 'technician';
     const status   = termDate ? 'inactive' : 'active';
 
-    emps.push({ firstName, lastName, email, phone, hireDate, termDate, role, status });
+    const placeholderHash = 'IMPORT_PLACEHOLDER_' + crypto.randomBytes(16).toString('hex');
+    emps.push({ firstName, lastName, email, phone, hireDate, termDate, role, status, placeholderHash });
   }
   return emps;
 }
@@ -519,13 +523,13 @@ async function main() {
   for (const e of empToInsert) {
     try {
       await db.query(`
-        INSERT INTO users (company_id, email, first_name, last_name, phone, role, pay_type, hr_status, hire_date, termination_date, migration_source)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        INSERT INTO users (company_id, email, first_name, last_name, phone, role, pay_type, hr_status, hire_date, termination_date, migration_source, password_hash)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
         ON CONFLICT (email) DO NOTHING
       `, [
         COMPANY_ID, e.email || `noemail_${Date.now()}_${Math.random()}`, e.firstName, e.lastName,
         e.phone || null, e.role, 'hourly', e.status === 'active' ? 'active' : 'inactive',
-        e.hireDate || null, e.termDate || null, MIGRATION_SOURCE,
+        e.hireDate || null, e.termDate || null, MIGRATION_SOURCE, e.placeholderHash,
       ]);
       empImported++;
     } catch (err) {

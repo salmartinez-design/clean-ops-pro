@@ -58,3 +58,36 @@ Qleno is a multi-tenant SaaS platform designed for residential and commercial cl
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` (SMS notifications)
 - `GOOGLE_MAPS_API_KEY` (Address geocoding)
 - `SQUARE_APPLICATION_ID`, `SQUARE_ACCESS_TOKEN`, `SQUARE_LOCATION_ID` (Square payment processing)
+
+## Data Migration — MaidCentral → Qleno (COMPLETE)
+
+**Executed:** March 23, 2026 — `data/migration/migrate.js`
+
+**Source files** (6 Excel exports from MaidCentral, stored in `attached_assets/`):
+- `Customer_Stats` — 1,265 customers (all-time revenue, cleaning dates)
+- `Customer_Report` — 625 active customers (addresses, contact info, base fees, frequency)
+- `Customer_Sales` — monthly revenue by customer (Jan 2024 – Feb 2026)
+- `Consistency` — 363 recurring schedule definitions
+- `Employee_List` — 13 technicians + staff
+- `Employee_Attendance_Stats` — attendance data (imported, not yet mapped to UI)
+
+**Results:**
+| Table | Rows Imported |
+|---|---|
+| `users` | 12 employees (10 technicians, 2 office) |
+| `clients` | 1,231 clients (210 active, 1,021 inactive) |
+| `recurring_schedules` | 86 schedules |
+| `customer_revenue_history` | 1,829 monthly rows — $778,072.94 total |
+
+**Schema columns added:**
+- `clients`: `migration_source`, `historical_revenue`, `last_job_date`, `next_job_date`, `lead_source`
+- `users`: `migration_source`
+- `recurring_schedules`: `migration_source`
+- New table: `customer_revenue_history (id, company_id, customer_id, period_month, revenue, migration_source, created_at)`
+
+**Notes:**
+- All migrated rows tagged `migration_source = 'mc_import'`
+- `invoice_sequence_start` on `companies` updated to 6082
+- Employees imported with placeholder `password_hash` — they cannot log in until a password-reset/invite flow is set up
+- 15 pre-existing demo clients remain (migration_source IS NULL) — cleanup SQL in the script comments
+- Branches Oak Lawn (id=1) and Schaumburg (id=2) were already present — not re-created
