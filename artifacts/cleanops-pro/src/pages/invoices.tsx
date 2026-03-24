@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useLocation } from "wouter";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
@@ -465,6 +465,12 @@ export default function InvoicesPage() {
   const [showBatch, setShowBatch] = useState(false);
   const [showCloseDay, setShowCloseDay] = useState(false);
   const [showNewInvoice, setShowNewInvoice] = useState(false);
+  useEffect(() => {
+    if (window.location.search.includes('new=1')) {
+      setShowNewInvoice(true);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   const token = useAuthStore(state => state.token) || "";
   let userRole = "office";
@@ -564,6 +570,7 @@ export default function InvoicesPage() {
                 )}
                 <button onClick={() => setShowNewInvoice(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 13px", backgroundColor: "var(--brand)", color: "#FFFFFF", borderRadius: 8, fontSize: 13, fontWeight: 700, border: "none", cursor: "pointer", fontFamily: FF }}>
                   <Plus size={14} strokeWidth={2} /> {isMobile ? "New" : "New Invoice"}
+                  {!isMobile && <kbd style={{ fontSize: 10, border: '1px solid rgba(255,255,255,0.45)', borderRadius: 3, padding: '1px 5px', color: 'rgba(255,255,255,0.8)', fontFamily: 'inherit' }}>I</kbd>}
                 </button>
               </div>
             </div>

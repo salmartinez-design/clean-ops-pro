@@ -88,9 +88,10 @@ function useRevenueChart() {
 
 function useGreeting(firstName: string) {
   const hour = new Date().getHours();
-  if (hour < 12) return `Good morning, ${firstName}.`;
-  if (hour < 17) return `Good afternoon, ${firstName}.`;
-  return `Good evening, ${firstName}.`;
+  const suffix = firstName ? `, ${firstName}` : '';
+  if (hour < 12) return `Good morning${suffix}.`;
+  if (hour < 17) return `Good afternoon${suffix}.`;
+  return `Good evening${suffix}.`;
 }
 
 export default function Dashboard() {
@@ -105,11 +106,11 @@ export default function Dashboard() {
   const revenueChart = useRevenueChart();
 
   const token = useAuthStore(state => state.token) || '';
-  let firstName = 'there';
+  let firstName = '';
   let userRole = 'office';
   try {
     const p = JSON.parse(atob(token.split('.')[1]));
-    firstName = p.first_name || 'there';
+    firstName = p.first_name || '';
     userRole = p.role || 'office';
   } catch {}
   const canAdmin = userRole === 'owner' || userRole === 'admin';
@@ -131,21 +132,21 @@ export default function Dashboard() {
   const KPI_ROWS = [
     [
       {
-        label: 'Monthly Revenue', value: kpis ? fmt$(kpis.month_revenue) : '—',
+        label: 'Monthly Revenue', value: kpis != null ? (kpis.month_revenue > 0 ? fmt$(kpis.month_revenue) : '—') : '—',
         delta: kpis?.month_delta ?? null, warn: false,
       },
       {
-        label: 'Avg Bill', value: kpis ? `$${(kpis.avg_bill || 0).toFixed(0)}` : '—',
+        label: 'Avg Bill', value: kpis != null ? (kpis.avg_bill > 0 ? `$${kpis.avg_bill.toFixed(0)}` : '—') : '—',
         delta: null, warn: false,
       },
       {
-        label: 'Active Clients', value: kpis?.active_clients ?? '—',
+        label: 'Active Clients', value: kpis?.active_clients > 0 ? kpis.active_clients : (kpis != null ? '—' : '—'),
         delta: null, warn: false,
       },
     ],
     [
       {
-        label: 'Quality Score', value: kpis?.quality_score != null ? `${kpis.quality_score}/100` : '—',
+        label: 'Quality Score', value: kpis?.quality_score != null && kpis.quality_score > 0 ? `${kpis.quality_score}/100` : '—',
         delta: null, warn: false,
       },
       {
@@ -153,7 +154,7 @@ export default function Dashboard() {
         delta: null, warn: kpis?.churn_configured === true && (kpis?.clients_at_risk || 0) > 0, click: '/customers',
       },
       {
-        label: 'Week Revenue', value: kpis ? fmt$(kpis.week_revenue) : '—',
+        label: 'Week Revenue', value: kpis != null ? (kpis.week_revenue > 0 ? fmt$(kpis.week_revenue) : '—') : '—',
         delta: kpis?.week_delta ?? null, warn: false,
       },
     ],
@@ -195,7 +196,7 @@ export default function Dashboard() {
               <p style={{ fontSize: 12, color: '#6B6860', margin: '0 0 2px', fontFamily: FF }}>Revenue this week</p>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                 <span style={{ fontSize: 22, fontWeight: 700, color: '#1A1917', fontFamily: FF }}>
-                  {kpis ? fmt$(kpis.week_revenue) : '—'}
+                  {kpis != null ? (kpis.week_revenue > 0 ? fmt$(kpis.week_revenue) : '—') : '—'}
                 </span>
                 <DeltaBadge delta={kpis?.week_delta ?? null} />
               </div>

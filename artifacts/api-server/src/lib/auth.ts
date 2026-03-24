@@ -6,6 +6,7 @@ export interface AuthPayload {
   companyId: number | null;
   role: string;
   email: string;
+  first_name?: string;
 }
 
 declare global {

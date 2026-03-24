@@ -44,6 +44,7 @@ router.post("/login", async (req, res) => {
       companyId: user[0].company_id,
       role: user[0].role,
       email: user[0].email,
+      first_name: user[0].first_name ?? undefined,
     });
 
     await logAudit(req, "login_success", "user", user[0].id, null, { email });
@@ -78,6 +79,7 @@ router.post("/refresh", requireAuth, (req, res) => {
       companyId: req.auth!.companyId,
       role: req.auth!.role,
       email: req.auth!.email,
+      first_name: req.auth!.first_name,
     });
     return res.json({ token: newToken });
   } catch (err) {

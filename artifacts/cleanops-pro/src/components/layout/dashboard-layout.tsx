@@ -15,7 +15,7 @@ import {
   UserCheck, FileText, DollarSign, BarChart2, TrendingUp,
   BookOpen, Star, Settings, Clock,
   MoreHorizontal, Search, MessageSquare, X, ChevronRight,
-  ChevronDown, Eye, LogOut,
+  ChevronDown, Eye, LogOut, CircleHelp,
 } from "lucide-react";
 import { useEmployeeView } from "@/contexts/employee-view-context";
 
@@ -481,9 +481,9 @@ export function DashboardLayout({ children, title, fullBleed, onNewJob }: Dashbo
               )}
             </button>
 
-            <button onClick={() => setShortcutsOpen(true)} title="Keyboard Shortcuts (?)"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9E9B94', padding: 6, borderRadius: 8, fontSize: 13, display: 'flex', alignItems: 'center', fontFamily: 'inherit' }}>
-              <span style={{ fontSize: 12, border: '1px solid #E5E2DC', borderRadius: 3, padding: '1px 6px', color: '#9E9B94' }}>?</span>
+            <button onClick={() => setShortcutsOpen(true)} title="Keyboard Shortcuts"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9E9B94', padding: 6, borderRadius: 8, display: 'flex', alignItems: 'center' }}>
+              <CircleHelp size={18} />
             </button>
 
             {user && (

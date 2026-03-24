@@ -93,6 +93,30 @@ Qleno is a multi-tenant SaaS platform designed for residential and commercial cl
 - Employees imported with placeholder `password_hash` — they cannot log in until a password-reset/invite flow is set up
 - 15 pre-existing demo clients remain (migration_source IS NULL) — cleanup SQL in the script comments
 
+## Dashboard & UI Improvements (March 24, 2026)
+
+**Dashboard KPI fixes:**
+- `job_history` table created (columns: `id, company_id, customer_id, job_date, revenue, service_type, technician, notes, created_at`) — revenue KPI queries target this table for MC historical data
+- Dashboard `/api/dashboard/kpis` fixed: was querying `bill_rate`/`scheduled_date` (wrong); now `revenue`/`job_date` (correct); quality score window extended to 90 days; Active Clients now filters `is_active=true`; Clients at Risk uses 45-day window
+- Revenue this week header and all KPI cards show `—` when value is 0 or null, never `$0`
+- `/api/dashboard/revenue-chart` fixed: same column name corrections
+
+**Greeting fix:**
+- `first_name` added to JWT payload in `signToken` (auth.ts + lib/auth.ts). Dashboard greeting now reads "Good morning/afternoon/evening, Sal." — falls back to "Good morning." (no "there") when name unavailable
+
+**Keyboard shortcuts:**
+- `Q` → New Quote (navigate `/quotes/new`), `J` → New Job (same as `N`)
+- `C` → New Customer (`/customers/new`), `I` → New Invoice (`/invoices?new=1`)
+- Invoices page opens New Invoice modal when `?new=1` query param is present
+- Shortcut hint badges (`Q`, `J`, `C`, `I`) added to corresponding action buttons on each page
+- Help icon in top nav replaced with `CircleHelp` icon from lucide-react (was raw `?` character)
+
+**Employee data migration — Alejandra Cuervo (user_id=41):**
+- New tables: `employee_employment_history`, `employee_pto_history`, `employee_pay_structure`, `employee_productivity`, `employee_attendance_stats`
+- New columns on `users`: `mc_employee_id`, `drivers_license_number`, `drivers_license_state`, `pto_hours_available`, `sick_hours_available`
+- New `additional_pay_type` enum values: `other_additional`, `bonus_other`, `amount_owed_non_taxed`
+- All 8 sections migrated: core profile, employment history (2), PTO history (6), pay structure (9 scopes), additional pay (31 records), contact tickets (5), productivity (8 scopes), attendance stats
+
 ## Recent Bug Fixes (March 24, 2026)
 - **Demo employees purged** — 14 seeded demo users (IDs 2–18) removed from users table. Dev and production now show exactly 13 real PHES staff: Sal Martinez (owner) + 12 real employees (IDs 32–43).
 - **seed.ts cascade deletion** — `cleanupDemoData()` updated to properly cascade-delete all FK-dependent rows (messages, availability, additional_pay, contact_tickets, employee_notes, attendance_log, discipline_log, leave_usage, payroll_history, incentive_earned, clock_in_attempts, document_requests, document_signatures, mileage_requests, service_zone_employees, audit_log) and NULL-ify nullable FK references before deleting demo users.

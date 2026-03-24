@@ -358,8 +358,10 @@ router.get("/kpis", requireAuth, async (req, res) => {
 
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split("T")[0];
+    const fortyFiveDaysAgoStr = new Date(now.getTime() - 45 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+    const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
 
-    // All revenue KPIs now read from job_history (real MC data)
+    // All revenue KPIs read from job_history (real MC data — columns: revenue, job_date, customer_id)
     const [
       jhWeekRev,
       jhPrevWeekRev,
@@ -376,55 +378,57 @@ router.get("/kpis", requireAuth, async (req, res) => {
     ] = await Promise.all([
       // Week revenue from job_history (Mon–today)
       db.execute(sql`
-        SELECT COALESCE(SUM(bill_rate), 0)::numeric AS total
+        SELECT COALESCE(SUM(revenue), 0)::numeric AS total
         FROM job_history
         WHERE company_id = ${companyId}
-          AND scheduled_date >= ${weekStartStr}
-          AND scheduled_date <= ${todayStr}
+          AND job_date >= ${weekStartStr}
+          AND job_date <= ${todayStr}
       `),
       // Previous week revenue
       db.execute(sql`
-        SELECT COALESCE(SUM(bill_rate), 0)::numeric AS total
+        SELECT COALESCE(SUM(revenue), 0)::numeric AS total
         FROM job_history
         WHERE company_id = ${companyId}
-          AND scheduled_date >= ${prevWeekStartStr}
-          AND scheduled_date <= ${prevWeekEndStr}
+          AND job_date >= ${prevWeekStartStr}
+          AND job_date <= ${prevWeekEndStr}
       `),
       // This month revenue
       db.execute(sql`
-        SELECT COALESCE(SUM(bill_rate), 0)::numeric AS total
+        SELECT COALESCE(SUM(revenue), 0)::numeric AS total
         FROM job_history
         WHERE company_id = ${companyId}
-          AND scheduled_date >= ${monthStartStr}
-          AND scheduled_date <= ${todayStr}
+          AND job_date >= ${monthStartStr}
+          AND job_date <= ${todayStr}
       `),
       // Last month revenue
       db.execute(sql`
-        SELECT COALESCE(SUM(bill_rate), 0)::numeric AS total
+        SELECT COALESCE(SUM(revenue), 0)::numeric AS total
         FROM job_history
         WHERE company_id = ${companyId}
-          AND scheduled_date >= ${lastMonthStartStr}
-          AND scheduled_date <= ${lastMonthEndStr}
+          AND job_date >= ${lastMonthStartStr}
+          AND job_date <= ${lastMonthEndStr}
       `),
-      // Avg bill rate — last 30 days from job_history
+      // Avg bill — last 30 days from job_history
       db.execute(sql`
-        SELECT COALESCE(AVG(bill_rate), 0)::numeric AS avg_bill
+        SELECT COALESCE(AVG(revenue), 0)::numeric AS avg_bill
         FROM job_history
         WHERE company_id = ${companyId}
-          AND scheduled_date >= ${thirtyDaysAgoStr}
-          AND scheduled_date <= ${todayStr}
+          AND job_date >= ${thirtyDaysAgoStr}
+          AND job_date <= ${todayStr}
       `),
-      // Avg quality score (last 30 days) — keep from scorecards
+      // Avg quality score (last 90 days) — from scorecards
       db.select({ avg: avg(scorecardsTable.score) }).from(scorecardsTable)
-        .where(and(eq(scorecardsTable.company_id, companyId), eq(scorecardsTable.excluded, false), gte(scorecardsTable.created_at, thirtyDaysAgo))),
-      // Active clients count — from clients table
-      db.select({ count: count() }).from(clientsTable).where(eq(clientsTable.company_id, companyId)),
-      // At-risk: clients with job_history records but no booking in last 30 days
-      // Excludes clients who have never appeared in job_history (migration grace)
+        .where(and(eq(scorecardsTable.company_id, companyId), eq(scorecardsTable.excluded, false), gte(scorecardsTable.created_at, ninetyDaysAgo))),
+      // Active clients count — only active clients
+      db.select({ count: count() }).from(clientsTable)
+        .where(and(eq(clientsTable.company_id, companyId), eq(clientsTable.is_active, true))),
+      // At-risk: active clients with job_history but no service in last 45 days
+      // Excludes clients with no job_history (migration grace) and recently migrated clients
       db.execute(sql`
         SELECT COUNT(DISTINCT c.id)::int AS at_risk
         FROM clients c
         WHERE c.company_id = ${companyId}
+          AND c.is_active = true
           AND EXISTS (
             SELECT 1 FROM job_history jh
             WHERE jh.customer_id = c.id AND jh.company_id = ${companyId}
@@ -433,7 +437,7 @@ router.get("/kpis", requireAuth, async (req, res) => {
             SELECT 1 FROM job_history jh2
             WHERE jh2.customer_id = c.id
               AND jh2.company_id = ${companyId}
-              AND jh2.scheduled_date >= ${thirtyDaysAgoStr}
+              AND jh2.job_date >= ${fortyFiveDaysAgoStr}
           )
           AND NOT EXISTS (
             SELECT 1 FROM jobs j
@@ -441,6 +445,7 @@ router.get("/kpis", requireAuth, async (req, res) => {
               AND j.company_id = ${companyId}
               AND j.scheduled_date >= ${thirtyDaysAgoStr}
           )
+          AND c.created_at < now() - interval '30 days'
       `),
       // Unassigned jobs today
       db.select({ count: count() }).from(jobsTable)
@@ -473,7 +478,7 @@ router.get("/kpis", requireAuth, async (req, res) => {
 
     const avgBill = parseFloat((jhAvgBill.rows[0] as any)?.avg_bill || "0");
 
-    const qualityScore = avgScore[0]?.avg ? Math.round(parseFloat(avgScore[0].avg) * 25) : null;
+    const qualityScore = avgScore[0]?.avg ? Math.round(parseFloat(avgScore[0].avg)) : null;
 
     const atRiskRaw = Number((atRiskResult.rows[0] as any)?.at_risk || 0);
     const unassigned = Number(unassignedToday[0]?.count || 0);
@@ -517,15 +522,15 @@ router.get("/revenue-chart", requireAuth, async (req, res) => {
 
     const rows = await db.execute(sql`
       SELECT
-        TO_CHAR(DATE_TRUNC('month', scheduled_date), 'Mon ''YY') AS month,
-        DATE_TRUNC('month', scheduled_date) AS month_date,
-        COALESCE(SUM(bill_rate), 0)::numeric AS revenue,
+        TO_CHAR(DATE_TRUNC('month', job_date), 'Mon ''YY') AS month,
+        DATE_TRUNC('month', job_date) AS month_date,
+        COALESCE(SUM(revenue), 0)::numeric AS revenue,
         COUNT(*)::int AS jobs
       FROM job_history
       WHERE company_id = ${companyId}
-        AND scheduled_date >= DATE_TRUNC('month', NOW()) - INTERVAL '11 months'
-        AND scheduled_date <= NOW()
-      GROUP BY DATE_TRUNC('month', scheduled_date)
+        AND job_date >= DATE_TRUNC('month', NOW()) - INTERVAL '11 months'
+        AND job_date <= NOW()
+      GROUP BY DATE_TRUNC('month', job_date)
       ORDER BY month_date ASC
     `);
 

@@ -7,12 +7,13 @@ interface Props {
 }
 
 const SHORTCUTS = [
+  { key: 'Q', label: 'New Quote',      path: '/quotes/new' },
   { key: 'D', label: 'Dispatch Board', path: '/jobs' },
-  { key: 'E', label: 'Employees', path: '/employees' },
-  { key: 'C', label: 'Customers', path: '/customers' },
-  { key: 'I', label: 'Invoices', path: '/invoices' },
-  { key: 'P', label: 'Payroll', path: '/payroll' },
-  { key: 'R', label: 'Insights', path: '/reports/insights' },
+  { key: 'E', label: 'Employees',      path: '/employees' },
+  { key: 'C', label: 'New Customer',   path: '/customers/new' },
+  { key: 'I', label: 'New Invoice',    path: '/invoices?new=1' },
+  { key: 'P', label: 'Payroll',        path: '/payroll' },
+  { key: 'R', label: 'Insights',       path: '/reports/insights' },
 ];
 
 export function KeyboardShortcutsOverlay({ onClose }: { onClose: () => void }) {
@@ -29,7 +30,7 @@ export function KeyboardShortcutsOverlay({ onClose }: { onClose: () => void }) {
         onClick={e => e.stopPropagation()}>
         <h3 style={{ fontSize:16, fontWeight:700, color:'#1A1917', margin:'0 0 20px 0' }}>Keyboard Shortcuts</h3>
         <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-          <ShortcutRow k="N" label="New Job"/>
+          <ShortcutRow k="J" label="New Job"/>
           <ShortcutRow k="/" label="Search"/>
           {SHORTCUTS.map(s => <ShortcutRow key={s.key} k={s.key} label={s.label}/>)}
           <ShortcutRow k="?" label="Show this overlay"/>
@@ -55,14 +56,15 @@ export function useKeyboardShortcuts({ onOpenSearch, onNewJob }: Props) {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
-        if (e.key === 'Escape') (e.target as HTMLElement).blur();
+      const target = e.target as HTMLElement;
+      const tag = target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) {
+        if (e.key === 'Escape') target.blur();
         return;
       }
 
       if (e.key === '/' || e.key === 'F') { e.preventDefault(); onOpenSearch(); return; }
-      if (e.key === 'n' || e.key === 'N') { e.preventDefault(); onNewJob?.(); return; }
+      if (e.key === 'n' || e.key === 'N' || e.key === 'j' || e.key === 'J') { e.preventDefault(); onNewJob?.(); return; }
 
       for (const s of SHORTCUTS) {
         if (e.key.toUpperCase() === s.key) { e.preventDefault(); navigate(s.path); return; }

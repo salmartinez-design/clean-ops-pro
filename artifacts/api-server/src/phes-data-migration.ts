@@ -490,6 +490,23 @@ async function runAleCuervoMigration() {
       await db.execute(sql.raw(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${col}`));
     }
 
+    // Create job_history (MC historical job data — columns: revenue, job_date, customer_id)
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS job_history (
+        id           serial PRIMARY KEY,
+        company_id   integer NOT NULL,
+        customer_id  integer,
+        job_date     date NOT NULL,
+        revenue      numeric(10,2) NOT NULL DEFAULT 0,
+        service_type text,
+        technician   text,
+        notes        text,
+        created_at   timestamp NOT NULL DEFAULT now()
+      )
+    `));
+    await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_job_history_company_date ON job_history(company_id, job_date)`));
+    await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_job_history_customer ON job_history(customer_id, company_id)`));
+
     // Create employee_employment_history
     await db.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS employee_employment_history (

@@ -121,6 +121,7 @@ export default function CustomersPage() {
             style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px", backgroundColor: "var(--brand)", color: "#FFFFFF", borderRadius: "8px", fontSize: "13px", fontWeight: 600, border: "none", cursor: "pointer" }}
           >
             <Plus size={14} strokeWidth={2} /> Add Client
+            <kbd style={{ fontSize: 10, border: '1px solid rgba(255,255,255,0.45)', borderRadius: 3, padding: '1px 5px', color: 'rgba(255,255,255,0.8)', fontFamily: 'inherit' }}>C</kbd>
           </button>
         </div>
 
