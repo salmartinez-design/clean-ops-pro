@@ -15,7 +15,7 @@ import {
   UserCheck, FileText, DollarSign, BarChart2, TrendingUp,
   BookOpen, Star, Settings, Clock,
   MoreHorizontal, Search, MessageSquare, X, ChevronRight,
-  ChevronDown, Eye,
+  ChevronDown, Eye, LogOut,
 } from "lucide-react";
 import { useEmployeeView } from "@/contexts/employee-view-context";
 
@@ -88,6 +88,8 @@ const MORE_CARDS = [
 ];
 
 function MoreSheet({ open, onClose, navigate }: { open: boolean; onClose: () => void; navigate: (path: string) => void }) {
+  const logout = useAuthStore(state => state.logout);
+
   useEffect(() => {
     if (open) document.body.style.overflow = 'hidden';
     else document.body.style.overflow = '';
@@ -125,7 +127,7 @@ function MoreSheet({ open, onClose, navigate }: { open: boolean; onClose: () => 
             <X size={18} />
           </button>
         </div>
-        <div style={{ overflowY: 'auto', padding: '0 16px 24px', flex: 1 }}>
+        <div style={{ overflowY: 'auto', padding: '0 16px 0', flex: 1 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             {MORE_CARDS.map(card => {
               const Icon = card.icon;
@@ -145,6 +147,22 @@ function MoreSheet({ open, onClose, navigate }: { open: boolean; onClose: () => 
                 </button>
               );
             })}
+          </div>
+
+          {/* Logout */}
+          <div style={{ borderTop: '1px solid #EEECE7', marginTop: 16, paddingTop: 12, paddingBottom: 24 }}>
+            <button
+              onClick={() => { onClose(); logout(); }}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                background: 'none', border: '1px solid #EEECE7', borderRadius: 12,
+                padding: '14px 16px', cursor: 'pointer', color: '#DC2626',
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+              }}
+            >
+              <LogOut size={20} />
+              <span style={{ fontSize: 14, fontWeight: 600 }}>Sign Out</span>
+            </button>
           </div>
         </div>
       </div>
