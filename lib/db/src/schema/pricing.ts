@@ -40,16 +40,26 @@ export const pricingFrequenciesTable = pgTable("pricing_frequencies", {
 
 export const pricingAddonsTable = pgTable("pricing_addons", {
   id: serial("id").primaryKey(),
-  scope_id: integer("scope_id").references(() => pricingScopesTable.id).notNull(),
+  scope_id: integer("scope_id").references(() => pricingScopesTable.id),
   company_id: integer("company_id").references(() => companiesTable.id).notNull(),
   name: text("name").notNull(),
+  addon_type: text("addon_type").notNull().default("cleaning_extras"),
+  scope_ids: text("scope_ids").notNull().default("[]"),
   price: numeric("price", { precision: 10, scale: 2 }),
   price_type: text("price_type").notNull().default("flat"),
+  price_value: numeric("price_value", { precision: 10, scale: 2 }).notNull().default("0"),
   percent_of_base: numeric("percent_of_base", { precision: 6, scale: 2 }),
   time_add_minutes: integer("time_add_minutes").notNull().default(0),
+  time_unit: text("time_unit").notNull().default("each"),
   unit: text("unit").notNull().default("each"),
+  is_itemized: boolean("is_itemized").notNull().default(true),
+  is_taxed: boolean("is_taxed").notNull().default(false),
+  show_office: boolean("show_office").notNull().default(true),
+  show_online: boolean("show_online").notNull().default(true),
+  show_portal: boolean("show_portal").notNull().default(true),
   is_active: boolean("is_active").notNull().default(true),
   sort_order: integer("sort_order").notNull().default(0),
+  created_at: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const pricingDiscountsTable = pgTable("pricing_discounts", {

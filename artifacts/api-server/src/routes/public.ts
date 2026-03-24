@@ -111,12 +111,16 @@ router.get("/addons/:scopeId", rateLimit, async (req, res) => {
     const scopeId = parseInt(req.params.scopeId);
     if (isNaN(scopeId)) return res.status(400).json({ error: "Invalid scopeId" });
 
-    const addons = await db
-      .select()
-      .from(pricingAddonsTable)
-      .where(and(eq(pricingAddonsTable.scope_id, scopeId), eq(pricingAddonsTable.is_active, true)))
-      .orderBy(pricingAddonsTable.id);
-
+    const { sql: drSql } = await import("drizzle-orm");
+    const result = await db.execute(drSql`
+      SELECT * FROM pricing_addons
+       WHERE is_active = true
+         AND show_online = true
+         AND (scope_ids::jsonb @> ${JSON.stringify([scopeId])}::jsonb
+              OR scope_id = ${scopeId})
+       ORDER BY sort_order, id
+    `);
+    const addons = (result as any).rows ?? [];
     return res.json(addons);
   } catch (err) {
     console.error("GET /public/addons/:scopeId:", err);
@@ -179,21 +183,36 @@ export async function runCalculate(params: {
   }
 
   let addons_total = 0;
-  const addon_breakdown: Array<{ id: number; name: string; amount: number }> = [];
+  const addon_breakdown: Array<{ id: number; name: string; amount: number; price_type: string }> = [];
   if (Array.isArray(addon_ids) && addon_ids.length > 0) {
-    const addons = await db
-      .select()
-      .from(pricingAddonsTable)
-      .where(and(eq(pricingAddonsTable.scope_id, scope_id), eq(pricingAddonsTable.company_id, company_id)));
-    for (const addon of addons.filter(a => addon_ids.includes(a.id) && a.is_active)) {
+    const { sql: drSql } = await import("drizzle-orm");
+    const validIds = addon_ids.map((id: any) => parseInt(String(id))).filter((n: number) => !isNaN(n));
+    const addonResult = validIds.length > 0 ? await db.execute(drSql`
+      SELECT * FROM pricing_addons
+       WHERE company_id = ${company_id}
+         AND id = ANY(ARRAY[${drSql.raw(validIds.join(','))}]::int[])
+         AND is_active = true
+    `) : { rows: [] };
+    const addons = (addonResult as any).rows ?? [];
+    for (const addon of addons) {
+      if (addon.price_type === "time_only") continue;
       let amount = 0;
-      if (addon.price_type === "flat" && addon.price != null) {
-        amount = parseFloat(String(addon.price));
-      } else if (addon.price_type === "percent" && addon.percent_of_base != null) {
-        amount = (parseFloat(String(addon.percent_of_base)) / 100) * base_price;
+      const pv = parseFloat(String(addon.price_value ?? addon.price ?? 0));
+      switch (addon.price_type) {
+        case "flat":       amount = pv; break;
+        case "percentage":
+        case "percent":    amount = (Math.abs(pv) / 100) * base_price * (pv < 0 ? -1 : 1); break;
+        case "sqft_pct":   amount = sqft ? (pv / 100) * sqft : 0; break;
+        case "manual_adj": amount = pv; break;
+        default:
+          if (addon.percent_of_base != null) {
+            amount = (parseFloat(String(addon.percent_of_base)) / 100) * base_price;
+          } else if (addon.price != null) {
+            amount = parseFloat(String(addon.price));
+          }
       }
       addons_total += amount;
-      addon_breakdown.push({ id: addon.id, name: addon.name, amount: Math.round(amount * 100) / 100 });
+      addon_breakdown.push({ id: addon.id, name: addon.name, amount: Math.round(amount * 100) / 100, price_type: addon.price_type });
     }
   }
 

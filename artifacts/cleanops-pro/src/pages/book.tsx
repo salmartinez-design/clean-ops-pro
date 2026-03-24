@@ -700,9 +700,15 @@ export default function BookPage() {
                     {addons.map(a => {
                       const sel = selectedAddonIds.includes(a.id);
                       const fromResult = calcResult?.addon_breakdown.find(b => b.id === a.id);
+                      const pv = parseFloat(String((a as any).price_value ?? a.price ?? 0));
                       const displayPrice = fromResult
-                        ? `$${fromResult.amount.toFixed(2)}`
-                        : a.price_type === "flat" && a.price ? `$${parseFloat(a.price).toFixed(2)}`
+                        ? (fromResult.amount < 0 ? `-$${Math.abs(fromResult.amount).toFixed(2)}` : `$${fromResult.amount.toFixed(2)}`)
+                        : a.price_type === "time_only"
+                        ? "No additional charge"
+                        : a.price_type === "flat" && pv !== 0
+                        ? (pv < 0 ? `-$${Math.abs(pv).toFixed(2)}` : `$${pv.toFixed(2)}`)
+                        : a.price_type === "percentage"
+                        ? (pv < 0 ? `${pv.toFixed(1)}% off` : `+${pv.toFixed(1)}%`)
                         : a.price_type === "percent" && a.percent_of_base ? `${a.percent_of_base}% of base`
                         : "";
                       return (

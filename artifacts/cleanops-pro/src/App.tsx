@@ -65,6 +65,7 @@ import ChurnBoardPage from "@/pages/intelligence/churn";
 import RetentionBoardPage from "@/pages/intelligence/retention";
 import SatisfactionReportPage from "@/pages/reports/satisfaction";
 import AddOnCatalogPage from "@/pages/company/addons";
+import RatesPage from "@/pages/company/rates";
 import ReferralReportPage from "@/pages/reports/referrals";
 import IncentivesPage from "@/pages/reports/incentives";
 import RevenueGoalPage from "@/pages/reports/revenue-goal";
@@ -131,6 +132,7 @@ function Router() {
       <Route path="/company/quoting" component={QuotingPage} />
       <Route path="/company/zones" component={ZonesPage} />
       <Route path="/company/addons" component={AddOnCatalogPage} />
+      <Route path="/company/rates" component={RatesPage} />
       <Route path="/survey/:token" component={SurveyPage} />
       <Route path="/route-sequences" component={RouteSequencesPage} />
       <Route path="/intelligence/churn" component={ChurnBoardPage} />

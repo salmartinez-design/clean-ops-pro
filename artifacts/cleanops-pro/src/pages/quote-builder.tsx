@@ -77,10 +77,17 @@ interface PricingAddon {
   id: number;
   scope_id: number;
   name: string;
+  addon_type: string;
+  scope_ids: string;
   price_type: string;
+  price_value: string;
   price: string | null;
   percent_of_base: string | null;
   time_add_minutes: number;
+  time_unit: string;
+  is_itemized: boolean;
+  show_office: boolean;
+  show_online: boolean;
   is_active: boolean;
 }
 
@@ -95,7 +102,7 @@ interface CalcResult {
   minimum_applied: boolean;
   minimum_bill: number;
   addons_total: number;
-  addon_breakdown: Array<{ id: number; name: string; amount: number }>;
+  addon_breakdown: Array<{ id: number; name: string; amount: number; price_type?: string }>;
   subtotal: number;
   discount_amount: number;
   discount_valid?: boolean;
@@ -146,6 +153,7 @@ export default function QuoteBuilderPage() {
 
   // Section 3 — Add-ons & Notes
   const [selectedAddonIds, setSelectedAddonIds] = useState<number[]>([]);
+  const [manualAdjValue, setManualAdjValue] = useState<string>("");
   const [discountCode, setDiscountCode] = useState("");
   const [discountInput, setDiscountInput] = useState("");
   const [notes, setNotes] = useState("");
@@ -224,6 +232,7 @@ export default function QuoteBuilderPage() {
   useEffect(() => {
     if (scopeId !== null) {
       setSelectedAddonIds([]);
+      setManualAdjValue("");
       setFrequencyStr("");
       setHoursInput(0);
     }
@@ -258,11 +267,13 @@ export default function QuoteBuilderPage() {
 
     setCalcLoading(true);
     try {
+      const manualAdjNum = parseFloat(manualAdjValue);
       const body: Record<string, unknown> = {
         scope_id: scopeId,
         frequency: frequencyStr || undefined,
         addon_ids: selectedAddonIds,
         discount_code: opts?.withCode ?? discountCode,
+        ...(manualAdjValue && !isNaN(manualAdjNum) ? { manual_adjustment: manualAdjNum } : {}),
       };
       if (method === "sqft") {
         body.sqft = sqft;
@@ -285,13 +296,13 @@ export default function QuoteBuilderPage() {
       }
     } catch { /* ignore transient errors */ }
     finally { setCalcLoading(false); }
-  }, [scopeId, sqft, hoursInput, frequencyStr, selectedAddonIds, discountCode, selectedScope]);
+  }, [scopeId, sqft, hoursInput, frequencyStr, selectedAddonIds, manualAdjValue, discountCode, selectedScope]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => { runCalculate(); }, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [scopeId, sqft, hoursInput, frequencyStr, selectedAddonIds]);
+  }, [scopeId, sqft, hoursInput, frequencyStr, selectedAddonIds, manualAdjValue]);
 
   // ── Section completion ────────────────────────────────────────────────────────
 
@@ -396,13 +407,25 @@ export default function QuoteBuilderPage() {
   }
 
   function addonDisplayPrice(addon: PricingAddon): string {
-    if (addon.price_type === "flat" && addon.price != null) {
-      return `$${parseFloat(addon.price).toFixed(2)}`;
+    const pv = parseFloat(String(addon.price_value ?? addon.price ?? 0));
+    switch (addon.price_type) {
+      case "flat":
+        if (pv < 0) return `($${Math.abs(pv).toFixed(2)}) discount`;
+        return `$${pv.toFixed(2)}`;
+      case "percentage":
+        if (pv < 0) return `${pv.toFixed(1)}% off`;
+        return `+${pv.toFixed(1)}%`;
+      case "sqft_pct":
+        return `${pv.toFixed(2)}% × sq.ft.`;
+      case "time_only":
+        return "No additional charge";
+      case "manual_adj":
+        return "Enter amount below";
+      case "percent":
+        return addon.percent_of_base ? `${addon.percent_of_base}% of base` : "";
+      default:
+        return pv ? `$${pv.toFixed(2)}` : "";
     }
-    if (addon.price_type === "percent" && addon.percent_of_base != null) {
-      return `${addon.percent_of_base}% of base`;
-    }
-    return "";
   }
 
   // ── Pricing method helpers ───────────────────────────────────────────────────
@@ -785,35 +808,101 @@ export default function QuoteBuilderPage() {
           {activeSection === 3 && (
             <SectionCard title="Add-ons & Notes">
               <div className="space-y-4">
-                {scopeAddons.filter(a => a.is_active).length > 0 && (
-                  <div>
-                    <Label className="text-xs mb-2 block">Add-ons for {selectedScope?.name}</Label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {scopeAddons.filter(a => a.is_active).map(addon => {
-                        const isSelected = selectedAddonIds.includes(addon.id);
-                        const fromResult = calcResult?.addon_breakdown.find(b => b.id === addon.id);
-                        return (
-                          <label
-                            key={addon.id}
-                            className={cn(
-                              "flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors",
-                              isSelected ? "bg-[#00C9A0]/10 border-[#00C9A0]" : "bg-white border-[#E5E2DC] hover:bg-[#F7F6F3]"
-                            )}
-                          >
-                            <Checkbox checked={isSelected} onCheckedChange={() => toggleAddon(addon.id)} className="mt-0.5" />
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-[#1A1917]">{addon.name}</p>
-                              <p className="text-xs text-[#9E9B94]">
-                                {fromResult ? `$${fromResult.amount.toFixed(2)}` : addonDisplayPrice(addon)}
-                                {addon.time_add_minutes > 0 ? ` · +${addon.time_add_minutes}min` : ""}
-                              </p>
-                            </div>
-                          </label>
-                        );
-                      })}
+                {scopeAddons.filter(a => a.is_active && a.show_office !== false).length > 0 && (() => {
+                  const activeAddons = scopeAddons.filter(a => a.is_active && a.show_office !== false);
+                  const grouped: Record<string, PricingAddon[]> = {};
+                  for (const a of activeAddons) {
+                    const g = a.addon_type || "cleaning_extras";
+                    if (!grouped[g]) grouped[g] = [];
+                    grouped[g].push(a);
+                  }
+                  const groupOrder = ["cleaning_extras", "other"];
+                  const groupLabels: Record<string, string> = {
+                    cleaning_extras: "Cleaning Extras",
+                    other: "Discounts & Adjustments",
+                  };
+                  return (
+                    <div className="space-y-5">
+                      {[...groupOrder, ...Object.keys(grouped).filter(k => !groupOrder.includes(k))].filter(k => grouped[k]?.length).map(groupKey => (
+                        <div key={groupKey}>
+                          <Label className="text-xs mb-2 block">{groupLabels[groupKey] ?? groupKey}</Label>
+                          <div className="grid grid-cols-2 gap-2">
+                            {grouped[groupKey].map(addon => {
+                              const isManualAdj = addon.price_type === "manual_adj";
+                              const isTimeOnly = addon.price_type === "time_only";
+                              const isSelected = selectedAddonIds.includes(addon.id);
+                              const fromResult = calcResult?.addon_breakdown.find(b => b.id === addon.id);
+
+                              if (isManualAdj) {
+                                return (
+                                  <div key={addon.id} className="col-span-2 flex items-center gap-3 p-3 rounded-lg border border-[#E5E2DC] bg-[#FAFAF9]">
+                                    <div className="flex-1">
+                                      <p className="text-sm font-medium text-[#1A1917]">{addon.name}</p>
+                                      <p className="text-xs text-[#9E9B94]">Manual adjustment — office only</p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm text-[#6B7280]">$</span>
+                                      <Input
+                                        type="number"
+                                        step="0.01"
+                                        value={manualAdjValue}
+                                        onChange={e => setManualAdjValue(e.target.value)}
+                                        placeholder="0.00"
+                                        className="w-28 h-8 text-sm"
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              if (isTimeOnly) {
+                                return (
+                                  <label
+                                    key={addon.id}
+                                    className={cn(
+                                      "flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors",
+                                      isSelected ? "bg-[#00C9A0]/10 border-[#00C9A0]" : "bg-white border-[#E5E2DC] hover:bg-[#F7F6F3]"
+                                    )}
+                                  >
+                                    <Checkbox checked={isSelected} onCheckedChange={() => toggleAddon(addon.id)} className="mt-0.5" />
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-medium text-[#1A1917]">{addon.name}</p>
+                                      <p className="text-xs text-[#9E9B94]">
+                                        No additional charge
+                                        {addon.time_add_minutes > 0 ? ` · +${addon.time_add_minutes}min` : ""}
+                                      </p>
+                                    </div>
+                                  </label>
+                                );
+                              }
+
+                              return (
+                                <label
+                                  key={addon.id}
+                                  className={cn(
+                                    "flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors",
+                                    isSelected ? "bg-[#00C9A0]/10 border-[#00C9A0]" : "bg-white border-[#E5E2DC] hover:bg-[#F7F6F3]"
+                                  )}
+                                >
+                                  <Checkbox checked={isSelected} onCheckedChange={() => toggleAddon(addon.id)} className="mt-0.5" />
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium text-[#1A1917]">{addon.name}</p>
+                                    <p className={cn("text-xs", fromResult && fromResult.amount < 0 ? "text-red-500" : "text-[#9E9B94]")}>
+                                      {fromResult
+                                        ? (fromResult.amount < 0 ? `-$${Math.abs(fromResult.amount).toFixed(2)}` : `$${fromResult.amount.toFixed(2)}`)
+                                        : addonDisplayPrice(addon)}
+                                      {addon.time_add_minutes > 0 ? ` · +${addon.time_add_minutes}min` : ""}
+                                    </p>
+                                  </div>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Discount code */}
                 <div>
@@ -937,7 +1026,9 @@ export default function QuoteBuilderPage() {
                   {calcResult.addon_breakdown.map(a => (
                     <div key={a.id} className="flex justify-between text-[#6B7280]">
                       <span className="truncate max-w-[150px]">{a.name}</span>
-                      <span className="text-[#1A1917]">+${a.amount.toFixed(2)}</span>
+                      <span className={a.amount < 0 ? "text-red-500 font-medium" : "text-[#1A1917]"}>
+                        {a.amount < 0 ? `-$${Math.abs(a.amount).toFixed(2)}` : `+$${a.amount.toFixed(2)}`}
+                      </span>
                     </div>
                   ))}
 

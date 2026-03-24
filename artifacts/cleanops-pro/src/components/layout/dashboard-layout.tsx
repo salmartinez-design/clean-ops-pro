@@ -58,6 +58,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/reports/hot-sheet':            'Hot Sheet',
   '/reports/first-time':           'First Time In',
   '/company/zones':                'Service Zones',
+  '/company/rates':                'Rates & Add-ons',
 };
 
 const BOTTOM_TABS_MANAGER = [
