@@ -17,8 +17,8 @@ import {
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 const FF = "'Plus Jakarta Sans', sans-serif";
 const SLOT_W = 80;
-const COL_W = 220;
-const ROW_H = 84;
+const COL_W = 180;
+const ROW_H = 64;
 const DAY_START = 7 * 60;
 const DAY_END = 20 * 60;
 const TOTAL_SLOTS = (DAY_END - DAY_START) / 30;
@@ -877,13 +877,13 @@ function MiniCalendar({ value, onChange, jobDates }: { value: Date; onChange: (d
 }
 
 // ─── DESKTOP: JOB CHIP ─────────────────────────────────────────────────────────
-function JobChip({ job, onClick, assignedName }: { job: DispatchJob; onClick: (j: DispatchJob) => void; assignedName?: string }) {
+function JobChip({ job, onClick, assignedName, isUnassigned }: { job: DispatchJob; onClick: (j: DispatchJob) => void; assignedName?: string; isUnassigned?: boolean }) {
   const sc = STATUS[job.status] || STATUS.scheduled;
   const left = ((timeToMins(job.scheduled_time) - DAY_START) / 30) * SLOT_W;
   const width = Math.max(SLOT_W, (job.duration_minutes / 30) * SLOT_W);
   const isComplete = job.status === "complete";
   const isRecurring = job.frequency && job.frequency !== "on_demand";
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: `chip-${job.id}`, data: { job, originalLeft: left }, disabled: isComplete });
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: `chip-${job.id}`, data: { job, originalLeft: left, type: isUnassigned ? "unassigned" : undefined }, disabled: isComplete });
   const borderColor = job.zone_color || sc.dot;
   return (
     <div ref={setNodeRef} onClick={e => { e.stopPropagation(); onClick(job); }} {...(isComplete ? {} : { ...listeners, ...attributes })}
@@ -910,18 +910,22 @@ function EmployeeRow({ employee, onChipClick, nowLine }: { employee: Employee; o
   const initials = employee.name.split(" ").map((p: string) => p[0]).join("").toUpperCase().slice(0, 2);
   const totalMins = employee.jobs.reduce((s: number, j: DispatchJob) => s + j.duration_minutes, 0);
   const revenue = employee.jobs.reduce((s: number, j: DispatchJob) => s + (j.amount || 0), 0);
+  const isClockedIn = employee.jobs.some(j => j.clock_entry?.clock_in_at && !j.clock_entry?.clock_out_at);
   return (
     <div style={{ display: "flex", borderBottom: "1px solid #EEECE7", height: ROW_H }}>
-      <div style={{ position: "sticky", left: 0, zIndex: 5, width: COL_W, flexShrink: 0, backgroundColor: "#FFFFFF", borderRight: "1px solid #E5E2DC", display: "flex", alignItems: "center", padding: "0 14px", gap: 10 }}>
-        <div style={{ width: 34, height: 34, borderRadius: "50%", flexShrink: 0, backgroundColor: "var(--brand-dim)", color: "var(--brand)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>{initials}</div>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#1A1917", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 5 }}>
-            {employee.name}
-            {employee.zone && <div style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: employee.zone.zone_color, flexShrink: 0 }} title={employee.zone.zone_name} />}
+      <div style={{ position: "sticky", left: 0, zIndex: 5, width: COL_W, flexShrink: 0, backgroundColor: "#FFFFFF", borderRight: "1px solid #E5E2DC", display: "flex", alignItems: "center", padding: "0 12px", gap: 9 }}>
+        <div style={{ position: "relative", flexShrink: 0 }}>
+          <div style={{ width: 32, height: 32, borderRadius: "50%", backgroundColor: "var(--brand-dim)", color: "var(--brand)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800 }}>{initials}</div>
+          {isClockedIn && <div style={{ position: "absolute", bottom: 0, right: 0, width: 9, height: 9, borderRadius: "50%", backgroundColor: "#22C55E", border: "2px solid #FFFFFF" }} title="Clocked in" />}
+        </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#1A1917", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{employee.name}</span>
+            {employee.zone && <div style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: employee.zone.zone_color, flexShrink: 0 }} title={employee.zone.zone_name} />}
           </div>
           <div style={{ fontSize: 9, color: "#9E9B94", textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.05em" }}>{employee.role}</div>
           <div style={{ fontSize: 10, color: "#6B6860", marginTop: 1 }}>
-            {employee.jobs.length} job{employee.jobs.length !== 1 ? "s" : ""} · {Math.floor(totalMins / 60)}h{totalMins % 60 > 0 ? ` ${totalMins % 60}m` : ""} · ${revenue.toFixed(0)}
+            {employee.jobs.length}j · {Math.floor(totalMins / 60)}h · ${revenue.toFixed(0)}
           </div>
         </div>
       </div>
@@ -934,6 +938,27 @@ function EmployeeRow({ employee, onChipClick, nowLine }: { employee: Employee; o
             <span style={{ fontSize: 11, color: "#D0CEC9", letterSpacing: "0.02em" }}>No jobs scheduled</span>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ─── DESKTOP: UNASSIGNED GANTT ROW ───────────────────────────────────────────
+function UnassignedGanttRow({ jobs, onChipClick, nowLine }: { jobs: DispatchJob[]; onChipClick: (j: DispatchJob) => void; nowLine: number }) {
+  if (jobs.length === 0) return null;
+  return (
+    <div style={{ display: "flex", borderBottom: "2px solid #FCD34D", height: ROW_H }}>
+      <div style={{ position: "sticky", left: 0, zIndex: 5, width: COL_W, flexShrink: 0, backgroundColor: "#FFFBEB", borderRight: "1px solid #FCD34D", display: "flex", alignItems: "center", padding: "0 12px", gap: 9 }}>
+        <div style={{ width: 32, height: 32, borderRadius: "50%", backgroundColor: "#FEF3C7", color: "#92400E", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, flexShrink: 0 }}>?</div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#92400E" }}>Unassigned</div>
+          <div style={{ fontSize: 10, color: "#D97706", marginTop: 1 }}>{jobs.length} job{jobs.length !== 1 ? "s" : ""} · needs assignment</div>
+        </div>
+      </div>
+      <div style={{ position: "relative", width: TOTAL_SLOTS * SLOT_W, flexShrink: 0, height: ROW_H, backgroundColor: "#FFFBEB88" }}>
+        {TIMES.map((_, i) => <div key={i} style={{ position: "absolute", left: i * SLOT_W, top: 0, bottom: 0, borderRight: i % 2 === 1 ? "1px solid #FDE68A" : "1px solid #FEF3C7" }} />)}
+        {nowLine >= 0 && nowLine <= TOTAL_SLOTS * SLOT_W && <div style={{ position: "absolute", left: nowLine, top: 0, bottom: 0, width: 2, backgroundColor: "#EF4444", zIndex: 3, pointerEvents: "none" }} />}
+        {jobs.map(j => <JobChip key={j.id} job={j} onClick={onChipClick} isUnassigned />)}
       </div>
     </div>
   );
@@ -969,6 +994,8 @@ export default function JobsPage() {
   const refreshRef = useRef(0);
   const [zones, setZones] = useState<{ id: number; name: string; color: string }[]>([]);
   const [selectedZoneFilter, setSelectedZoneFilter] = useState<number | null>(null);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const timelineRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     const id = ++refreshRef.current;
@@ -998,6 +1025,13 @@ export default function JobsPage() {
       .then(d => setZones(Array.isArray(d) ? d : []))
       .catch(() => {});
   }, [token]);
+
+  // Scroll to 9am on mount and date change
+  useEffect(() => {
+    if (!timelineRef.current) return;
+    const scrollTo9am = (9 * 60 - DAY_START) / 30 * SLOT_W; // (540-420)/30*80 = 320px
+    timelineRef.current.scrollLeft = scrollTo9am;
+  }, [selectedDate, loading]);
 
   // Now-line calculation
   const nowLine = (() => {
@@ -1192,124 +1226,92 @@ export default function JobsPage() {
   return (
     <DashboardLayout>
       <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-        <div style={{ display: "flex", height: "calc(100vh - 56px)", overflow: "hidden", fontFamily: FF }}>
+        <div style={{ display: "flex", height: "calc(100vh - 56px)", overflow: "hidden", fontFamily: FF, flexDirection: "column" }}>
 
-          {/* LEFT SIDEBAR */}
-          <div style={{ width: 256, flexShrink: 0, borderRight: "1px solid #E5E2DC", backgroundColor: "#FAFAF9", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-            <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid #EEECE7" }}>
-              <button onClick={() => setShowWizard(true)}
-                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "var(--brand)", color: "#FFFFFF", border: "none", borderRadius: 8, padding: "9px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                <Plus size={14} /> New Job
-                <kbd style={{ fontSize: 10, border: '1px solid rgba(255,255,255,0.45)', borderRadius: 3, padding: '1px 5px', color: 'rgba(255,255,255,0.8)', fontFamily: 'inherit' }}>⇧J</kbd>
-              </button>
+          {/* TOP BAR — New Job + date nav + mini-cal popover + stats + zones + view toggle */}
+          <div style={{ padding: "8px 16px", borderBottom: "1px solid #E5E2DC", backgroundColor: "#FFFFFF", display: "flex", alignItems: "center", gap: 10, flexShrink: 0, flexWrap: "nowrap" }}>
+            {/* New Job button */}
+            <button onClick={() => setShowWizard(true)}
+              style={{ display: "flex", alignItems: "center", gap: 6, backgroundColor: "var(--brand)", color: "#FFFFFF", border: "none", borderRadius: 8, padding: "7px 13px", fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
+              <Plus size={14} /> New Job
+              <kbd style={{ fontSize: 10, border: '1px solid rgba(255,255,255,0.45)', borderRadius: 3, padding: '1px 5px', color: 'rgba(255,255,255,0.8)', fontFamily: 'inherit' }}>⇧J</kbd>
+            </button>
+
+            <div style={{ width: 1, height: 22, backgroundColor: "#E5E2DC", flexShrink: 0 }} />
+
+            {/* Date nav */}
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <button onClick={() => setSelectedDate(d => addDays(d, -1))} style={{ border: "1px solid #E5E2DC", background: "#FAFAF9", borderRadius: 6, padding: "5px 8px", cursor: "pointer", display: "flex", color: "#6B7280" }}><ChevronLeft size={14} /></button>
+
+              {/* Calendar popover trigger */}
+              <div style={{ position: "relative" }}>
+                <button onClick={() => setCalendarOpen(o => !o)}
+                  style={{ display: "flex", alignItems: "center", gap: 6, border: "1px solid #E5E2DC", background: calendarOpen ? "var(--brand-dim)" : "#FAFAF9", borderRadius: 6, padding: "5px 12px", cursor: "pointer", minWidth: 170, justifyContent: "center" }}>
+                  <Calendar size={13} style={{ color: "var(--brand)", flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, fontWeight: 800, color: "#1A1917" }}>{isToday ? "Today — " : ""}{dayLabel}</span>
+                </button>
+                {calendarOpen && (
+                  <>
+                    <div onClick={() => setCalendarOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 49 }} />
+                    <div style={{ position: "absolute", top: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)", zIndex: 50, backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,0.12)", minWidth: 260 }}>
+                      <MiniCalendar value={selectedDate} onChange={d => { setSelectedDate(d); setCalendarOpen(false); }} jobDates={jobDates} />
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <button onClick={() => setSelectedDate(d => addDays(d, 1))} style={{ border: "1px solid #E5E2DC", background: "#FAFAF9", borderRadius: 6, padding: "5px 8px", cursor: "pointer", display: "flex", color: "#6B7280" }}><ChevronRight size={14} /></button>
+              {!isToday && <button onClick={() => { const t = new Date(); t.setHours(0,0,0,0); setSelectedDate(t); }} style={{ border: "1px solid var(--brand)", background: "var(--brand-dim)", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "var(--brand)" }}>Today</button>}
             </div>
 
-            <div style={{ borderBottom: "1px solid #EEECE7" }}>
-              <MiniCalendar value={selectedDate} onChange={d => { setSelectedDate(d); }} jobDates={jobDates} />
-            </div>
+            <div style={{ display: "flex", gap: 8, marginLeft: "auto", alignItems: "center", flexWrap: "nowrap" }}>
+              {/* Stats pills */}
+              {!loading && data && [
+                { label: `${stats.total} jobs`, color: "#1A1917", bg: "#F7F6F3" },
+                { label: `${stats.complete} done`, color: "#16A34A", bg: "#DCFCE7" },
+                ...(stats.inProgress > 0 ? [{ label: `${stats.inProgress} active`, color: "#D97706", bg: "#FEF3C7" }] : []),
+                { label: `$${stats.revenue.toFixed(0)} rev`, color: "var(--brand)", bg: "var(--brand-dim)" },
+                ...(stats.unassigned > 0 ? [{ label: `${stats.unassigned} unassigned`, color: "#DC2626", bg: "#FEE2E2" }] : []),
+              ].map(s => (
+                <span key={s.label} style={{ fontSize: 11, fontWeight: 700, color: s.color, backgroundColor: s.bg, padding: "3px 8px", borderRadius: 20, whiteSpace: "nowrap" }}>{s.label}</span>
+              ))}
 
-            {/* Team summary */}
-            <div style={{ flex: 1, overflowY: "auto" }}>
-              {filteredData && (
-                <>
-                  <div style={{ padding: "12px 14px 6px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#9E9B94" }}>Team Today</div>
-                  {filteredData.employees.map(e => {
-                    const mins = e.jobs.reduce((s, j) => s + j.duration_minutes, 0);
-                    const rev = e.jobs.reduce((s, j) => s + (j.amount || 0), 0);
-                    const initials = e.name.split(" ").map((p: string) => p[0]).join("").toUpperCase().slice(0, 2);
-                    return (
-                      <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderBottom: "1px solid #F5F3F0" }}>
-                        <div style={{ width: 30, height: 30, borderRadius: "50%", backgroundColor: "var(--brand-dim)", color: "var(--brand)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{initials}</div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: "#1A1917", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 5 }}>
-                            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{e.name}</span>
-                            {e.zone && <div style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: e.zone.zone_color, flexShrink: 0 }} title={e.zone.zone_name} />}
-                          </div>
-                          <div style={{ fontSize: 10, color: "#9E9B94" }}>{e.jobs.length} job{e.jobs.length !== 1 ? "s" : ""} · {Math.floor(mins / 60)}h · ${rev.toFixed(0)}</div>
-                        </div>
-                        {e.jobs.some(j => j.status === "in_progress") && (
-                          <div style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: "#F59E0B", flexShrink: 0 }} title="In progress" />
-                        )}
-                        {e.jobs.every(j => j.status === "complete") && e.jobs.length > 0 && (
-                          <CheckCircle size={14} style={{ color: "#22C55E", flexShrink: 0 }} />
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  {/* Unassigned */}
-                  {filteredData.unassigned_jobs.length > 0 && (
-                    <>
-                      <div style={{ padding: "12px 14px 6px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#DC2626" }}>
-                        Unassigned · {filteredData.unassigned_jobs.length}
-                      </div>
-                      <div style={{ padding: "0 14px 10px" }}>
-                        {filteredData.unassigned_jobs.map(j => <UnassignedChip key={j.id} job={j} onClick={() => setSelectedJob(j)} />)}
-                      </div>
-                    </>
-                  )}
-                </>
+              {/* Zone filter */}
+              {zones.length > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <div style={{ width: 1, height: 18, backgroundColor: "#E5E2DC" }} />
+                  <button onClick={() => setSelectedZoneFilter(null)}
+                    style={{ fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 20, border: selectedZoneFilter === null ? "1.5px solid var(--brand)" : "1.5px solid #E5E2DC", backgroundColor: selectedZoneFilter === null ? "var(--brand-dim)" : "#FAFAF9", color: selectedZoneFilter === null ? "var(--brand)" : "#6B7280", cursor: "pointer" }}>
+                    All Zones
+                  </button>
+                  {zones.map(z => (
+                    <button key={z.id} onClick={() => setSelectedZoneFilter(selectedZoneFilter === z.id ? null : z.id)}
+                      style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 20, border: `1.5px solid ${selectedZoneFilter === z.id ? z.color : "#E5E2DC"}`, backgroundColor: selectedZoneFilter === z.id ? `${z.color}22` : "#FAFAF9", color: selectedZoneFilter === z.id ? z.color : "#6B7280", cursor: "pointer" }}>
+                      <div style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: z.color }} />
+                      {z.name}
+                    </button>
+                  ))}
+                </div>
               )}
+
+              {/* View toggle */}
+              <div style={{ display: "flex", border: "1px solid #E5E2DC", borderRadius: 8, overflow: "hidden" }}>
+                <button onClick={() => setDesktopView("timeline")} style={{ padding: "5px 10px", border: "none", cursor: "pointer", backgroundColor: desktopView === "timeline" ? "var(--brand)" : "#FAFAF9", color: desktopView === "timeline" ? "#fff" : "#6B7280", display: "flex" }}><LayoutGrid size={14} /></button>
+                <button onClick={() => setDesktopView("list")} style={{ padding: "5px 10px", border: "none", cursor: "pointer", backgroundColor: desktopView === "list" ? "var(--brand)" : "#FAFAF9", color: desktopView === "list" ? "#fff" : "#6B7280", display: "flex" }}><List size={14} /></button>
+              </div>
             </div>
           </div>
 
-          {/* MAIN CONTENT */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-            {/* Day header */}
-            <div style={{ padding: "10px 20px", borderBottom: "1px solid #E5E2DC", backgroundColor: "#FFFFFF", display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <button onClick={() => setSelectedDate(d => addDays(d, -1))} style={{ border: "1px solid #E5E2DC", background: "#FAFAF9", borderRadius: 6, padding: "5px 8px", cursor: "pointer", display: "flex", color: "#6B7280" }}><ChevronLeft size={14} /></button>
-                <div style={{ textAlign: "center", minWidth: 170 }}>
-                  <span style={{ fontSize: 14, fontWeight: 800, color: "#1A1917" }}>{isToday ? "Today — " : ""}{dayLabel}</span>
-                </div>
-                <button onClick={() => setSelectedDate(d => addDays(d, 1))} style={{ border: "1px solid #E5E2DC", background: "#FAFAF9", borderRadius: 6, padding: "5px 8px", cursor: "pointer", display: "flex", color: "#6B7280" }}><ChevronRight size={14} /></button>
-                {!isToday && <button onClick={() => { const t = new Date(); t.setHours(0,0,0,0); setSelectedDate(t); }} style={{ border: "1px solid var(--brand)", background: "var(--brand-dim)", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "var(--brand)" }}>Today</button>}
-              </div>
-
-              <div style={{ display: "flex", gap: 12, marginLeft: "auto", alignItems: "center" }}>
-                {/* Stats pills */}
-                {!loading && data && [
-                  { label: `${stats.total} jobs`, color: "#1A1917", bg: "#F7F6F3" },
-                  { label: `${stats.complete} done`, color: "#16A34A", bg: "#DCFCE7" },
-                  ...(stats.inProgress > 0 ? [{ label: `${stats.inProgress} active`, color: "#D97706", bg: "#FEF3C7" }] : []),
-                  { label: `$${stats.revenue.toFixed(0)} rev`, color: "var(--brand)", bg: "var(--brand-dim)" },
-                ].map(s => (
-                  <span key={s.label} style={{ fontSize: 11, fontWeight: 700, color: s.color, backgroundColor: s.bg, padding: "3px 8px", borderRadius: 20 }}>{s.label}</span>
-                ))}
-
-                {/* Zone filter */}
-                {zones.length > 0 && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <button onClick={() => setSelectedZoneFilter(null)}
-                      style={{ fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 20, border: selectedZoneFilter === null ? "1.5px solid var(--brand)" : "1.5px solid #E5E2DC", backgroundColor: selectedZoneFilter === null ? "var(--brand-dim)" : "#FAFAF9", color: selectedZoneFilter === null ? "var(--brand)" : "#6B7280", cursor: "pointer" }}>
-                      All Zones
-                    </button>
-                    {zones.map(z => (
-                      <button key={z.id} onClick={() => setSelectedZoneFilter(selectedZoneFilter === z.id ? null : z.id)}
-                        style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 20, border: `1.5px solid ${selectedZoneFilter === z.id ? z.color : "#E5E2DC"}`, backgroundColor: selectedZoneFilter === z.id ? `${z.color}22` : "#FAFAF9", color: selectedZoneFilter === z.id ? z.color : "#6B7280", cursor: "pointer" }}>
-                        <div style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: z.color }} />
-                        {z.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* View toggle */}
-                <div style={{ display: "flex", border: "1px solid #E5E2DC", borderRadius: 8, overflow: "hidden" }}>
-                  <button onClick={() => setDesktopView("timeline")} style={{ padding: "5px 10px", border: "none", cursor: "pointer", backgroundColor: desktopView === "timeline" ? "var(--brand)" : "#FAFAF9", color: desktopView === "timeline" ? "#fff" : "#6B7280", display: "flex" }}><LayoutGrid size={14} /></button>
-                  <button onClick={() => setDesktopView("list")} style={{ padding: "5px 10px", border: "none", cursor: "pointer", backgroundColor: desktopView === "list" ? "var(--brand)" : "#FAFAF9", color: desktopView === "list" ? "#fff" : "#6B7280", display: "flex" }}><List size={14} /></button>
-                </div>
-              </div>
-            </div>
-
+          {/* GANTT / LIST — fills remaining height */}
+          <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
             {/* Timeline or list */}
             {loading ? (
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#9E9B94", fontSize: 13 }}>Loading schedule...</div>
             ) : desktopView === "timeline" ? (
-              <div style={{ flex: 1, overflow: "auto" }}>
+              <div ref={timelineRef} style={{ flex: 1, overflow: "auto" }}>
                 {/* Time header */}
                 <div style={{ display: "flex", position: "sticky", top: 0, zIndex: 10, backgroundColor: "#FAFAF9", borderBottom: "1px solid #E5E2DC" }}>
-                  <div style={{ width: COL_W, flexShrink: 0, position: "sticky", left: 0, zIndex: 11, backgroundColor: "#FAFAF9", borderRight: "1px solid #E5E2DC", padding: "8px 14px" }}>
+                  <div style={{ width: COL_W, flexShrink: 0, position: "sticky", left: 0, zIndex: 11, backgroundColor: "#FAFAF9", borderRight: "1px solid #E5E2DC", padding: "8px 12px" }}>
                     <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#9E9B94" }}>Technician</span>
                   </div>
                   {TIMES.map((t, i) => (
@@ -1325,7 +1327,12 @@ export default function JobsPage() {
                     <div style={{ fontSize: 13, color: "#9E9B94" }}>{selectedZoneFilter !== null ? "Try clearing the zone filter or pick a different day" : "Click \"+ New Job\" to get started"}</div>
                   </div>
                 ) : (
-                  filteredData && filteredData.employees.map(e => <EmployeeRow key={e.id} employee={e} onChipClick={setSelectedJob} nowLine={nowLine} />)
+                  filteredData && <>
+                    {filteredData.unassigned_jobs.length > 0 && (
+                      <UnassignedGanttRow jobs={filteredData.unassigned_jobs} onChipClick={setSelectedJob} nowLine={nowLine} />
+                    )}
+                    {filteredData.employees.map(e => <EmployeeRow key={e.id} employee={e} onChipClick={setSelectedJob} nowLine={nowLine} />)}
+                  </>
                 )}
               </div>
             ) : (
