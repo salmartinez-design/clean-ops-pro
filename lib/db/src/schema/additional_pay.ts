@@ -5,8 +5,14 @@ import { companiesTable } from "./companies";
 import { usersTable } from "./users";
 import { jobsTable } from "./jobs";
 
+// NOTE: additional_pay_type is a PG enum used for casting in raw SQL migrations.
+// The `type` column on additionalPayTable is stored as text (not an enum column)
+// because legacy data contains values not in the enum. Keep in sync with production.
 export const additionalPayTypeEnum = pgEnum("additional_pay_type", [
-  "tips", "sick_pay", "holiday_pay", "bonus", "vacation_pay", "compliment", "amount_owed", "mileage"
+  "tips", "sick_pay", "holiday_pay", "bonus", "vacation_pay", "compliment",
+  "amount_owed", "mileage", "amount_owed_non_taxed",
+  "other_additional", "amount_employee_owes", "attendance_performance",
+  "bonus_other", "employee_referral"
 ]);
 
 export const additionalPayStatusEnum = pgEnum("additional_pay_status", [
@@ -18,7 +24,7 @@ export const additionalPayTable = pgTable("additional_pay", {
   company_id: integer("company_id").references(() => companiesTable.id).notNull(),
   user_id: integer("user_id").references(() => usersTable.id).notNull(),
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
-  type: additionalPayTypeEnum("type").notNull(),
+  type: text("type").notNull(),
   notes: text("notes"),
   job_id: integer("job_id").references(() => jobsTable.id),
   status: additionalPayStatusEnum("status").notNull().default("pending"),

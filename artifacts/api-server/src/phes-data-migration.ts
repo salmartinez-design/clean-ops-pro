@@ -749,12 +749,12 @@ async function runAleCuervoMigration() {
       const ts = `${a.date} 12:00:00`;
       await db.execute(sql`
         INSERT INTO additional_pay (company_id, user_id, amount, type, notes, status, created_at)
-        SELECT ${PHES}, ${EID}, ${a.amount}, ${a.type}::additional_pay_type, ${notesWithHours}, 'paid', ${ts}::timestamp
+        SELECT ${PHES}, ${EID}, ${a.amount}, ${a.type}, ${notesWithHours}, 'paid', ${ts}::timestamp
         WHERE NOT EXISTS (
           SELECT 1 FROM additional_pay
           WHERE company_id=${PHES} AND user_id=${EID}
             AND amount=${a.amount}
-            AND type=${a.type}::additional_pay_type
+            AND type=${a.type}
             AND created_at::date = ${a.date}::date
         )
       `);

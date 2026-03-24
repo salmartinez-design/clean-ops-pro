@@ -282,7 +282,7 @@ async function runNormaPugaMigration() {
       WHERE user_id=${EMPLOYEE_ID}
         AND created_at::date = ${r.date}::date
         AND amount=${r.amount}
-        AND type=${r.type}::additional_pay_type
+        AND type=${r.type}
       LIMIT 1
     `);
     if (exists.rows.length === 0) {
@@ -290,7 +290,7 @@ async function runNormaPugaMigration() {
         INSERT INTO additional_pay (company_id, user_id, amount, type, notes, status, created_at)
         VALUES (
           ${COMPANY_ID}, ${EMPLOYEE_ID}, ${r.amount},
-          ${r.type}::additional_pay_type,
+          ${r.type},
           ${r.notes}, 'pending'::additional_pay_status,
           ${r.date}::date
         )

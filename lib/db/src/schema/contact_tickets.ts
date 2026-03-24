@@ -8,7 +8,7 @@ import { jobsTable } from "./jobs";
 
 export const contactTicketTypeEnum = pgEnum("contact_ticket_type", [
   "breakage", "complaint_poor_cleaning", "complaint_attitude",
-  "compliment", "incident", "note"
+  "compliment", "incident", "note", "technician_note"
 ]);
 
 export const contactTicketsTable = pgTable("contact_tickets", {

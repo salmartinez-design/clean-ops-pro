@@ -51,6 +51,7 @@ async function buildAll() {
       execSync("pnpm --filter @workspace/db run push-force", {
         stdio: "inherit",
         cwd: path.resolve(__dirname, "../.."),
+        timeout: 60000, // 60s timeout — prevents hanging on enum migrations
       });
       console.log("schema push complete");
     } catch (e) {
