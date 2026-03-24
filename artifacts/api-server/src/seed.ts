@@ -37,9 +37,34 @@ async function cleanupDemoData(companyId: number) {
       .where(and(eq(jobsTable.company_id, companyId), or(...jobConds)));
     const demoJobIds = demoJobs.map(j => j.id);
     if (demoJobIds.length > 0) {
-      const ri = await db.delete(invoicesTable).where(inArray(invoicesTable.job_id, demoJobIds)).returning({ id: invoicesTable.id });
+      const jids = demoJobIds.join(',');
+      // Each statement runs individually so a missing table in one env doesn't abort the rest.
+      // Nullable FKs — NULL them out first so NOT NULL FKs can be deleted safely.
+      const jobCascadeStmts = [
+        `UPDATE contact_tickets     SET job_id = NULL              WHERE job_id IN (${jids})`,
+        `UPDATE form_submissions    SET job_id = NULL              WHERE job_id IN (${jids})`,
+        `UPDATE quotes              SET booked_job_id = NULL       WHERE booked_job_id IN (${jids})`,
+        `UPDATE communication_log   SET job_id = NULL              WHERE job_id IN (${jids})`,
+        `UPDATE mileage_requests    SET from_job_id = NULL         WHERE from_job_id IN (${jids})`,
+        `UPDATE mileage_requests    SET to_job_id = NULL           WHERE to_job_id IN (${jids})`,
+        `UPDATE additional_pay      SET job_id = NULL              WHERE job_id IN (${jids})`,
+        `UPDATE cancellation_log    SET rescheduled_to_job_id = NULL WHERE rescheduled_to_job_id IN (${jids})`,
+        `DELETE FROM job_photos          WHERE job_id IN (${jids})`,
+        `DELETE FROM scorecards          WHERE job_id IN (${jids})`,
+        `DELETE FROM job_status_logs     WHERE job_id IN (${jids})`,
+        `DELETE FROM timeclock           WHERE job_id IN (${jids})`,
+        `DELETE FROM cancellation_log    WHERE job_id IN (${jids})`,
+        `DELETE FROM job_add_ons         WHERE job_id IN (${jids})`,
+        `DELETE FROM job_supplies        WHERE job_id IN (${jids})`,
+        `DELETE FROM satisfaction_surveys WHERE job_id IN (${jids})`,
+        `DELETE FROM client_ratings      WHERE job_id IN (${jids})`,
+        `DELETE FROM invoices            WHERE job_id IN (${jids})`,
+      ];
+      for (const stmt of jobCascadeStmts) {
+        try { await db.execute(sql.raw(stmt)); } catch { /* table may not exist in all envs */ }
+      }
       const rj = await db.delete(jobsTable).where(inArray(jobsTable.id, demoJobIds)).returning({ id: jobsTable.id });
-      d.inv += ri.length; d.jobs += rj.length;
+      d.jobs += rj.length;
     }
   }
   // Delete any remaining invoices for demo clients
@@ -287,48 +312,59 @@ export async function seedIfNeeded() {
       console.log("[seed] Branches already present — oak lawn id:", oakLawnBranchId);
     }
 
-    // ── Demo data (employees, clients, jobs, invoices) ──────────────────────
-    // Idempotent: checks for Linda Torres as a sentinel before running
-    const demoCheck = await db
-      .select({ id: usersTable.id })
+    // ── Demo data guard ──────────────────────────────────────────────────────
+    // ALWAYS run cleanup first — it is fully idempotent (no-op when nothing to remove).
+    // This fires on every startup regardless of environment so fake employees can never
+    // survive a restart cycle. Never gate cleanup on NODE_ENV or a sentinel row.
+    await cleanupDemoData(companyId);
+
+    // Always clean up known test/demo records (idempotent — safe to run every startup)
+    // 1. Remove seeded mileage request (Jennifer Williams → Robert Johnson, 8.50 mi)
+    const deletedMileage = await db.delete(mileageRequestsTable)
+      .where(and(
+        eq(mileageRequestsTable.company_id, companyId),
+        sql`from_client_name = 'Jennifer Williams'`,
+        sql`to_client_name = 'Robert Johnson'`,
+      )).returning({ id: mileageRequestsTable.id });
+    if (deletedMileage.length > 0) console.log("[seed] Removed seeded mileage request record");
+
+    // 2. Deactivate Pinnacle Property Management demo commercial account
+    const deactivatedPinnacle = await db.update(accountsTable)
+      .set({ is_active: false })
+      .where(and(
+        eq(accountsTable.company_id, companyId),
+        sql`account_name = 'Pinnacle Property Management'`,
+        eq(accountsTable.is_active, true),
+      )).returning({ id: accountsTable.id });
+    if (deactivatedPinnacle.length > 0) console.log("[seed] Deactivated Pinnacle Property Management demo account");
+
+    // ── Real PHES employees: check presence (used for both demo-seed guard and import guard) ──
+    // Query once — reused for both decisions below.
+    const REAL_EMP_EMAILS = (phesEmployeesData as any[]).map((e: any) => e.email).filter(Boolean);
+    const existingRealEmps = await db
+      .select({ email: usersTable.email })
       .from(usersTable)
-      .where(eq(usersTable.email, "linda.torres@phes.io"))
-      .limit(1);
+      .where(and(eq(usersTable.company_id, companyId), inArray(usersTable.email, REAL_EMP_EMAILS)));
 
-    if (process.env.NODE_ENV === "production") {
-      // In production: always run cleanup — it's fully idempotent (no-op if nothing to remove)
-      // Do NOT gate on the sentinel; some demo employees may survive if the sentinel was
-      // already deleted but the FK cascade failed on a previous startup.
-      console.log("[seed] Production: running demo data cleanup (idempotent)...");
-      await cleanupDemoData(companyId);
+    const realEmpCount = existingRealEmps.length;
 
-      // Always clean up known test/demo records (idempotent — safe to run every startup)
-      // 1. Remove seeded mileage request (Jennifer Williams → Robert Johnson, 8.50 mi)
-      const deletedMileage = await db.delete(mileageRequestsTable)
-        .where(and(
-          eq(mileageRequestsTable.company_id, companyId),
-          sql`from_client_name = 'Jennifer Williams'`,
-          sql`to_client_name = 'Robert Johnson'`,
-        )).returning({ id: mileageRequestsTable.id });
-      if (deletedMileage.length > 0) console.log("[seed] Removed seeded mileage request record");
-
-      // 2. Deactivate Pinnacle Property Management demo commercial account
-      const deactivatedPinnacle = await db.update(accountsTable)
-        .set({ is_active: false })
-        .where(and(
-          eq(accountsTable.company_id, companyId),
-          sql`account_name = 'Pinnacle Property Management'`,
-          eq(accountsTable.is_active, true),
-        )).returning({ id: accountsTable.id });
-      if (deactivatedPinnacle.length > 0) console.log("[seed] Deactivated Pinnacle Property Management demo account");
-    } else {
-      // In development: seed demo data if not yet present
+    // Only seed demo data when no real PHES employees are present.
+    // This guard is environment-agnostic — it works regardless of NODE_ENV.
+    if (realEmpCount === 0) {
+      // No real PHES employees found — this is a fresh dev environment; seed demo data.
+      const demoCheck = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(eq(usersTable.email, "linda.torres@phes.io"))
+        .limit(1);
       if (demoCheck.length === 0) {
-        console.log("[seed] Demo data missing — seeding employees, clients, jobs...");
+        console.log("[seed] No real PHES employees and no demo data — seeding dev demo data...");
         await seedDemoData(companyId, ownerId);
       } else {
         console.log("[seed] Demo data already present — skipping");
       }
+    } else {
+      console.log(`[seed] Real PHES employees present (${realEmpCount}) — skipping demo seed entirely`);
     }
 
     // ── Real PHES clients import ─────────────────────────────────────────────
@@ -382,15 +418,7 @@ export async function seedIfNeeded() {
     }
 
     // ── Real PHES employees import ───────────────────────────────────────────
-    // Guard by email: check if sentinel real employee (Norma Puga) exists.
-    // This is ID-agnostic — works correctly in production regardless of auto-increment state.
-    const REAL_EMP_EMAILS = (phesEmployeesData as any[]).map((e: any) => e.email).filter(Boolean);
-    const existingRealEmps = await db
-      .select({ email: usersTable.email })
-      .from(usersTable)
-      .where(and(eq(usersTable.company_id, companyId), inArray(usersTable.email, REAL_EMP_EMAILS)));
-
-    const realEmpCount = existingRealEmps.length;
+    // realEmpCount already fetched above — reuse it here.
     if (realEmpCount < phesEmployeesData.length) {
       console.log(`[seed] Only ${realEmpCount} real PHES employees found — importing ${phesEmployeesData.length} from bundle...`);
       const placeholder = await bcrypt.hash("ChangeMe2026!", 10);
