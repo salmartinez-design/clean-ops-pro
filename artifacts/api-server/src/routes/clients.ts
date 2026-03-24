@@ -80,7 +80,7 @@ router.get("/", requireAuth, async (req, res) => {
       .select()
       .from(clientsTable)
       .where(and(...conditions))
-      .orderBy(clientsTable.last_name, clientsTable.first_name)
+      .orderBy(desc(clientsTable.is_active), clientsTable.last_name, clientsTable.first_name)
       .limit(parseInt(limit as string))
       .offset(offset);
 
