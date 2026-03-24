@@ -9,6 +9,7 @@ import { EmployeeViewProvider } from "@/contexts/employee-view-context";
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import JobsPage from "@/pages/jobs";
+import JobsListPage from "@/pages/jobs-list";
 import EmployeesPage from "@/pages/employees";
 import EmployeeProfilePage from "@/pages/employee-profile";
 import AcceptInvitePage from "@/pages/accept-invite";
@@ -86,7 +87,8 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/accept-invite" component={AcceptInvitePage} />
       <Route path="/dashboard" component={Dashboard} />
-      <Route path="/jobs" component={JobsPage} />
+      <Route path="/dispatch" component={JobsPage} />
+      <Route path="/jobs" component={JobsListPage} />
       <Route path="/employees/clocks" component={ClockMonitorPage} />
       <Route path="/employees/:id" component={EmployeeProfilePage} />
       <Route path="/employees" component={EmployeesPage} />

@@ -14,7 +14,7 @@ const NAV_SECTIONS = [
     label: "Operations",
     items: [
       { title: "Dashboard",      url: "/dashboard",  icon: LayoutDashboard },
-      { title: "Dispatch Board", url: "/jobs",       icon: CalendarDays },
+      { title: "Dispatch Board", url: "/dispatch",    icon: CalendarDays },
       { title: "Jobs",           url: "/jobs",       icon: Briefcase },
       { title: "Customers",      url: "/customers",  icon: Users },
       { title: "Accounts",       url: "/accounts",   icon: Building2, roles: ["owner", "admin", "office"] },
@@ -81,7 +81,7 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
     ? `${userInfo.firstName[0] || ''}${userInfo.lastName[0] || ''}`.toUpperCase()
     : '??';
 
-  const EXACT_MATCH_URLS = ['/dashboard', '/company'];
+  const EXACT_MATCH_URLS = ['/dashboard', '/company', '/dispatch', '/jobs'];
   const isActive = (url: string) =>
     EXACT_MATCH_URLS.includes(url)
       ? location === url

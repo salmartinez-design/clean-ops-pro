@@ -30,7 +30,8 @@ interface DashboardLayoutProps {
 
 const ROUTE_TITLES: Record<string, string> = {
   '/dashboard':                    'Dashboard',
-  '/jobs':                         'Dispatch Board',
+  '/dispatch':                     'Dispatch Board',
+  '/jobs':                         'Jobs',
   '/my-jobs':                      'My Jobs',
   '/employees':                    'Employees',
   '/employees/clocks':             'Clock Monitor',
@@ -61,7 +62,7 @@ const ROUTE_TITLES: Record<string, string> = {
 
 const BOTTOM_TABS_MANAGER = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Today' },
-  { href: '/jobs',      icon: CalendarDays,    label: 'Schedule' },
+  { href: '/dispatch',  icon: CalendarDays,    label: 'Schedule' },
   { href: '/customers', icon: Users,            label: 'Customers' },
 ];
 
