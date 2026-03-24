@@ -4,6 +4,7 @@ import { eq, sql, isNull, and, gt, count } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { seedDemoData } from "./seed-demo.js";
 import phesClientsData from "./phes-clients-seed.json";
+import phesEmployeesData from "./phes-employees-seed.json";
 
 const SUPER_ADMINS = [
   { email: "sal@cleanopspro.com",   password: "SalCleanOps2026!",   first_name: "Sal",   last_name: "CleanOps" },
@@ -242,6 +243,63 @@ export async function seedIfNeeded() {
       console.log(`[seed] Real PHES clients imported: ${inserted}`);
     } else {
       console.log(`[seed] Real PHES clients OK (${realCount} found) — skipping import`);
+    }
+
+    // ── Real PHES employees import ───────────────────────────────────────────
+    // Real employees have IDs >= 32 in dev. Import if missing from production.
+    const [empCountRow] = await db
+      .select({ n: count() })
+      .from(usersTable)
+      .where(and(eq(usersTable.company_id, companyId), gt(usersTable.id, 31)));
+
+    const realEmpCount = Number(empCountRow?.n ?? 0);
+    if (realEmpCount < phesEmployeesData.length) {
+      console.log(`[seed] Only ${realEmpCount} real PHES employees found — importing ${phesEmployeesData.length} from bundle...`);
+      const placeholder = await bcrypt.hash("ChangeMe2026!", 10);
+      const empBatch = (phesEmployeesData as any[]).map((e: any) => ({
+        id: e.id,
+        company_id: companyId,
+        first_name: e.first_name,
+        last_name: e.last_name,
+        email: e.email ?? null,
+        phone: e.phone ?? null,
+        personal_email: e.personal_email ?? null,
+        address: e.address ?? null,
+        city: e.city ?? null,
+        state: e.state ?? null,
+        zip: e.zip ?? null,
+        dob: e.dob ?? null,
+        gender: e.gender ?? null,
+        hire_date: e.hire_date ?? null,
+        role: e.role as any,
+        employment_type: e.employment_type ?? null,
+        pay_rate: e.pay_rate ?? null,
+        pay_type: e.pay_type ?? null,
+        fee_split_pct: e.fee_split_pct ?? null,
+        allowed_hours_per_week: e.allowed_hours_per_week ?? null,
+        overtime_eligible: e.overtime_eligible ?? false,
+        w2_1099: e.w2_1099 ?? null,
+        bank_name: e.bank_name ?? null,
+        bank_account_last4: e.bank_account_last4 ?? null,
+        skills: e.skills ?? null,
+        tags: e.tags ?? null,
+        emergency_contact_name: e.emergency_contact_name ?? null,
+        emergency_contact_phone: e.emergency_contact_phone ?? null,
+        emergency_contact_relation: e.emergency_contact_relation ?? null,
+        ssn_last4: e.ssn_last4 ?? null,
+        notes: e.notes ?? null,
+        hr_status: e.hr_status ?? null,
+        commission_rate_override: e.commission_rate_override ?? null,
+        is_active: e.is_active ?? true,
+        crew_id: e.crew_id ?? null,
+        home_branch_id: oakLawnBranchId,
+        password_hash: placeholder,
+      }));
+      await db.insert(usersTable).values(empBatch).onConflictDoNothing();
+      await db.execute(sql`SELECT setval(pg_get_serial_sequence('users', 'id'), GREATEST(nextval(pg_get_serial_sequence('users', 'id')), 50))`);
+      console.log(`[seed] Real PHES employees imported: ${empBatch.length}`);
+    } else {
+      console.log(`[seed] Real PHES employees OK (${realEmpCount} found) — skipping import`);
     }
   } catch (err) {
     console.error("[seed] Seed error (non-fatal):", err);
