@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, usersTable, clientsTable, timeclockTable, jobPhotosTable, serviceZonesTable, serviceZoneEmployeesTable, accountsTable, accountPropertiesTable } from "@workspace/db/schema";
+import { jobsTable, usersTable, clientsTable, timeclockTable, jobPhotosTable, serviceZonesTable, serviceZoneEmployeesTable, accountsTable, accountPropertiesTable, employeeAttendanceLogTable, employeeLeaveUsageTable } from "@workspace/db/schema";
 import { eq, and, count, sql, inArray } from "drizzle-orm";
 import { requireAuth } from "../lib/auth.js";
 
@@ -12,17 +12,29 @@ router.get("/", requireAuth, async (req, res) => {
     const date = (req.query.date as string) || new Date().toISOString().split("T")[0];
     const branch_id = req.query.branch_id as string | undefined;
 
+    // Only show field technicians on the dispatch board:
+    // - role = technician or team_lead always included
+    // - role = admin/owner/office only if their tags array contains 'field' or 'technician'
     const employees = await db
       .select({
         id: usersTable.id,
         first_name: usersTable.first_name,
         last_name: usersTable.last_name,
         role: usersTable.role,
+        tags: usersTable.tags,
+        commission_rate: usersTable.commission_rate_override,
       })
       .from(usersTable)
       .where(and(
         eq(usersTable.company_id, companyId),
-        sql`${usersTable.role} != 'super_admin'`
+        eq(usersTable.is_active, true),
+        sql`(
+          ${usersTable.role} IN ('technician', 'team_lead')
+          OR (
+            ${usersTable.role} IN ('admin', 'owner', 'office')
+            AND ${usersTable.tags} && ARRAY['field','technician']::text[]
+          )
+        )`
       ))
       .orderBy(usersTable.first_name);
 
@@ -92,6 +104,38 @@ router.get("/", requireAuth, async (req, res) => {
       }
     }
 
+    // Time-off data for the board date
+    // PTO = leave_usage record exists for this date
+    const leaveUsage = await db
+      .select({ employee_id: employeeLeaveUsageTable.employee_id })
+      .from(employeeLeaveUsageTable)
+      .where(and(
+        eq(employeeLeaveUsageTable.company_id, companyId),
+        eq(employeeLeaveUsageTable.date_used, date),
+      ));
+
+    // Sick / absent from attendance log for this date
+    const attendanceLogs = await db
+      .select({ employee_id: employeeAttendanceLogTable.employee_id, type: employeeAttendanceLogTable.type })
+      .from(employeeAttendanceLogTable)
+      .where(and(
+        eq(employeeAttendanceLogTable.company_id, companyId),
+        eq(employeeAttendanceLogTable.log_date, date),
+        sql`${employeeAttendanceLogTable.type} IN ('plawa_leave','protected_leave','absent','ncns')`,
+      ));
+
+    const ptoSet = new Set(leaveUsage.map(r => r.employee_id));
+    // sick = plawa_leave / protected_leave; absent = absent / ncns
+    const sickSet = new Set(attendanceLogs.filter(r => r.type === 'plawa_leave' || r.type === 'protected_leave').map(r => r.employee_id));
+    const absentSet = new Set(attendanceLogs.filter(r => r.type === 'absent' || r.type === 'ncns').map(r => r.employee_id));
+
+    function getTimeOff(empId: number): 'pto' | 'sick' | 'absent' | null {
+      if (ptoSet.has(empId)) return 'pto';
+      if (sickSet.has(empId)) return 'sick';
+      if (absentSet.has(empId)) return 'absent';
+      return null;
+    }
+
     if (jobs.length === 0) {
       return res.json({
         employees: employees.map(e => ({
@@ -99,6 +143,8 @@ router.get("/", requireAuth, async (req, res) => {
           name: `${e.first_name} ${e.last_name}`,
           jobs: [],
           zone: empZoneMap[e.id] ?? null,
+          time_off: getTimeOff(e.id),
+          commission_rate: e.commission_rate ? parseFloat(e.commission_rate) : null,
         })),
         unassigned_jobs: [],
       });
@@ -207,6 +253,8 @@ router.get("/", requireAuth, async (req, res) => {
         role: e.role,
         jobs: jobsByEmployee.get(e.id) || [],
         zone: empZoneMap[e.id] ?? null,
+        time_off: getTimeOff(e.id),
+        commission_rate: e.commission_rate ? parseFloat(e.commission_rate) : null,
       })),
       unassigned_jobs: unassigned,
     });

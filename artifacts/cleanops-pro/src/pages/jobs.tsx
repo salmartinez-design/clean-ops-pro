@@ -40,7 +40,7 @@ const TIMES = Array.from({ length: TOTAL_SLOTS }, (_, i) => {
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 interface ClockEntry { id: number; clock_in_at: string | null; clock_out_at: string | null; distance_from_job_ft: number | null; is_flagged: boolean; }
 interface DispatchJob { id: number; client_id: number; client_name: string; client_phone?: string | null; address: string | null; assigned_user_id: number | null; assigned_user_name?: string; service_type: string; status: string; scheduled_date: string; scheduled_time: string | null; frequency: string; amount: number; duration_minutes: number; notes: string | null; before_photo_count: number; after_photo_count: number; clock_entry: ClockEntry | null; zone_id?: number | null; zone_color?: string | null; zone_name?: string | null; account_id?: number | null; account_name?: string | null; billing_method?: string | null; hourly_rate?: number | null; estimated_hours?: number | null; billed_hours?: number | null; billed_amount?: number | null; charge_failed_at?: string | null; charge_succeeded_at?: string | null; property_access_notes?: string | null; }
-interface Employee { id: number; name: string; role: string; jobs: DispatchJob[]; zone?: { zone_id: number; zone_color: string; zone_name: string } | null; }
+interface Employee { id: number; name: string; role: string; jobs: DispatchJob[]; zone?: { zone_id: number; zone_color: string; zone_name: string } | null; time_off?: 'pto' | 'sick' | 'absent' | null; commission_rate?: number | null; }
 interface DispatchData { employees: Employee[]; unassigned_jobs: DispatchJob[]; }
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
@@ -905,15 +905,28 @@ function JobChip({ job, onClick, assignedName, isUnassigned }: { job: DispatchJo
 }
 
 // ─── DESKTOP: EMPLOYEE ROW ────────────────────────────────────────────────────
+const TIME_OFF_BG: Record<string, string> = {
+  pto:    "#FFF9C4",
+  sick:   "#FFF176",
+  absent: "#FFEBEE",
+};
+
+// 9am–6pm band coordinates relative to DAY_START
+const BAND_LEFT  = ((9  * 60 - DAY_START) / 30) * SLOT_W; // 9am
+const BAND_RIGHT = ((18 * 60 - DAY_START) / 30) * SLOT_W; // 6pm
+const BAND_WIDTH = BAND_RIGHT - BAND_LEFT;
+
 function EmployeeRow({ employee, onChipClick, nowLine }: { employee: Employee; onChipClick: (j: DispatchJob) => void; nowLine: number }) {
   const { setNodeRef, isOver } = useDroppable({ id: `row-${employee.id}` });
   const initials = employee.name.split(" ").map((p: string) => p[0]).join("").toUpperCase().slice(0, 2);
   const totalMins = employee.jobs.reduce((s: number, j: DispatchJob) => s + j.duration_minutes, 0);
   const revenue = employee.jobs.reduce((s: number, j: DispatchJob) => s + (j.amount || 0), 0);
+  const commission = employee.commission_rate != null ? revenue * (employee.commission_rate / 100) : null;
   const isClockedIn = employee.jobs.some(j => j.clock_entry?.clock_in_at && !j.clock_entry?.clock_out_at);
+  const timeOffBg = employee.time_off ? TIME_OFF_BG[employee.time_off] : null;
   return (
     <div style={{ display: "flex", borderBottom: "1px solid #EEECE7", height: ROW_H }}>
-      <div style={{ position: "sticky", left: 0, zIndex: 5, width: COL_W, flexShrink: 0, backgroundColor: "#FFFFFF", borderRight: "1px solid #E5E2DC", display: "flex", alignItems: "center", padding: "0 12px", gap: 9 }}>
+      <div style={{ position: "sticky", left: 0, zIndex: 5, width: COL_W, flexShrink: 0, backgroundColor: timeOffBg || "#FFFFFF", borderRight: "1px solid #E5E2DC", display: "flex", alignItems: "center", padding: "0 12px", gap: 9 }}>
         <div style={{ position: "relative", flexShrink: 0 }}>
           <div style={{ width: 32, height: 32, borderRadius: "50%", backgroundColor: "var(--brand-dim)", color: "var(--brand)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800 }}>{initials}</div>
           {isClockedIn && <div style={{ position: "absolute", bottom: 0, right: 0, width: 9, height: 9, borderRadius: "50%", backgroundColor: "#22C55E", border: "2px solid #FFFFFF" }} title="Clocked in" />}
@@ -925,12 +938,16 @@ function EmployeeRow({ employee, onChipClick, nowLine }: { employee: Employee; o
           </div>
           <div style={{ fontSize: 9, color: "#9E9B94", textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.05em" }}>{employee.role}</div>
           <div style={{ fontSize: 10, color: "#6B6860", marginTop: 1 }}>
-            {employee.jobs.length}j · {Math.floor(totalMins / 60)}h · ${revenue.toFixed(0)}
+            {employee.jobs.length}j · {Math.floor(totalMins / 60)}h · ${revenue.toFixed(0)} · ${commission != null ? commission.toFixed(0) : "0"}
           </div>
         </div>
       </div>
       <div ref={setNodeRef} style={{ position: "relative", width: TOTAL_SLOTS * SLOT_W, flexShrink: 0, height: ROW_H, backgroundColor: isOver ? "rgba(91,155,213,0.05)" : "transparent", transition: "background-color 0.1s" }}>
         {TIMES.map((_, i) => <div key={i} style={{ position: "absolute", left: i * SLOT_W, top: 0, bottom: 0, borderRight: i % 2 === 1 ? "1px solid #E5E2DC" : "1px solid #EEECE7" }} />)}
+        {/* Time-off band sits behind job chips (zIndex 0) */}
+        {timeOffBg && (
+          <div style={{ position: "absolute", left: BAND_LEFT, width: BAND_WIDTH, top: 0, bottom: 0, backgroundColor: timeOffBg, zIndex: 0, pointerEvents: "none" }} />
+        )}
         {nowLine >= 0 && nowLine <= TOTAL_SLOTS * SLOT_W && <div style={{ position: "absolute", left: nowLine, top: 0, bottom: 0, width: 2, backgroundColor: "#EF4444", zIndex: 3, pointerEvents: "none" }} />}
         {employee.jobs.map(j => <JobChip key={j.id} job={j} onClick={onChipClick} assignedName={employee.name} />)}
         {employee.jobs.length === 0 && (
