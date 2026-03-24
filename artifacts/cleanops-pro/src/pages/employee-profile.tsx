@@ -529,17 +529,17 @@ export default function EmployeeProfilePage() {
     enabled: activeTab === 'Payroll History',
   });
 
-  const { data: allEmployeesData } = useQuery({
-    queryKey: ['all-employees-bulk'],
-    queryFn: () => apiFetch('/users?is_active=true&limit=200'),
-    enabled: bulkPayModal,
-  });
-
   const [expandedPeriod, setExpandedPeriod] = useState<string | null>(null);
   const [voidingId, setVoidingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [bulkPayModal, setBulkPayModal] = useState(false);
   const [bulkStep, setBulkStep] = useState<1|2|3>(1);
+
+  const { data: allEmployeesData } = useQuery({
+    queryKey: ['all-employees-bulk'],
+    queryFn: () => apiFetch('/users?is_active=true&limit=200'),
+    enabled: bulkPayModal,
+  });
   const [bulkSelectedEmps, setBulkSelectedEmps] = useState<number[]>([]);
   const [bulkPayType, setBulkPayType] = useState('bonus');
   const [bulkAmount, setBulkAmount] = useState('');

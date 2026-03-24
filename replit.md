@@ -90,4 +90,9 @@ Qleno is a multi-tenant SaaS platform designed for residential and commercial cl
 - `invoice_sequence_start` on `companies` updated to 6082
 - Employees imported with placeholder `password_hash` — they cannot log in until a password-reset/invite flow is set up
 - 15 pre-existing demo clients remain (migration_source IS NULL) — cleanup SQL in the script comments
+
+## Recent Bug Fixes (March 24, 2026)
+- **Demo employees purged** — 14 seeded demo users (IDs 2–18) removed from users table. Dev and production now show exactly 13 real PHES staff: Sal Martinez (owner) + 12 real employees (IDs 32–43).
+- **seed.ts cascade deletion** — `cleanupDemoData()` updated to properly cascade-delete all FK-dependent rows (messages, availability, additional_pay, contact_tickets, employee_notes, attendance_log, discipline_log, leave_usage, payroll_history, incentive_earned, clock_in_attempts, document_requests, document_signatures, mileage_requests, service_zone_employees, audit_log) and NULL-ify nullable FK references before deleting demo users.
+- **Employee detail page crash fixed** — `bulkPayModal` useState was declared after the useQuery that referenced it (temporal dead zone bug). Moved the useState declaration above its dependent useQuery call to restore correct React hooks ordering.
 - Branches Oak Lawn (id=1) and Schaumburg (id=2) were already present — not re-created

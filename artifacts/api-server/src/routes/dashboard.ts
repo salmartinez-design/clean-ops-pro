@@ -390,15 +390,23 @@ router.get("/kpis", requireAuth, async (req, res) => {
         .where(and(eq(scorecardsTable.company_id, companyId), eq(scorecardsTable.excluded, false), gte(scorecardsTable.created_at, thirtyDaysAgo))),
       // Active clients
       db.select({ count: count() }).from(clientsTable).where(eq(clientsTable.company_id, companyId)),
-      // Clients at risk: no job booked in 30 days
+      // Clients at risk: has Qleno job history AND no job in last 30 days
+      // Clients with zero Qleno history are excluded (migration grace period — newly imported clients)
       db.select({ count: count() }).from(clientsTable)
-        .where(and(eq(clientsTable.company_id, companyId)))
+        .where(eq(clientsTable.company_id, companyId))
         .then(async () => {
-          const scheduled = await db.select({ client_id: jobsTable.client_id }).from(jobsTable)
-            .where(and(eq(jobsTable.company_id, companyId), gte(jobsTable.scheduled_date, thirtyDaysAgoStr)));
-          const activeClientIds = new Set(scheduled.map(j => j.client_id));
-          const allC = await db.select({ id: clientsTable.id }).from(clientsTable).where(eq(clientsTable.company_id, companyId));
-          return [{ count: allC.filter(c => !activeClientIds.has(c.id)).length }];
+          const [clientsWithHistory, clientsWithRecentJob] = await Promise.all([
+            db.select({ client_id: jobsTable.client_id }).from(jobsTable)
+              .where(eq(jobsTable.company_id, companyId))
+              .groupBy(jobsTable.client_id),
+            db.select({ client_id: jobsTable.client_id }).from(jobsTable)
+              .where(and(eq(jobsTable.company_id, companyId), gte(jobsTable.scheduled_date, thirtyDaysAgoStr))),
+          ]);
+          const historySet = new Set(clientsWithHistory.map(j => j.client_id));
+          const recentSet  = new Set(clientsWithRecentJob.map(j => j.client_id));
+          // Only count clients who have at least one Qleno job but none in last 30 days
+          const atRiskCount = [...historySet].filter(id => !recentSet.has(id)).length;
+          return [{ count: atRiskCount }];
         }),
       // Unassigned jobs today
       db.select({ count: count() }).from(jobsTable)
@@ -436,11 +444,16 @@ router.get("/kpis", requireAuth, async (req, res) => {
 
     const qualityScore = avgScore[0]?.avg ? Math.round(parseFloat(avgScore[0].avg) * 25) : null;
 
-    const atRisk = Number((atRiskClients as any)[0]?.count || 0);
+    const atRiskRaw = Number((atRiskClients as any)[0]?.count || 0);
     const unassigned = Number(unassignedToday[0]?.count || 0);
     const flagged = Number(flaggedToday[0]?.count || 0);
     const overdue = Number(overdueInvoices[0]?.count || 0);
     const notInvoiced = Number((completeNotInvoiced as any)[0]?.count || 0);
+
+    // Churn risk is suppressed until thresholds are configured in Company Settings
+    // When false, at-risk counts show "—" in the UI and no alert fires
+    const churnConfigured = false;
+    const clientsAtRisk = churnConfigured ? atRiskRaw : null;
 
     // Build action items
     type ActionItem = { level: 'red' | 'amber' | 'blue'; text: string; action: string };
@@ -449,7 +462,8 @@ router.get("/kpis", requireAuth, async (req, res) => {
     if (unassigned > 0) actions.push({ level: 'red', text: `${unassigned} job${unassigned > 1 ? 's' : ''} today ${unassigned > 1 ? 'are' : 'is'} unassigned`, action: '/jobs' });
     if (overdue > 0) actions.push({ level: 'red', text: `${overdue} invoice${overdue > 1 ? 's' : ''} overdue — review immediately`, action: '/invoices' });
     if (notInvoiced > 0) actions.push({ level: 'amber', text: `${notInvoiced} completed job${notInvoiced > 1 ? 's' : ''} this month not yet invoiced`, action: '/invoices' });
-    if (atRisk > 0) actions.push({ level: 'amber', text: `${atRisk} client${atRisk > 1 ? 's' : ''} with no booking in 30+ days`, action: '/customers' });
+    // At-risk booking alert only fires when churn is configured AND there are real at-risk clients
+    if (churnConfigured && atRiskRaw > 0) actions.push({ level: 'amber', text: `${atRiskRaw} client${atRiskRaw > 1 ? 's' : ''} with no booking in 30+ days`, action: '/customers' });
 
     return res.json({
       week_revenue: weekRevNum,
@@ -459,7 +473,8 @@ router.get("/kpis", requireAuth, async (req, res) => {
       avg_bill: avgBill,
       active_clients: Number(activeClients[0]?.count || 0),
       quality_score: qualityScore,
-      clients_at_risk: atRisk,
+      clients_at_risk: clientsAtRisk,
+      churn_configured: churnConfigured,
       action_items: actions.slice(0, 5),
     });
   } catch (err) {

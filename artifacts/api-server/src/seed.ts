@@ -1,5 +1,5 @@
 import { db } from "@workspace/db";
-import { companiesTable, usersTable, branchesTable, jobsTable, clientsTable, invoicesTable, scorecardsTable, timeclockTable, contactTicketsTable } from "@workspace/db/schema";
+import { companiesTable, usersTable, branchesTable, jobsTable, clientsTable, invoicesTable, scorecardsTable, timeclockTable, contactTicketsTable, mileageRequestsTable, accountsTable } from "@workspace/db/schema";
 import { eq, sql, isNull, and, gt, count, inArray, or } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { seedDemoData } from "./seed-demo.js";
@@ -72,8 +72,41 @@ async function cleanupDemoData(companyId: number) {
     const rc = await db.delete(clientsTable).where(inArray(clientsTable.id, demoClientIds)).returning({ id: clientsTable.id });
     d.clients += rc.length;
   }
-  // Delete demo employees
+
+  // Cascade-delete all FK dependencies for demo employees before deleting the users rows
   if (demoEmpIds.length > 0) {
+    const ids = demoEmpIds.join(',');
+    await db.execute(sql.raw(`
+      DELETE FROM messages                WHERE sender_id    IN (${ids}) OR recipient_id   IN (${ids});
+      DELETE FROM availability            WHERE user_id       IN (${ids});
+      DELETE FROM additional_pay          WHERE user_id       IN (${ids}) OR voided_by IN (${ids});
+      DELETE FROM contact_tickets         WHERE user_id       IN (${ids}) OR created_by IN (${ids});
+      DELETE FROM employee_notes          WHERE user_id       IN (${ids}) OR created_by IN (${ids});
+      DELETE FROM employee_attendance_log WHERE employee_id   IN (${ids}) OR logged_by  IN (${ids});
+      DELETE FROM employee_discipline_log WHERE employee_id   IN (${ids}) OR issued_by  IN (${ids});
+      DELETE FROM employee_leave_usage    WHERE employee_id   IN (${ids}) OR logged_by  IN (${ids});
+      DELETE FROM employee_payroll_history WHERE employee_id  IN (${ids});
+      DELETE FROM incentive_earned        WHERE employee_id   IN (${ids}) OR approved_by IN (${ids}) OR awarded_by IN (${ids});
+      DELETE FROM clock_in_attempts       WHERE user_id       IN (${ids}) OR override_by IN (${ids});
+      DELETE FROM document_requests       WHERE employee_id   IN (${ids});
+      DELETE FROM document_signatures     WHERE employee_id   IN (${ids});
+      DELETE FROM mileage_requests        WHERE user_id       IN (${ids});
+      DELETE FROM service_zone_employees  WHERE user_id       IN (${ids});
+      DELETE FROM audit_log               WHERE admin_user_id IN (${ids});
+      UPDATE jobs               SET assigned_user_id = NULL WHERE assigned_user_id IN (${ids});
+      UPDATE job_status_logs    SET user_id = NULL          WHERE user_id          IN (${ids});
+      UPDATE communication_log  SET logged_by = NULL        WHERE logged_by        IN (${ids});
+      UPDATE cancellation_log   SET cancelled_by = NULL     WHERE cancelled_by     IN (${ids});
+      UPDATE daily_summaries    SET marked_complete_by = NULL WHERE marked_complete_by IN (${ids});
+      UPDATE invoices           SET created_by = NULL       WHERE created_by       IN (${ids});
+      UPDATE client_communications SET sent_by = NULL       WHERE sent_by          IN (${ids});
+      UPDATE client_attachments SET uploaded_by = NULL      WHERE uploaded_by      IN (${ids});
+      UPDATE job_photos         SET uploaded_by = NULL      WHERE uploaded_by      IN (${ids});
+      UPDATE agreement_templates SET created_by = NULL      WHERE created_by       IN (${ids});
+      UPDATE document_templates  SET created_by = NULL      WHERE created_by       IN (${ids});
+      UPDATE form_templates      SET created_by = NULL      WHERE created_by       IN (${ids});
+      UPDATE form_submissions    SET submitted_by = NULL    WHERE submitted_by     IN (${ids});
+    `));
     const re = await db.delete(usersTable).where(inArray(usersTable.id, demoEmpIds)).returning({ id: usersTable.id });
     d.emps += re.length;
   }
@@ -270,6 +303,26 @@ export async function seedIfNeeded() {
       } else {
         console.log("[seed] Production: no demo data present — clean");
       }
+
+      // Always clean up known test/demo records (idempotent — safe to run every startup)
+      // 1. Remove seeded mileage request (Jennifer Williams → Robert Johnson, 8.50 mi)
+      const deletedMileage = await db.delete(mileageRequestsTable)
+        .where(and(
+          eq(mileageRequestsTable.company_id, companyId),
+          sql`from_client_name = 'Jennifer Williams'`,
+          sql`to_client_name = 'Robert Johnson'`,
+        )).returning({ id: mileageRequestsTable.id });
+      if (deletedMileage.length > 0) console.log("[seed] Removed seeded mileage request record");
+
+      // 2. Deactivate Pinnacle Property Management demo commercial account
+      const deactivatedPinnacle = await db.update(accountsTable)
+        .set({ is_active: false })
+        .where(and(
+          eq(accountsTable.company_id, companyId),
+          sql`account_name = 'Pinnacle Property Management'`,
+          eq(accountsTable.is_active, true),
+        )).returning({ id: accountsTable.id });
+      if (deactivatedPinnacle.length > 0) console.log("[seed] Deactivated Pinnacle Property Management demo account");
     } else {
       // In development: seed demo data if not yet present
       if (demoCheck.length === 0) {

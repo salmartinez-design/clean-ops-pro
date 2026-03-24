@@ -130,8 +130,8 @@ export default function Dashboard() {
         delta: null, warn: false,
       },
       {
-        label: 'Clients at Risk', value: kpis?.clients_at_risk ?? '—',
-        delta: null, warn: (kpis?.clients_at_risk || 0) > 0, click: '/customers',
+        label: 'Clients at Risk', value: kpis?.churn_configured === false ? '—' : (kpis?.clients_at_risk ?? '—'),
+        delta: null, warn: kpis?.churn_configured === true && (kpis?.clients_at_risk || 0) > 0, click: '/customers',
       },
       {
         label: 'Week Revenue', value: kpis ? fmt$(kpis.week_revenue) : '—',
@@ -255,7 +255,7 @@ export default function Dashboard() {
             {[
               { label: 'Revenue Forecast', value: kpis.forecast_next_month != null ? fmt$(kpis.forecast_next_month) : '—', sub: 'next 30 days', color: 'var(--brand)', bg: 'var(--brand-dim)' },
               { label: 'Avg Client LTV', value: kpis.avg_ltv != null ? fmt$(kpis.avg_ltv) : '—', sub: 'estimated lifetime', color: '#16A34A', bg: '#DCFCE7' },
-              { label: 'High Churn Risk', value: kpis.high_churn_count != null ? kpis.high_churn_count : (kpis.clients_at_risk ?? '—'), sub: 'clients at risk', color: (kpis.high_churn_count || kpis.clients_at_risk || 0) > 0 ? '#991B1B' : '#166534', bg: (kpis.high_churn_count || kpis.clients_at_risk || 0) > 0 ? '#FEE2E2' : '#DCFCE7' },
+              { label: 'High Churn Risk', value: kpis.churn_configured === false ? '—' : (kpis.high_churn_count ?? kpis.clients_at_risk ?? '—'), sub: kpis.churn_configured === false ? 'configure in Settings' : 'clients at risk', color: '#6B7280', bg: '#F3F4F6' },
               { label: 'Avg NPS', value: kpis.avg_nps != null ? kpis.avg_nps.toFixed(1) : '—', sub: 'last 90 days', color: '#1D4ED8', bg: '#DBEAFE' },
             ].map(w => (
               <div key={w.label} style={{ backgroundColor: w.bg, border: '1px solid transparent', borderRadius: 10, padding: '14px 16px' }}>
