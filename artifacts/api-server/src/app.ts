@@ -91,8 +91,15 @@ app.use("/api", router);
 if (process.env.NODE_ENV === "production") {
   const frontendDist = path.resolve(__appDir, "../../cleanops-pro/dist/public");
   if (fs.existsSync(frontendDist)) {
-    app.use(express.static(frontendDist, { maxAge: "1h" }));
+    // Hashed assets (JS/CSS) — cache aggressively since filenames change on every build
+    app.use("/assets", express.static(path.join(frontendDist, "assets"), { maxAge: "1y", immutable: true }));
+    // Everything else (fonts, images, etc.) — short cache
+    app.use(express.static(frontendDist, { maxAge: "10m", index: false }));
+    // index.html — NEVER cache so browsers always get the latest JS hashes after a deploy
     app.use((_req: Request, res: Response) => {
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
       res.sendFile(path.join(frontendDist, "index.html"));
     });
   } else {
