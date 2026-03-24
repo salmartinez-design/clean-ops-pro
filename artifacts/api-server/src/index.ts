@@ -14,7 +14,7 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 // ── Environment Variable Validation ─────────────────────────────────────────
-console.log("[CleanOps] Starting server...");
+console.log("[Qleno] Starting server...");
 
 const REQUIRED_VARS = ["DATABASE_URL", "JWT_SECRET"];
 const OPTIONAL_VARS: Record<string, string> = {
@@ -28,21 +28,21 @@ const OPTIONAL_VARS: Record<string, string> = {
 let criticalMissing = false;
 for (const v of REQUIRED_VARS) {
   if (!process.env[v]) {
-    console.error(`[CleanOps] FATAL: Required env var ${v} is missing`);
+    console.error(`[Qleno] FATAL: Required env var ${v} is missing`);
     criticalMissing = true;
   }
 }
 
 for (const [v, fallback] of Object.entries(OPTIONAL_VARS)) {
   if (!process.env[v]) {
-    console.warn(`[CleanOps] ${v}: NOT CONFIGURED — ${fallback}`);
+    console.warn(`[Qleno] ${v}: NOT CONFIGURED — ${fallback}`);
   } else {
-    console.log(`[CleanOps] ${v}: configured`);
+    console.log(`[Qleno] ${v}: configured`);
   }
 }
 
 if (criticalMissing) {
-  console.error("[CleanOps] Missing critical env vars — server may not function correctly");
+  console.error("[Qleno] Missing critical env vars — server may not function correctly");
 }
 
 // ── Startup ──────────────────────────────────────────────────────────────────

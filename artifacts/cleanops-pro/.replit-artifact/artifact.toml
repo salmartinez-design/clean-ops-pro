@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "CleanOps Pro"
+title = "Qleno"
 version = "1.0.0"
 id = "artifacts/cleanops-pro"
 router = "path"

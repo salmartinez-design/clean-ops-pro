@@ -1,5 +1,5 @@
 # Qleno — Codebase Reference Snapshot
-Generated: March 20, 2026 | App: Qleno (formerly CleanOps Pro)
+Generated: March 24, 2026 | App: Qleno
 
 ---
 
