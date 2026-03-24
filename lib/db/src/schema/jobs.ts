@@ -53,6 +53,7 @@ export const jobsTable = pgTable("jobs", {
   geocode_failed: boolean("geocode_failed").notNull().default(false),
   zone_id: integer("zone_id"),
   branch_id: integer("branch_id").references(() => branchesTable.id),
+  recurring_schedule_id: integer("recurring_schedule_id"),
   created_at: timestamp("created_at").notNull().defaultNow(),
 });
 

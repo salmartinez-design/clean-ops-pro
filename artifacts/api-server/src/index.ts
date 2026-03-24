@@ -1,5 +1,6 @@
 import app from "./app";
 import { seedIfNeeded } from "./seed";
+import { runRecurringJobGeneration, startRecurringJobCron } from "./lib/recurring-jobs";
 
 const rawPort = process.env["PORT"];
 
@@ -49,7 +50,10 @@ if (criticalMissing) {
 // Start listening immediately so health checks pass, then seed in the background
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
-  seedIfNeeded().catch((err) => {
-    console.error("[seed] Background seed error:", err);
-  });
+  seedIfNeeded()
+    .then(() => runRecurringJobGeneration())
+    .catch((err) => {
+      console.error("[startup] Background init error:", err);
+    });
+  startRecurringJobCron();
 });
