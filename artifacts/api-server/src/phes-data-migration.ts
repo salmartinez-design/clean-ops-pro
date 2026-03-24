@@ -461,4 +461,352 @@ export async function runPhesDataMigration(): Promise<void> {
   } catch (err) {
     console.error("[phes-migration] Migration error (non-fatal):", err);
   }
+
+  // Run employee-specific migrations
+  await runAleCuervoMigration();
+}
+
+// ── Alejandra Cuervo — Full MC data migration ─────────────────────────────────
+async function runAleCuervoMigration() {
+  try {
+    const PHES = 1;
+
+    // ── DDL Phase: schema changes (always idempotent) ────────────────────────
+
+    // Extend additional_pay_type enum
+    for (const val of ["other_additional", "bonus_other", "amount_owed_non_taxed"]) {
+      await db.execute(sql.raw(`ALTER TYPE additional_pay_type ADD VALUE IF NOT EXISTS '${val}'`));
+    }
+
+    // Add missing columns to users
+    const userCols = [
+      "mc_employee_id text",
+      "drivers_license_number text",
+      "drivers_license_state text",
+      "pto_hours_available numeric(8,2) DEFAULT 0",
+      "sick_hours_available numeric(8,2) DEFAULT 0",
+    ];
+    for (const col of userCols) {
+      await db.execute(sql.raw(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${col}`));
+    }
+
+    // Create employee_employment_history
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS employee_employment_history (
+        id            serial PRIMARY KEY,
+        company_id    integer NOT NULL REFERENCES companies(id),
+        employee_id   integer NOT NULL REFERENCES users(id),
+        hire_date     date NOT NULL,
+        termination_date date,
+        recorded_by   text,
+        recorded_at   timestamp,
+        created_at    timestamp NOT NULL DEFAULT now()
+      )
+    `));
+
+    // Create employee_pto_history
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS employee_pto_history (
+        id            serial PRIMARY KEY,
+        company_id    integer NOT NULL REFERENCES companies(id),
+        employee_id   integer NOT NULL REFERENCES users(id),
+        date_changed  timestamp NOT NULL,
+        pto_adj       numeric(8,2) NOT NULL DEFAULT 0,
+        pto_bal       numeric(8,2) NOT NULL DEFAULT 0,
+        sick_adj      numeric(8,2) NOT NULL DEFAULT 0,
+        sick_bal      numeric(8,2) NOT NULL DEFAULT 0,
+        notes         text,
+        created_at    timestamp NOT NULL DEFAULT now()
+      )
+    `));
+
+    // Create employee_pay_structure
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS employee_pay_structure (
+        id            serial PRIMARY KEY,
+        company_id    integer NOT NULL REFERENCES companies(id),
+        employee_id   integer NOT NULL REFERENCES users(id),
+        scope_slug    text NOT NULL,
+        pay_type      text NOT NULL DEFAULT 'flat',
+        solo_pay      numeric(10,2),
+        captain_pay   numeric(10,2),
+        teammate_pay  numeric(10,2),
+        travel_pay    numeric(10,2) DEFAULT 0,
+        solo_pct      numeric(6,2),
+        captain_pct   numeric(6,2),
+        teammate_pct  numeric(6,2),
+        created_at    timestamp NOT NULL DEFAULT now(),
+        UNIQUE(company_id, employee_id, scope_slug)
+      )
+    `));
+
+    // Create employee_productivity
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS employee_productivity (
+        id               serial PRIMARY KEY,
+        company_id       integer NOT NULL REFERENCES companies(id),
+        employee_id      integer NOT NULL REFERENCES users(id),
+        scope_slug       text NOT NULL,
+        productivity_pct numeric(6,2) NOT NULL,
+        period_start     date,
+        period_end       date,
+        created_at       timestamp NOT NULL DEFAULT now(),
+        UNIQUE(company_id, employee_id, scope_slug)
+      )
+    `));
+
+    // Create employee_attendance_stats
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS employee_attendance_stats (
+        id           serial PRIMARY KEY,
+        company_id   integer NOT NULL REFERENCES companies(id),
+        employee_id  integer NOT NULL REFERENCES users(id),
+        period_start date,
+        period_end   date,
+        scheduled    integer DEFAULT 0,
+        worked       integer DEFAULT 0,
+        absent       integer DEFAULT 0,
+        time_off     integer DEFAULT 0,
+        excused      integer DEFAULT 0,
+        unexcused    integer DEFAULT 0,
+        paid_time_off integer DEFAULT 0,
+        sick         integer DEFAULT 0,
+        late         integer DEFAULT 0,
+        score        integer DEFAULT 0,
+        created_at   timestamp NOT NULL DEFAULT now(),
+        UNIQUE(company_id, employee_id, period_start, period_end)
+      )
+    `));
+
+    console.log("[alecuervo-migration] DDL complete");
+
+    // Find Alejandra's user record (id=41 under PHES)
+    const empResult = await db.execute(sql`
+      SELECT id FROM users
+      WHERE company_id = ${PHES}
+        AND LOWER(first_name || ' ' || last_name) = 'alejandra cuervo'
+    `);
+    const emp = ((empResult as any).rows ?? [])[0];
+    if (!emp) {
+      console.log("[alecuervo-migration] Alejandra Cuervo not found — skipping data migration");
+      return;
+    }
+    const EID = parseInt(emp.id);
+
+    // ── Section 1+2+3: Core update ───────────────────────────────────────────
+    await db.execute(sql`
+      UPDATE users SET
+        mc_employee_id           = '42877',
+        dob                      = '1992-01-16',
+        hire_date                = '2023-05-11',
+        email                    = 'acuervo68@yahoo.com',
+        phone                    = '773-812-2419',
+        drivers_license_number   = 'C61501592616',
+        drivers_license_state    = 'IL',
+        employment_type          = 'full_time',
+        hr_status                = 'active',
+        address                  = '5371 South Rockwell Street',
+        city                     = 'Chicago',
+        state                    = 'IL',
+        zip                      = '60632',
+        skills                   = ARRAY['Maintenance Cleaning'],
+        tags                     = ARRAY['Scheduled', 'Full Time'],
+        pto_hours_available      = 0,
+        sick_hours_available     = 20
+      WHERE id = ${EID} AND company_id = ${PHES}
+    `);
+    console.log("[alecuervo-migration] Core record updated");
+
+    // ── Section 5: Employment history ────────────────────────────────────────
+    type EmpHistRow = { hire_date: string; termination_date: string | null; recorded_by: string; recorded_at: string };
+    const empHistory: EmpHistRow[] = [
+      { hire_date: "2023-05-11", termination_date: null, recorded_by: "M. Castillo", recorded_at: "2025-12-31 16:07:00" },
+      { hire_date: "2025-08-08", termination_date: null, recorded_by: "S. Martinez",  recorded_at: "2025-08-08 10:52:00" },
+    ];
+    for (const h of empHistory) {
+      await db.execute(sql`
+        INSERT INTO employee_employment_history
+          (company_id, employee_id, hire_date, termination_date, recorded_by, recorded_at)
+        SELECT ${PHES}, ${EID}, ${h.hire_date}, ${h.termination_date}, ${h.recorded_by}, ${h.recorded_at}
+        WHERE NOT EXISTS (
+          SELECT 1 FROM employee_employment_history
+          WHERE company_id=${PHES} AND employee_id=${EID} AND hire_date=${h.hire_date}
+        )
+      `);
+    }
+
+    // ── Section 6: PTO history ───────────────────────────────────────────────
+    type PtoRow = { date_changed: string; pto_adj: number; pto_bal: number; sick_adj: number; sick_bal: number; notes: string };
+    const ptoHistory: PtoRow[] = [
+      { date_changed: "2026-02-23 14:26:00", pto_adj: 0,  pto_bal: 0, sick_adj: -6, sick_bal: 20, notes: "Approved" },
+      { date_changed: "2026-02-11 14:18:00", pto_adj: 0,  pto_bal: 0, sick_adj:  5, sick_bal: 26, notes: "Cancelled" },
+      { date_changed: "2026-02-07 10:46:00", pto_adj: 0,  pto_bal: 0, sick_adj: -5, sick_bal: 21, notes: "Approved" },
+      { date_changed: "2025-12-31 15:56:00", pto_adj: 0,  pto_bal: 0, sick_adj: -6, sick_bal: 26, notes: "Approved" },
+      { date_changed: "2025-12-16 07:43:00", pto_adj: 0,  pto_bal: 0, sick_adj: -8, sick_bal: 32, notes: "Approved" },
+      { date_changed: "2025-12-10 15:27:00", pto_adj: 0,  pto_bal: 0, sick_adj: 40, sick_bal: 40, notes: "Over 90 Days" },
+    ];
+    for (const p of ptoHistory) {
+      await db.execute(sql`
+        INSERT INTO employee_pto_history
+          (company_id, employee_id, date_changed, pto_adj, pto_bal, sick_adj, sick_bal, notes)
+        SELECT ${PHES}, ${EID}, ${p.date_changed}, ${p.pto_adj}, ${p.pto_bal}, ${p.sick_adj}, ${p.sick_bal}, ${p.notes}
+        WHERE NOT EXISTS (
+          SELECT 1 FROM employee_pto_history
+          WHERE company_id=${PHES} AND employee_id=${EID} AND date_changed=${p.date_changed}
+        )
+      `);
+    }
+
+    // ── Section 7: Pay structure ─────────────────────────────────────────────
+    type PayRow = { scope_slug: string; pay_type: string; solo_pay?: number; captain_pay?: number; teammate_pay?: number; travel_pay: number; solo_pct?: number; captain_pct?: number; teammate_pct?: number };
+    const payStructure: PayRow[] = [
+      // Commercial — flat dollar
+      { scope_slug: "commercial-cleaning",     pay_type: "flat", solo_pay: 20, captain_pay: 0, teammate_pay: 20, travel_pay: 0 },
+      { scope_slug: "ppm-common-areas",        pay_type: "flat", solo_pay: 20, captain_pay: 0, teammate_pay: 20, travel_pay: 0 },
+      { scope_slug: "ppm-turnover",            pay_type: "flat", solo_pay: 20, captain_pay: 0, teammate_pay: 20, travel_pay: 0 },
+      { scope_slug: "multi-unit-common-areas", pay_type: "flat", solo_pay: 20, captain_pay: 0, teammate_pay: 20, travel_pay: 0 },
+      // House cleaning — percentage
+      { scope_slug: "recurring-cleaning",         pay_type: "percentage", solo_pct: 35, captain_pct: 0, teammate_pct: 35, travel_pay: 0 },
+      { scope_slug: "deep-clean-move-in-out",     pay_type: "percentage", solo_pct: 35, captain_pct: 0, teammate_pct: 35, travel_pay: 0 },
+      { scope_slug: "one-time-standard",          pay_type: "percentage", solo_pct: 35, captain_pct: 0, teammate_pct: 35, travel_pay: 0 },
+      { scope_slug: "hourly-deep-clean",          pay_type: "percentage", solo_pct: 35, captain_pct: 0, teammate_pct: 35, travel_pay: 0 },
+      { scope_slug: "hourly-standard-cleaning",   pay_type: "percentage", solo_pct: 35, captain_pct: 0, teammate_pct: 35, travel_pay: 0 },
+    ];
+    for (const p of payStructure) {
+      await db.execute(sql`
+        INSERT INTO employee_pay_structure
+          (company_id, employee_id, scope_slug, pay_type, solo_pay, captain_pay, teammate_pay, travel_pay, solo_pct, captain_pct, teammate_pct)
+        VALUES
+          (${PHES}, ${EID}, ${p.scope_slug}, ${p.pay_type},
+           ${p.solo_pay ?? null}, ${p.captain_pay ?? null}, ${p.teammate_pay ?? null}, ${p.travel_pay},
+           ${p.solo_pct ?? null}, ${p.captain_pct ?? null}, ${p.teammate_pct ?? null})
+        ON CONFLICT (company_id, employee_id, scope_slug) DO UPDATE SET
+          pay_type     = EXCLUDED.pay_type,
+          solo_pay     = EXCLUDED.solo_pay,
+          captain_pay  = EXCLUDED.captain_pay,
+          teammate_pay = EXCLUDED.teammate_pay,
+          travel_pay   = EXCLUDED.travel_pay,
+          solo_pct     = EXCLUDED.solo_pct,
+          captain_pct  = EXCLUDED.captain_pct,
+          teammate_pct = EXCLUDED.teammate_pct
+      `);
+    }
+
+    // ── Section 8: Additional pay (31 records) ───────────────────────────────
+    type AddlPay = { date: string; amount: number; hours: number; type: string; notes: string };
+    const addlPay: AddlPay[] = [
+      { date: "2026-03-04", amount: 100.00, hours: 5,   type: "sick_pay",             notes: "Doctor's Appointment - Approved on 2/23 by MC" },
+      { date: "2026-02-23", amount: 49.87,  hours: 0,   type: "amount_owed",           notes: "Lockout: 2/23/2026 - Stanley Kuba / Hourly Standard" },
+      { date: "2026-02-10", amount: 10.00,  hours: 0,   type: "tips",                  notes: "Tip - Hourly Standard" },
+      { date: "2026-02-06", amount: 20.77,  hours: 0,   type: "amount_owed_non_taxed", notes: "$4.10 and $16.67" },
+      { date: "2026-01-21", amount: 10.00,  hours: 0,   type: "other_additional",      notes: "Jeanette Smith's waiting time" },
+      { date: "2026-01-16", amount: 3.48,   hours: 0,   type: "amount_owed",           notes: "Aaron Decker to Heather Kelly 4.8x0.725 = $3.48" },
+      { date: "2026-01-16", amount: 160.00, hours: 0,   type: "bonus_other",           notes: "Birthday Bonus" },
+      { date: "2026-01-12", amount: 51.18,  hours: 0,   type: "amount_owed",           notes: "Skip: 1/12/2026 - Sally Ozinga / Hourly Standard" },
+      { date: "2026-01-12", amount: 120.00, hours: 6,   type: "sick_pay",              notes: "Dentist Appointment in the afternoon - Approved by MC 12/31/25" },
+      { date: "2026-01-09", amount: 30.00,  hours: 1.5, type: "other_additional",      notes: "Meeting at the Office 01/09/26" },
+      { date: "2026-01-07", amount: 140.00, hours: 7,   type: "sick_pay",              notes: "Fever - called Francisco, couldn't work 11am-6pm" },
+      { date: "2026-01-02", amount: 160.00, hours: 0,   type: "holiday_pay",           notes: "Holiday Pay" },
+      { date: "2025-12-25", amount: 144.00, hours: 0,   type: "holiday_pay",           notes: "Christmas Day" },
+      { date: "2025-12-23", amount: 11.20,  hours: 0,   type: "amount_owed",           notes: "" },
+      { date: "2025-12-20", amount: 2.80,   hours: 0,   type: "amount_owed",           notes: "FE - 12/20/2025 - Excess - Jillian Devitt - 4 miles x $0.70" },
+      { date: "2025-12-19", amount: 12.60,  hours: 0,   type: "amount_owed",           notes: "FE - 12-18-2025 Mileage Ashley Wedge/Jamie Pokusa - 18mi x$0.70" },
+      { date: "2025-12-19", amount: 11.90,  hours: 0,   type: "amount_owed",           notes: "FE - 12-18-2025 Heather Kelly/Adam Coppelman - 11.9 x $0.70" },
+      { date: "2025-12-16", amount: 144.00, hours: 8,   type: "sick_pay",              notes: "Wasn't feeling well - MC" },
+      { date: "2025-12-12", amount: 2.38,   hours: 0,   type: "amount_owed",           notes: "Heather Kelly 1.70 miles @ $0.70" },
+      { date: "2025-11-28", amount: 13.30,  hours: 0,   type: "amount_owed",           notes: "Mileage Patrick Patel to Chris Cucci 12-01-2025 - 19 miles" },
+      { date: "2025-11-27", amount: 144.00, hours: 8,   type: "holiday_pay",           notes: "Thanksgiving" },
+      { date: "2025-11-26", amount: 4.06,   hours: 0,   type: "amount_owed",           notes: "Mileage Heather Kelly to Laurita Lui 11-26-2025 - 5.8 miles" },
+      { date: "2025-10-31", amount: 6.09,   hours: 0,   type: "amount_owed",           notes: "Mileage" },
+      { date: "2025-10-24", amount: 4.27,   hours: 0,   type: "amount_owed_non_taxed", notes: "Mileage" },
+      { date: "2025-10-24", amount: 9.10,   hours: 0,   type: "amount_owed_non_taxed", notes: "Mileage" },
+      { date: "2025-10-17", amount: 9.80,   hours: 0,   type: "amount_owed",           notes: "Mileage Reimbursement" },
+      { date: "2025-10-10", amount: 16.10,  hours: 0,   type: "other_additional",      notes: "Tom and Carol Butler" },
+      { date: "2025-09-26", amount: 9.10,   hours: 0,   type: "amount_owed_non_taxed", notes: "Nicholas Cooper $1.40 and $7.70" },
+      { date: "2025-09-23", amount: 30.00,  hours: 0,   type: "amount_owed_non_taxed", notes: "Meeting 9/23" },
+      { date: "2025-09-19", amount: 13.44,  hours: 0,   type: "amount_owed_non_taxed", notes: "Heather Kelly 18mi=$12.60 + Ran Sengupita 1.2mi=$0.84" },
+      { date: "2025-08-20", amount: 34.98,  hours: 0,   type: "tips",                  notes: "Tip - Flat Standard" },
+    ];
+    for (const a of addlPay) {
+      const notesWithHours = a.hours > 0 ? `${a.notes}${a.notes ? " " : ""}(${a.hours}h)`.trim() : (a.notes || null);
+      const ts = `${a.date} 12:00:00`;
+      await db.execute(sql`
+        INSERT INTO additional_pay (company_id, user_id, amount, type, notes, status, created_at)
+        SELECT ${PHES}, ${EID}, ${a.amount}, ${a.type}::additional_pay_type, ${notesWithHours}, 'paid', ${ts}::timestamp
+        WHERE NOT EXISTS (
+          SELECT 1 FROM additional_pay
+          WHERE company_id=${PHES} AND user_id=${EID}
+            AND amount=${a.amount}
+            AND type=${a.type}::additional_pay_type
+            AND created_at::date = ${a.date}::date
+        )
+      `);
+    }
+
+    // ── Section 9: Contact tickets (5 complaints) ────────────────────────────
+    type TicketRow = { created_date: string; job_date: string; notes: string };
+    const tickets: TicketRow[] = [
+      { created_date: "2026-03-21", job_date: "2026-03-20", notes: "Client complained bathroom was not done even though more important than powder room. Cabinets still had dust." },
+      { created_date: "2026-02-25", job_date: "2026-02-24", notes: "Loves Alejandra's cleaning but this time didn't finish one bathroom, forgot the other, left one hour early. Resolution: gave free hour for next service." },
+      { created_date: "2025-12-21", job_date: "2025-12-20", notes: "Missed spots on counters, dust still present, kitchen island cabinets not wiped. Oven sprayed but not cleaned. Client had to clean next day themselves. Has pictures if needed." },
+      { created_date: "2025-11-21", job_date: "2025-11-21", notes: "Arrived early, nice and polite, worked fast. Cleaning slightly below expectation. (Logged by franciscojestevezs@gmail.com)" },
+      { created_date: "2025-10-27", job_date: "2025-10-23", notes: "Adam mentioned some areas were missed and cleaning was not up to usual standards." },
+    ];
+    for (const t of tickets) {
+      const fullNotes = `[Job date: ${t.job_date}] ${t.notes}`;
+      await db.execute(sql`
+        INSERT INTO contact_tickets (company_id, user_id, ticket_type, notes, created_at)
+        SELECT ${PHES}, ${EID}, 'complaint_poor_cleaning'::contact_ticket_type, ${fullNotes}, ${t.created_date}::date
+        WHERE NOT EXISTS (
+          SELECT 1 FROM contact_tickets
+          WHERE company_id=${PHES} AND user_id=${EID}
+            AND created_at::date = ${t.created_date}::date
+            AND ticket_type = 'complaint_poor_cleaning'
+        )
+      `);
+    }
+
+    // ── Section 10: Productivity metrics ─────────────────────────────────────
+    type ProdRow = { scope_slug: string; productivity_pct: number };
+    const productivity: ProdRow[] = [
+      { scope_slug: "deep-clean-move-in-out",   productivity_pct: 123 },
+      { scope_slug: "commercial-cleaning",       productivity_pct: 164 },
+      { scope_slug: "hourly-deep-clean",         productivity_pct: 113 },
+      { scope_slug: "hourly-standard-cleaning",  productivity_pct: 123 },
+      { scope_slug: "one-time-standard",         productivity_pct: 167 },
+      { scope_slug: "ppm-common-areas",          productivity_pct: 138 },
+      { scope_slug: "ppm-turnover",              productivity_pct: 0   },
+      { scope_slug: "recurring-cleaning",        productivity_pct: 161 },
+    ];
+    for (const p of productivity) {
+      await db.execute(sql`
+        INSERT INTO employee_productivity
+          (company_id, employee_id, scope_slug, productivity_pct, period_start, period_end)
+        VALUES
+          (${PHES}, ${EID}, ${p.scope_slug}, ${p.productivity_pct}, '2025-09-27', '2026-03-14')
+        ON CONFLICT (company_id, employee_id, scope_slug) DO UPDATE SET
+          productivity_pct = EXCLUDED.productivity_pct,
+          period_start     = EXCLUDED.period_start,
+          period_end       = EXCLUDED.period_end
+      `);
+    }
+
+    // ── Section 11: Attendance stats ─────────────────────────────────────────
+    await db.execute(sql`
+      INSERT INTO employee_attendance_stats
+        (company_id, employee_id, period_start, period_end,
+         scheduled, worked, absent, time_off, excused, unexcused, paid_time_off, sick, late, score)
+      VALUES
+        (${PHES}, ${EID}, '2025-09-25', '2026-03-24',
+         129, 119, 16, 15, 0, 1, 0, 4, 17, 79)
+      ON CONFLICT (company_id, employee_id, period_start, period_end) DO UPDATE SET
+        scheduled    = 129, worked = 119, absent = 16, time_off = 15,
+        excused      = 0,   unexcused = 1, paid_time_off = 0, sick = 4,
+        late         = 17, score = 79
+    `);
+
+    console.log("[alecuervo-migration] All sections complete: core, employment, PTO, pay, additional pay, tickets, productivity, attendance");
+  } catch (err) {
+    console.error("[alecuervo-migration] Migration error (non-fatal):", err);
+  }
 }
