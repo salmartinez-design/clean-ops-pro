@@ -416,9 +416,13 @@ router.get("/kpis", requireAuth, async (req, res) => {
           AND job_date >= ${thirtyDaysAgoStr}
           AND job_date <= ${todayStr}
       `),
-      // Avg quality score (last 90 days) — from scorecards
-      db.select({ avg: avg(scorecardsTable.score) }).from(scorecardsTable)
-        .where(and(eq(scorecardsTable.company_id, companyId), eq(scorecardsTable.excluded, false), gte(scorecardsTable.created_at, ninetyDaysAgo))),
+      // Avg quality score (last 90 days) — raw SQL per spec
+      db.execute(sql`
+        SELECT AVG(score)::numeric AS avg_score
+        FROM scorecards
+        WHERE company_id = ${companyId}
+          AND created_at >= ${ninetyDaysAgo}
+      `),
       // Active clients count — only active clients
       db.select({ count: count() }).from(clientsTable)
         .where(and(eq(clientsTable.company_id, companyId), eq(clientsTable.is_active, true))),
@@ -478,7 +482,8 @@ router.get("/kpis", requireAuth, async (req, res) => {
 
     const avgBill = parseFloat((jhAvgBill.rows[0] as any)?.avg_bill || "0");
 
-    const qualityScore = avgScore[0]?.avg ? Math.round(parseFloat(avgScore[0].avg)) : null;
+    const qualityScoreRaw = (avgScore as any).rows?.[0]?.avg_score;
+    const qualityScore = qualityScoreRaw != null ? Math.round(parseFloat(qualityScoreRaw)) : null;
 
     const atRiskRaw = Number((atRiskResult.rows[0] as any)?.at_risk || 0);
     const unassigned = Number(unassignedToday[0]?.count || 0);

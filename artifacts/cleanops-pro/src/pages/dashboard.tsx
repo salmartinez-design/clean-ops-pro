@@ -86,6 +86,25 @@ function useRevenueChart() {
   return data;
 }
 
+function useFirstName(): string {
+  const token = useAuthStore(state => state.token) || '';
+  const [name, setName] = useState('');
+  useEffect(() => {
+    // Try JWT first for instant display
+    try {
+      const p = JSON.parse(atob(token.split('.')[1]));
+      if (p.first_name) { setName(p.first_name); return; }
+    } catch {}
+    // Fall back to /api/auth/me for fresh data (handles old tokens)
+    if (!token) return;
+    apiFetch('/api/auth/me')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.first_name) setName(d.first_name); })
+      .catch(() => {});
+  }, [token]);
+  return name;
+}
+
 function useGreeting(firstName: string) {
   const hour = new Date().getHours();
   const suffix = firstName ? `, ${firstName}` : '';
@@ -106,15 +125,14 @@ export default function Dashboard() {
   const revenueChart = useRevenueChart();
 
   const token = useAuthStore(state => state.token) || '';
-  let firstName = '';
   let userRole = 'office';
   try {
     const p = JSON.parse(atob(token.split('.')[1]));
-    firstName = p.first_name || '';
     userRole = p.role || 'office';
   } catch {}
   const canAdmin = userRole === 'owner' || userRole === 'admin';
 
+  const firstName = useFirstName();
   const greeting = useGreeting(firstName);
   const todayDate = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 
@@ -132,29 +150,35 @@ export default function Dashboard() {
   const KPI_ROWS = [
     [
       {
-        label: 'Monthly Revenue', value: kpis != null ? (kpis.month_revenue > 0 ? fmt$(kpis.month_revenue) : '—') : '—',
+        label: 'Monthly Revenue',
+        value: kpis == null ? '—' : (kpis.month_revenue > 0 ? fmt$(kpis.month_revenue) : '—'),
         delta: kpis?.month_delta ?? null, warn: false,
       },
       {
-        label: 'Avg Bill', value: kpis != null ? (kpis.avg_bill > 0 ? `$${kpis.avg_bill.toFixed(0)}` : '—') : '—',
+        label: 'Avg Bill',
+        value: kpis == null ? '—' : (kpis.avg_bill > 0 ? `$${kpis.avg_bill.toFixed(0)}` : '—'),
         delta: null, warn: false,
       },
       {
-        label: 'Active Clients', value: kpis?.active_clients > 0 ? kpis.active_clients : (kpis != null ? '—' : '—'),
+        label: 'Active Clients',
+        value: kpis == null ? '—' : (kpis.active_clients != null ? kpis.active_clients : '—'),
         delta: null, warn: false,
       },
     ],
     [
       {
-        label: 'Quality Score', value: kpis?.quality_score != null && kpis.quality_score > 0 ? `${kpis.quality_score}/100` : '—',
+        label: 'Quality Score',
+        value: kpis?.quality_score != null && kpis.quality_score > 0 ? `${kpis.quality_score}/100` : '—',
         delta: null, warn: false,
       },
       {
-        label: 'Clients at Risk', value: kpis?.churn_configured === false ? '—' : (kpis?.clients_at_risk ?? '—'),
+        label: 'Clients at Risk',
+        value: kpis == null ? '—' : (kpis.churn_configured === false ? '—' : (kpis.clients_at_risk ?? '—')),
         delta: null, warn: kpis?.churn_configured === true && (kpis?.clients_at_risk || 0) > 0, click: '/customers',
       },
       {
-        label: 'Week Revenue', value: kpis != null ? (kpis.week_revenue > 0 ? fmt$(kpis.week_revenue) : '—') : '—',
+        label: 'Week Revenue',
+        value: kpis == null ? '—' : (kpis.week_revenue > 0 ? fmt$(kpis.week_revenue) : '—'),
         delta: kpis?.week_delta ?? null, warn: false,
       },
     ],

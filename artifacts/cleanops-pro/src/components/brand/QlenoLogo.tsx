@@ -52,7 +52,7 @@ export function QlenoLogo({
 
   return (
     <div
-      style={{ display: "flex", alignItems: "center", gap: 7 }}
+      style={{ display: "flex", alignItems: "center", gap: 3 }}
       className={className}
     >
       <QlenoMark size={markSize} />

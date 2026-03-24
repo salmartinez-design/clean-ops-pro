@@ -30,9 +30,9 @@ export function KeyboardShortcutsOverlay({ onClose }: { onClose: () => void }) {
         onClick={e => e.stopPropagation()}>
         <h3 style={{ fontSize:16, fontWeight:700, color:'#1A1917', margin:'0 0 20px 0' }}>Keyboard Shortcuts</h3>
         <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-          <ShortcutRow k="J" label="New Job"/>
-          <ShortcutRow k="/" label="Search"/>
-          {SHORTCUTS.map(s => <ShortcutRow key={s.key} k={s.key} label={s.label}/>)}
+          <ShortcutRow k="⇧J" label="New Job"/>
+          <ShortcutRow k="⇧/" label="Search"/>
+          {SHORTCUTS.map(s => <ShortcutRow key={s.key} k={`⇧${s.key}`} label={s.label}/>)}
           <ShortcutRow k="?" label="Show this overlay"/>
           <ShortcutRow k="ESC" label="Close / Cancel"/>
         </div>
@@ -58,16 +58,22 @@ export function useKeyboardShortcuts({ onOpenSearch, onNewJob }: Props) {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const tag = target.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) {
+      const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+        || target.isContentEditable
+        || target.classList.contains('ProseMirror')
+        || target.getAttribute('role') === 'textbox';
+      if (isInput) {
         if (e.key === 'Escape') target.blur();
         return;
       }
 
-      if (e.key === '/' || e.key === 'F') { e.preventDefault(); onOpenSearch(); return; }
-      if (e.key === 'n' || e.key === 'N' || e.key === 'j' || e.key === 'J') { e.preventDefault(); onNewJob?.(); return; }
+      if (!e.shiftKey) return;
+
+      if (e.key === '/' || e.key === '?') { e.preventDefault(); onOpenSearch(); return; }
+      if (e.key === 'J') { e.preventDefault(); onNewJob?.(); return; }
 
       for (const s of SHORTCUTS) {
-        if (e.key.toUpperCase() === s.key) { e.preventDefault(); navigate(s.path); return; }
+        if (e.key === s.key) { e.preventDefault(); navigate(s.path); return; }
       }
     };
     window.addEventListener('keydown', handler);

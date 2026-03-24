@@ -174,7 +174,7 @@ export default function QuotesPage() {
         >
           <Plus className="w-4 h-4" />
           New Quote
-          <kbd style={{ fontSize: 10, border: '1px solid rgba(255,255,255,0.45)', borderRadius: 3, padding: '1px 5px', color: 'rgba(255,255,255,0.8)', marginLeft: 2, fontFamily: 'inherit' }}>Q</kbd>
+          <kbd style={{ fontSize: 10, border: '1px solid rgba(255,255,255,0.45)', borderRadius: 3, padding: '1px 5px', color: 'rgba(255,255,255,0.8)', marginLeft: 2, fontFamily: 'inherit' }}>⇧Q</kbd>
         </Button>
       </div>
 

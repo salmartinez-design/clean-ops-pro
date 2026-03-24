@@ -570,7 +570,7 @@ export default function InvoicesPage() {
                 )}
                 <button onClick={() => setShowNewInvoice(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 13px", backgroundColor: "var(--brand)", color: "#FFFFFF", borderRadius: 8, fontSize: 13, fontWeight: 700, border: "none", cursor: "pointer", fontFamily: FF }}>
                   <Plus size={14} strokeWidth={2} /> {isMobile ? "New" : "New Invoice"}
-                  {!isMobile && <kbd style={{ fontSize: 10, border: '1px solid rgba(255,255,255,0.45)', borderRadius: 3, padding: '1px 5px', color: 'rgba(255,255,255,0.8)', fontFamily: 'inherit' }}>I</kbd>}
+                  {!isMobile && <kbd style={{ fontSize: 10, border: '1px solid rgba(255,255,255,0.45)', borderRadius: 3, padding: '1px 5px', color: 'rgba(255,255,255,0.8)', fontFamily: 'inherit' }}>⇧I</kbd>}
                 </button>
               </div>
             </div>

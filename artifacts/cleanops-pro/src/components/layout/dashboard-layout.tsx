@@ -597,7 +597,7 @@ export function DashboardLayout({ children, title, fullBleed, onNewJob }: Dashbo
               style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: '#F7F6F3', border: '1px solid #E5E2DC', borderRadius: 8, cursor: 'pointer', color: '#9E9B94', fontSize: 13, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
               <Search size={14} />
               <span>Search</span>
-              <kbd style={{ fontSize: 10, border: '1px solid #E5E2DC', borderRadius: 3, padding: '1px 5px', color: '#C0BDB8' }}>/</kbd>
+              <kbd style={{ fontSize: 10, border: '1px solid #E5E2DC', borderRadius: 3, padding: '1px 5px', color: '#C0BDB8' }}>⇧/</kbd>
             </button>
 
             <button onClick={() => setChatOpen(p => !p)} title="Team Chat"
