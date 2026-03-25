@@ -464,6 +464,9 @@ export async function runPhesDataMigration(): Promise<void> {
 
   // Run employee-specific migrations
   await runAleCuervoMigration();
+
+  // Run client job history migrations
+  await runDamianJobHistoryMigration();
 }
 
 // ── Alejandra Cuervo — Full MC data migration ─────────────────────────────────
@@ -831,5 +834,55 @@ async function runAleCuervoMigration() {
     console.log("[alecuervo-migration] All sections complete: core, employment, PTO, pay, additional pay, tickets, productivity, attendance");
   } catch (err) {
     console.error("[alecuervo-migration] Migration error (non-fatal):", err);
+  }
+}
+
+// ── Damian Ehrlicher — Job History (18 MC historical records) ─────────────────
+async function runDamianJobHistoryMigration() {
+  try {
+    const PHES = 1;
+    const CUSTOMER_ID = 75;
+
+    const existing = await db.execute(sql`
+      SELECT COUNT(*)::int AS cnt FROM job_history
+      WHERE company_id = ${PHES} AND customer_id = ${CUSTOMER_ID}
+    `);
+    const cnt = (existing.rows[0] as any).cnt;
+    if (cnt > 0) {
+      console.log(`[damian-migration] Job history already present (${cnt} records) — skipping`);
+      return;
+    }
+
+    const records = [
+      { job_date: "2026-03-18", revenue: "285.60", service_type: "Flat Rate Standard", technician: "Generic Cleaner",       notes: "3.98h · add-on: Basement · address: 7251 W Fitch Ave Chicago IL 60631 · source: mc_import" },
+      { job_date: "2025-12-23", revenue: "285.60", service_type: "Flat Rate Standard", technician: "Guadalupe Mejia",       notes: "3.33h · add-on: Basement · address: 7251 W Fitch Ave Chicago IL 60631 · source: mc_import" },
+      { job_date: "2025-11-26", revenue: "285.60", service_type: "Flat Rate Standard", technician: "Evelyna Resendez",      notes: "3.70h · add-on: Basement · address: 7251 W Fitch Ave Chicago IL 60631 · source: mc_import" },
+      { job_date: "2025-10-01", revenue: "285.60", service_type: "Flat Rate Standard", technician: "Evelyna Resendez",      notes: "4.25h · add-on: Basement · address: 7251 W Fitch Ave Chicago IL 60631 · source: mc_import" },
+      { job_date: "2025-09-03", revenue: "285.60", service_type: "Flat Rate Standard", technician: "Guadalupe Mejia",       notes: "3.75h · add-on: Basement · address: 7251 W Fitch Ave Chicago IL 60631 · source: mc_import" },
+      { job_date: "2025-08-06", revenue: "285.60", service_type: "Flat Rate Standard", technician: "Norma Puga",            notes: "4.73h · add-on: Basement · address: 7251 W Fitch Ave Chicago IL 60631 · source: mc_import" },
+      { job_date: "2025-06-11", revenue: "285.60", service_type: "Flat Rate Standard", technician: "Norma Puga",            notes: "4.03h · add-on: Basement · address: 7251 W Fitch Ave Chicago IL 60631 · source: mc_import" },
+      { job_date: "2025-05-14", revenue: "285.60", service_type: "Flat Rate Standard", technician: "Yohana Velasquez",      notes: "5.83h · add-on: Basement · address: 7251 W Fitch Ave Chicago IL 60631 · source: mc_import" },
+      { job_date: "2025-03-18", revenue: "285.60", service_type: "Flat Rate Standard", technician: "Monica Ruiz",           notes: "4.70h · add-on: Basement · address: 7251 W Fitch Ave Chicago IL 60631 · source: mc_import" },
+      { job_date: "2025-02-19", revenue: "285.60", service_type: "Flat Rate Standard", technician: "Monica Ruiz",           notes: "4.23h · add-on: Basement · address: 7251 W Fitch Ave Chicago IL 60631 · source: mc_import" },
+      { job_date: "2025-01-22", revenue: "285.60", service_type: "Flat Rate Standard", technician: "Liz Hernandez",         notes: "5.20h · add-on: Basement · address: 7251 W Fitch Ave Chicago IL 60631 · source: mc_import" },
+      { job_date: "2024-12-24", revenue: "285.60", service_type: "Flat Rate Standard", technician: "Monica Ruiz",           notes: "4.88h · add-on: Basement · address: 7251 W Fitch Ave Chicago IL 60631 · source: mc_import" },
+      { job_date: "2024-11-27", revenue: "285.60", service_type: "Flat Rate Standard", technician: "Monica Ruiz",           notes: "4.38h · add-on: Basement · address: 7251 W Fitch Ave Chicago IL 60631 · source: mc_import" },
+      { job_date: "2024-10-30", revenue: "285.60", service_type: "Flat Rate Standard", technician: "Monica Ruiz",           notes: "4.77h · add-on: Basement · address: 7251 W Fitch Ave Chicago IL 60631 · source: mc_import" },
+      { job_date: "2024-09-25", revenue: "285.60", service_type: "Flat Rate Standard", technician: "Mercedes Chinchilla",   notes: "3.88h · add-on: Basement · address: 7251 W Fitch Ave Chicago IL 60631 · source: mc_import" },
+      { job_date: "2024-07-10", revenue: "285.60", service_type: "Flat Rate Standard", technician: "Erika Guevara",         notes: "4.75h · add-on: Basement · address: 7251 W Fitch Ave Chicago IL 60631 · source: mc_import" },
+      { job_date: "2024-06-12", revenue: "285.60", service_type: "Flat Rate Standard", technician: "Erika Guevara",         notes: "2.77h · add-on: Basement · address: 7251 W Fitch Ave Chicago IL 60631 · source: mc_import" },
+      { job_date: "2024-05-15", revenue: "580.60", service_type: "Hourly Deep Clean or Move In/Out", technician: "Erika Guevara", notes: "5.50h · tech 2: Ana Valdez · add-on: Basement · frequency: On Demand · address: 7251 W Fitch Ave Chicago IL 60631 · source: mc_import" },
+    ];
+
+    for (const r of records) {
+      await db.execute(sql`
+        INSERT INTO job_history (company_id, customer_id, job_date, revenue, service_type, technician, notes)
+        VALUES (${PHES}, ${CUSTOMER_ID}, ${r.job_date}::date, ${r.revenue}::numeric, ${r.service_type}, ${r.technician}, ${r.notes})
+      `);
+    }
+
+    console.log(`[damian-migration] Inserted ${records.length} job history records for client #${CUSTOMER_ID}`);
+  } catch (err) {
+    console.error("[damian-migration] Migration error (non-fatal):", err);
   }
 }
