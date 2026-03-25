@@ -700,4 +700,61 @@ router.post("/geocode-all", requireAuth, requireRole("owner", "admin"), async (r
   return res.json({ geocoded: updated, total: clients.length });
 });
 
+// ─── GET JOB HISTORY (from job_history table, mc_import + future sources) ─────
+router.get("/:id/job-history", requireAuth, async (req, res) => {
+  try {
+    const clientId = parseInt(req.params.id);
+    const companyId = req.auth!.companyId;
+
+    const rows = await db.execute(sql`
+      SELECT id, job_date, revenue, service_type, technician, notes
+      FROM job_history
+      WHERE company_id = ${companyId} AND customer_id = ${clientId}
+      ORDER BY job_date DESC
+    `);
+
+    const records = rows.rows as Array<{
+      id: number; job_date: string; revenue: string;
+      service_type: string | null; technician: string | null; notes: string | null;
+    }>;
+
+    const now = new Date();
+    const twelveMonthsAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+    const priorSixStart = new Date(now.getFullYear(), now.getMonth() - 12, now.getDate());
+
+    const total_revenue = records.reduce((s, r) => s + parseFloat(r.revenue), 0);
+    const total_visits = records.length;
+    const unique_techs = new Set(records.map(r => r.technician).filter(Boolean)).size;
+
+    const last12 = records.filter(r => new Date(r.job_date) >= twelveMonthsAgo);
+    const revenue_last_12mo = last12.reduce((s, r) => s + parseFloat(r.revenue), 0);
+    const avg_bill = last12.length > 0 ? revenue_last_12mo / last12.length : (records.length > 0 ? total_revenue / total_visits : 0);
+
+    const last6Rev = records.filter(r => new Date(r.job_date) >= sixMonthsAgo).reduce((s, r) => s + parseFloat(r.revenue), 0);
+    const prior6Rev = records.filter(r => {
+      const d = new Date(r.job_date);
+      return d >= priorSixStart && d < sixMonthsAgo;
+    }).reduce((s, r) => s + parseFloat(r.revenue), 0);
+
+    const revenue_trend_pct = prior6Rev > 0 ? ((last6Rev - prior6Rev) / prior6Rev) * 100 : null;
+
+    return res.json({
+      rows: records,
+      stats: {
+        total_revenue,
+        total_visits,
+        unique_techs,
+        revenue_last_12mo,
+        avg_bill,
+        revenue_trend_pct,
+      },
+    });
+  } catch (err) {
+    console.error("Job history error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 export default router;
+
