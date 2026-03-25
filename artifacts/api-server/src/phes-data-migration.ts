@@ -843,13 +843,24 @@ async function runDamianJobHistoryMigration() {
     const PHES = 1;
     const CUSTOMER_ID = 75;
 
+    // First: clean up any duplicate rows (keeping min id per unique job_date/technician/revenue)
+    await db.execute(sql`
+      DELETE FROM job_history
+      WHERE company_id = ${PHES} AND customer_id = ${CUSTOMER_ID}
+        AND id NOT IN (
+          SELECT MIN(id) FROM job_history
+          WHERE company_id = ${PHES} AND customer_id = ${CUSTOMER_ID}
+          GROUP BY job_date, technician, revenue
+        )
+    `);
+
     const existing = await db.execute(sql`
       SELECT COUNT(*)::int AS cnt FROM job_history
       WHERE company_id = ${PHES} AND customer_id = ${CUSTOMER_ID}
     `);
     const cnt = (existing.rows[0] as any).cnt;
-    if (cnt > 0) {
-      console.log(`[damian-migration] Job history already present (${cnt} records) — skipping`);
+    if (cnt >= 18) {
+      console.log(`[damian-migration] Job history already present (${cnt} records after dedup) — skipping`);
       return;
     }
 

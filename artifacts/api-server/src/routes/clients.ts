@@ -706,10 +706,15 @@ router.get("/:id/job-history", requireAuth, async (req, res) => {
     const clientId = parseInt(req.params.id);
     const companyId = req.auth!.companyId;
 
+    // Deduplicate on (job_date, technician, revenue) — prevents double-rows from deployment race conditions
     const rows = await db.execute(sql`
-      SELECT id, job_date, revenue, service_type, technician, notes
-      FROM job_history
-      WHERE company_id = ${companyId} AND customer_id = ${clientId}
+      SELECT * FROM (
+        SELECT DISTINCT ON (job_date, technician, revenue)
+          id, job_date, revenue, service_type, technician, notes
+        FROM job_history
+        WHERE company_id = ${companyId} AND customer_id = ${clientId}
+        ORDER BY job_date, technician, revenue, id
+      ) t
       ORDER BY job_date DESC
     `);
 
@@ -717,6 +722,45 @@ router.get("/:id/job-history", requireAuth, async (req, res) => {
       id: number; job_date: string; revenue: string;
       service_type: string | null; technician: string | null; notes: string | null;
     }>;
+
+    // Last cleaning from job_history
+    const last_cleaning: string | null = records.length > 0 ? records[0].job_date : null;
+
+    // Next cleaning from jobs table (nearest scheduled job in the future)
+    const nextJobRes = await db.execute(sql`
+      SELECT scheduled_date FROM jobs
+      WHERE client_id = ${clientId} AND company_id = ${companyId}
+        AND status = 'scheduled' AND scheduled_date >= CURRENT_DATE
+      ORDER BY scheduled_date ASC LIMIT 1
+    `);
+    const next_cleaning: string | null = nextJobRes.rows.length > 0
+      ? String((nextJobRes.rows[0] as any).scheduled_date)
+      : null;
+
+    // Is this client on an active recurring schedule?
+    const recurrRes = await db.execute(sql`
+      SELECT id FROM recurring_schedules
+      WHERE customer_id = ${clientId} AND company_id = ${companyId} AND is_active = true
+      LIMIT 1
+    `);
+    const is_recurring = recurrRes.rows.length > 0;
+
+    // Skips and bumps — cast status to text to avoid enum validation errors if values not yet in enum
+    let skips = 0;
+    let bumps = 0;
+    try {
+      const statusRes = await db.execute(sql`
+        SELECT
+          COUNT(*) FILTER (WHERE status::text = 'skipped') AS skips,
+          COUNT(*) FILTER (WHERE status::text = 'bumped') AS bumps
+        FROM jobs
+        WHERE client_id = ${clientId} AND company_id = ${companyId}
+      `);
+      skips = parseInt(String((statusRes.rows[0] as any)?.skips ?? 0));
+      bumps = parseInt(String((statusRes.rows[0] as any)?.bumps ?? 0));
+    } catch (_err) {
+      // Status enum may not include these values yet — default to 0
+    }
 
     const now = new Date();
     const twelveMonthsAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
@@ -748,6 +792,11 @@ router.get("/:id/job-history", requireAuth, async (req, res) => {
         revenue_last_12mo,
         avg_bill,
         revenue_trend_pct,
+        last_cleaning,
+        next_cleaning,
+        is_recurring,
+        skips,
+        bumps,
       },
     });
   } catch (err) {

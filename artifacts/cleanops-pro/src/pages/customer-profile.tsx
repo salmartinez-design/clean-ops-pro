@@ -1697,10 +1697,10 @@ function ProfileHero({ client, stats, jhStats, onSchedule, onMessage, onInvoice,
   onSchedule: () => void; onMessage: () => void; onInvoice: () => void; onEdit: () => void;
 }) {
   const FF = "'Plus Jakarta Sans', sans-serif";
-  const isRecurring = client.service_type === "recurring" || (client.frequency && client.frequency !== "on_demand");
+  const isRecurring = jhStats?.is_recurring ?? (client.service_type === "recurring" || (client.frequency && client.frequency !== "on_demand"));
   const ltv = jhStats ? jhStats.total_revenue : (stats?.revenue_all_time || 0);
-  const lastCleaning = stats?.last_cleaning;
-  const nextCleaning = stats?.next_cleaning;
+  const lastCleaning = jhStats?.last_cleaning ?? stats?.last_cleaning;
+  const nextCleaning = jhStats?.next_cleaning ?? stats?.next_cleaning;
   const initials = `${client.first_name?.[0] || ""}${client.last_name?.[0] || ""}`;
 
   return (
@@ -1952,6 +1952,18 @@ function ClientIntelligencePanel({ jhStats, profile }: { jhStats: any; profile: 
             </span>
           </div>
         )}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: FF }}>
+          <span style={{ fontSize: 12, color: "#6B7280" }}>Skips</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: (jhStats.skips || 0) > 0 ? "#DC2626" : "#1A1917" }}>
+            {jhStats.skips || 0}
+          </span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: FF }}>
+          <span style={{ fontSize: 12, color: "#6B7280" }}>Bumps</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: (jhStats.bumps || 0) > 0 ? "#D97706" : "#1A1917" }}>
+            {jhStats.bumps || 0}
+          </span>
+        </div>
       </div>
       {profile?.stats?.scorecard_avg && (
         <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 14 }}>
@@ -1970,9 +1982,8 @@ export default function CustomerProfilePage() {
   const [, navigate] = useLocation();
   const [, params] = useRoute("/customers/:id");
   const clientId = parseInt(params?.id || "0");
-  const [tab, setTab] = useState<TabId>("overview");
 
-  const { data: profile, isLoading, refetch } = useQuery<any>({
+  const { data: profile, isLoading } = useQuery<any>({
     queryKey: ["client-profile", clientId],
     queryFn: () => apiFetch(`/api/clients/${clientId}/full-profile`),
     enabled: clientId > 0,
@@ -1986,23 +1997,6 @@ export default function CustomerProfilePage() {
     staleTime: 30000,
   });
 
-  const { data: agreements = [], refetch: refetchAgreements } = useQuery<any[]>({
-    queryKey: ["client-agreements", clientId],
-    queryFn: () => apiFetch(`/api/clients/${clientId}/agreements`),
-    enabled: clientId > 0,
-    staleTime: 15000,
-  });
-
-  const updateMut = useMutation({
-    mutationFn: (data: any) => apiFetch(`/api/clients/${clientId}`, { method: "PUT", body: JSON.stringify(data) }),
-    onSuccess: () => refetch(),
-  });
-
-  const portalInviteMut = useMutation({
-    mutationFn: () => apiFetch(`/api/clients/${clientId}/portal-invite`, { method: "POST" }),
-    onSuccess: () => refetch(),
-  });
-
   if (isLoading || !profile) {
     return (
       <DashboardLayout>
@@ -2012,14 +2006,6 @@ export default function CustomerProfilePage() {
       </DashboardLayout>
     );
   }
-
-  const tabStyle = (id: TabId): React.CSSProperties => ({
-    padding: "9px 14px", border: "none", background: "none", cursor: "pointer",
-    fontSize: "13px", fontWeight: tab === id ? 700 : 400,
-    color: tab === id ? "var(--brand)" : "#6B7280",
-    borderBottom: `2px solid ${tab === id ? "var(--brand)" : "transparent"}`,
-    whiteSpace: "nowrap",
-  });
 
   const jhStats = jhData?.stats || null;
 
@@ -2040,52 +2026,17 @@ export default function CustomerProfilePage() {
           client={profile}
           stats={profile.stats}
           jhStats={jhStats}
-          onSchedule={() => setTab("overview")}
-          onMessage={() => setTab("comm-log")}
-          onInvoice={() => setTab("billing")}
-          onEdit={() => setTab("overview")}
+          onSchedule={() => navigate("/dispatch")}
+          onMessage={() => navigate(`/clients/${clientId}/messages`)}
+          onInvoice={() => navigate(`/clients/${clientId}/invoices`)}
+          onEdit={() => navigate(`/customers/${clientId}/edit`)}
         />
 
         {/* 3-column grid: details | job history | intelligence */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr", gap: 20, marginBottom: 24, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr", gap: 20, alignItems: "start" }}>
           <ClientDetailsPanel client={profile} />
           <JobHistoryPanel clientId={clientId} jhData={jhData} isLoading={jhLoading} />
           <ClientIntelligencePanel jhStats={jhStats} profile={profile} />
-        </div>
-
-        {/* Account Management — full detail tabs */}
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase" as const, letterSpacing: "0.08em", marginBottom: 10 }}>
-            Account Management
-          </div>
-          <div style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: "10px 10px 0 0", borderBottom: "none", overflowX: "auto" }}>
-            <div style={{ display: "flex", paddingLeft: "4px", borderBottom: "1px solid #E5E2DC" }}>
-              {TABS.map(t => (
-                <button key={t.id} onClick={() => setTab(t.id)} style={tabStyle(t.id)}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div style={{ padding: "20px 0 0" }}>
-            {tab === "overview" && <OverviewTab client={profile} onUpdate={d => updateMut.mutateAsync(d)} refetch={refetch} />}
-            {tab === "homes" && <HomesTab clientId={clientId} homes={profile.homes || []} refetch={refetch} />}
-            {tab === "billing" && <BillingTab invoices={profile.invoices || []} />}
-            {tab === "card-on-file" && <CardOnFileTab client={profile} refetch={refetch} />}
-            {tab === "quotes" && <QuotesTab clientId={clientId} client={profile} />}
-            {tab === "payments" && <PaymentsTab clientId={clientId} client={profile} />}
-            {tab === "agreements" && <AgreementsTab clientId={clientId} agreements={agreements} refetch={() => { refetchAgreements(); refetch(); }} />}
-            {tab === "attachments" && <AttachmentsTab clientId={clientId} />}
-            {tab === "quickbooks" && <QuickBooksTab clientId={clientId} client={profile} />}
-            {tab === "contacts" && <ContactsTab clientId={clientId} notifications={profile.notification_settings || []} refetch={refetch} />}
-            {tab === "scorecards" && <ScorecardsTab scorecards={profile.scorecards || []} />}
-            {tab === "tech" && <TechPrefsTab clientId={clientId} prefs={profile.tech_preferences || []} refetch={refetch} />}
-            {tab === "notes" && <NotesTab clientId={clientId} client={profile} />}
-            {tab === "portal" && <PortalTab clientId={clientId} client={profile} onPortalInvite={() => portalInviteMut.mutate()} refetch={refetch} />}
-            {tab === "comm-log" && <CommLogTab clientId={clientId} />}
-            {tab === "recurring" && <RecurringTab clientId={clientId} />}
-            {tab === "revenue-trend" && <RevenueTrendTab clientId={clientId} jobs={profile.jobs || []} />}
-          </div>
         </div>
       </div>
     </DashboardLayout>
