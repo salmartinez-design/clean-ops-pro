@@ -5,10 +5,10 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { getAuthHeaders } from "@/lib/auth";
 import {
   ArrowLeft, Home, CreditCard, FileText, Bell, Star, UserX, StickyNote, Globe,
-  Plus, Trash2, Edit2, ChevronLeft, ChevronRight, Check, X, Eye, EyeOff,
+  Plus, Trash2, Edit2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Check, X, Eye, EyeOff,
   Phone, Mail, MapPin, MessageSquare, Send, AlertTriangle, TrendingUp,
   ClipboardList, DollarSign, BookOpen, Paperclip, ShieldCheck, Loader2,
-  MessageCircle, RefreshCw, Activity,
+  MessageCircle, RefreshCw, Activity, Upload, Image, Calendar, Clock, Wrench,
 } from "lucide-react";
 import { QuotesTab, PaymentsTab, QuickBooksTab, AttachmentsTab } from "./customer-profile-tabs2";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
@@ -1691,13 +1691,63 @@ function parseJobNotes(notes: string | null): { duration: string | null; addOn: 
   };
 }
 
+const FREQ_LABELS: Record<string, string> = {
+  weekly: "Weekly", biweekly: "Bi-Weekly", monthly: "Monthly",
+  on_demand: "On Demand", every_3_weeks: "Every 3 Weeks",
+  custom: "Custom", semi_monthly: "Semi-Monthly",
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  google_lsa: "Google Local Services", google_ads: "Google Ads",
+  referral: "Referral", yelp: "Yelp", facebook: "Facebook",
+  door_to_door: "Door to Door", repeat: "Repeat Customer", other: "Other",
+};
+
+const DAY_LABELS: Record<string, string> = {
+  monday: "Monday", tuesday: "Tuesday", wednesday: "Wednesday",
+  thursday: "Thursday", friday: "Friday", saturday: "Saturday", sunday: "Sunday",
+};
+
+const FF = "'Plus Jakarta Sans', sans-serif";
+const TH_STYLE: React.CSSProperties = { padding: "9px 14px", textAlign: "left", fontSize: "11px", fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "1px solid #EEECE7" };
+const TD_STYLE: React.CSSProperties = { padding: "11px 14px", fontSize: "13px", color: "#1A1917", borderBottom: "1px solid #F0EEE9" };
+
+function DL({ label, value }: { label: string; value?: string | number | null }) {
+  if (value === null || value === undefined || value === "") return null;
+  return (
+    <div>
+      <div style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 13, color: "#1A1917", fontWeight: 500, fontFamily: FF }}>{value}</div>
+    </div>
+  );
+}
+
+// ─── Collapsible Section ───────────────────────────────────────────────────────
+function CollapsibleSection({ title, children, defaultOpen = false }: {
+  title: string; children: React.ReactNode; defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{ borderRadius: 10, border: "1px solid #E5E2DC", overflow: "hidden", marginBottom: 10 }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", background: "#F7F6F3", border: "none", borderBottom: open ? "1px solid #E5E2DC" : "none", cursor: "pointer", fontFamily: FF }}
+      >
+        <span style={{ fontSize: 12, fontWeight: 800, color: "#0A0E1A", textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>{title}</span>
+        {open ? <ChevronUp size={15} style={{ color: "#6B7280" }} /> : <ChevronDown size={15} style={{ color: "#6B7280" }} />}
+      </button>
+      {open && <div style={{ padding: "20px", background: "#FFFFFF" }}>{children}</div>}
+    </div>
+  );
+}
+
 // ─── Profile Hero ──────────────────────────────────────────────────────────────
-function ProfileHero({ client, stats, jhStats, onSchedule, onMessage, onInvoice, onEdit }: {
-  client: any; stats: any; jhStats: any;
+function ProfileHero({ client, stats, jhStats, recurringSchedule, onSchedule, onMessage, onInvoice, onEdit }: {
+  client: any; stats: any; jhStats: any; recurringSchedule: any;
   onSchedule: () => void; onMessage: () => void; onInvoice: () => void; onEdit: () => void;
 }) {
-  const FF = "'Plus Jakarta Sans', sans-serif";
   const isRecurring = jhStats?.is_recurring ?? (client.service_type === "recurring" || (client.frequency && client.frequency !== "on_demand"));
+  const freqBadge = recurringSchedule?.frequency ? (FREQ_LABELS[recurringSchedule.frequency] || recurringSchedule.frequency) : (client.frequency ? (FREQ_LABELS[client.frequency] || freqLabel(client.frequency)) : null);
   const ltv = jhStats ? jhStats.total_revenue : (stats?.revenue_all_time || 0);
   const lastCleaning = jhStats?.last_cleaning ?? stats?.last_cleaning;
   const nextCleaning = jhStats?.next_cleaning ?? stats?.next_cleaning;
@@ -1717,14 +1767,20 @@ function ProfileHero({ client, stats, jhStats, onSchedule, onMessage, onInvoice,
             <span style={{ fontSize: 10, fontWeight: 800, padding: "3px 9px", borderRadius: 4, textTransform: "uppercase" as const, letterSpacing: "0.07em", background: isRecurring ? "#DCFCE7" : "#F3F4F6", color: isRecurring ? "#166534" : "#6B7280" }}>
               {isRecurring ? "Recurring" : "One-Time"}
             </span>
-            {client.frequency && (
+            {freqBadge && (
               <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 4, background: "var(--brand-dim)", color: "var(--brand)", textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>
-                {freqLabel(client.frequency)}
+                {freqBadge}
               </span>
             )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, color: "#9E9B94" }}>CL-{String(client.id).padStart(4, "0")}</span>
+            {client.zone_name && (
+              <><span style={{ color: "#D0CEC9" }}>·</span>
+              <span style={{ fontSize: 11, fontWeight: 600, padding: "1px 7px", borderRadius: 4, background: client.zone_color ? `${client.zone_color}22` : "#EDE9FE", color: client.zone_color || "#7C3AED" }}>
+                {client.zone_name}
+              </span></>
+            )}
             {client.company_name && (
               <><span style={{ color: "#D0CEC9" }}>·</span><span style={{ fontSize: 11, color: "#6B7280" }}>{client.company_name}</span></>
             )}
@@ -1765,20 +1821,13 @@ function ProfileHero({ client, stats, jhStats, onSchedule, onMessage, onInvoice,
 }
 
 // ─── Client Details Panel (left 25%) ─────────────────────────────────────────
-function ClientDetailsPanel({ client }: { client: any }) {
-  const FF = "'Plus Jakarta Sans', sans-serif";
+function ClientDetailsPanel({ client, jhStats, recurringSchedule }: { client: any; jhStats: any; recurringSchedule: any }) {
   const [showAlarm, setShowAlarm] = useState(false);
-
-  const SOURCE_LABELS: Record<string, string> = {
-    google_lsa: "Google Local Services", google_ads: "Google Ads",
-    referral: "Referral", yelp: "Yelp", facebook: "Facebook",
-    door_to_door: "Door to Door", repeat: "Repeat Customer", other: "Other",
-  };
+  const preferredTech = (client.tech_preferences || []).find((p: any) => p.preference === "preferred");
 
   return (
-    <div style={{ background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 10, padding: "20px", fontFamily: FF, display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 10, padding: "20px", fontFamily: FF, display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ fontSize: 12, fontWeight: 800, color: "#0A0E1A", textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>Client Details</div>
-
       {client.phone && (
         <div>
           <div style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 2 }}>Phone</div>
@@ -1791,12 +1840,8 @@ function ClientDetailsPanel({ client }: { client: any }) {
           <a href={`mailto:${client.email}`} style={{ color: "var(--brand)", textDecoration: "none", fontWeight: 600, fontSize: 13, wordBreak: "break-all" as const }}>{client.email}</a>
         </div>
       )}
-      {client.address && (
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 2 }}>Service Address</div>
-          <div style={{ fontSize: 13, color: "#1A1917", fontWeight: 500 }}>{client.address}{client.city ? `, ${client.city}` : ""}{client.state ? ` ${client.state}` : ""}{client.zip ? ` ${client.zip}` : ""}</div>
-        </div>
-      )}
+      {client.address && <DL label="Service Address" value={[client.address, client.city, client.state, client.zip].filter(Boolean).join(", ")} />}
+      {client.service_type && <DL label="Home / Service Type" value={client.service_type} />}
       {client.home_access_notes && (
         <div>
           <div style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 2 }}>Entry Instructions</div>
@@ -1807,30 +1852,30 @@ function ClientDetailsPanel({ client }: { client: any }) {
         <div>
           <div style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 2 }}>Alarm Code</div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", letterSpacing: showAlarm ? "normal" : "0.15em" }}>
-              {showAlarm ? client.alarm_code : "••••••"}
-            </span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", letterSpacing: showAlarm ? "normal" : "0.15em" }}>{showAlarm ? client.alarm_code : "••••••"}</span>
             <button onClick={() => setShowAlarm(v => !v)} style={{ background: "none", border: "none", cursor: "pointer", color: "#9E9B94", padding: 0, display: "flex" }}>
               {showAlarm ? <EyeOff size={13} /> : <Eye size={13} />}
             </button>
           </div>
         </div>
       )}
-      {client.client_since && (
+      {recurringSchedule?.day_of_week && <DL label="Preferred Day" value={DAY_LABELS[recurringSchedule.day_of_week] || recurringSchedule.day_of_week} />}
+      {client.pets && <DL label="Pets / Equipment Notes" value={client.pets} />}
+      {preferredTech && <DL label="Preferred Technician" value={`${preferredTech.first_name} ${preferredTech.last_name}`} />}
+      {!preferredTech && recurringSchedule?.tech_first && <DL label="Assigned Technician" value={`${recurringSchedule.tech_first} ${recurringSchedule.tech_last}`} />}
+      {client.referral_source && <DL label="Acquisition Source" value={SOURCE_LABELS[client.referral_source] || String(client.referral_source).replace(/_/g, " ")} />}
+      {client.client_since && <DL label="Customer Since" value={fmtDate(client.client_since)} />}
+      {(client.loyalty_points !== null && client.loyalty_points !== undefined && client.loyalty_points > 0) && <DL label="Loyalty Points" value={client.loyalty_points} />}
+      {(jhStats?.ecard_pct !== null && jhStats?.ecard_pct !== undefined) && <DL label="eCard Rate" value={`${jhStats.ecard_pct}%`} />}
+      {client.zone_name && (
         <div>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 2 }}>Customer Since</div>
-          <div style={{ fontSize: 13, color: "#1A1917", fontWeight: 500 }}>{fmtDate(client.client_since)}</div>
-        </div>
-      )}
-      {client.referral_source && (
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 2 }}>Acquisition Source</div>
-          <div style={{ fontSize: 13, color: "#1A1917", fontWeight: 500 }}>{SOURCE_LABELS[client.referral_source] || client.referral_source}</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 2 }}>Service Zone</div>
+          <span style={{ fontSize: 13, fontWeight: 600, padding: "2px 8px", borderRadius: 4, background: client.zone_color ? `${client.zone_color}22` : "#EDE9FE", color: client.zone_color || "#7C3AED" }}>{client.zone_name}</span>
         </div>
       )}
       {client.notes && (
         <div>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 2 }}>Notes</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 2 }}>Internal Notes</div>
           <div style={{ fontSize: 12, color: "#374151", whiteSpace: "pre-wrap" as const }}>{client.notes}</div>
         </div>
       )}
@@ -1840,9 +1885,12 @@ function ClientDetailsPanel({ client }: { client: any }) {
 
 // ─── Job History Panel (center 50%) ───────────────────────────────────────────
 function JobHistoryPanel({ clientId: _clientId, jhData, isLoading }: { clientId: number; jhData: any; isLoading: boolean }) {
-  const FF = "'Plus Jakarta Sans', sans-serif";
+  const PAGE_SIZE = 10;
+  const [page, setPage] = useState(1);
   const rows: any[] = jhData?.rows || [];
   const stats = jhData?.stats;
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   if (isLoading) {
     return (
@@ -1854,7 +1902,7 @@ function JobHistoryPanel({ clientId: _clientId, jhData, isLoading }: { clientId:
 
   return (
     <div style={{ background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 10, overflow: "hidden", fontFamily: FF }}>
-      <div style={{ padding: "16px 20px", borderBottom: "1px solid #E5E2DC", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ padding: "14px 20px", borderBottom: "1px solid #E5E2DC", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ fontSize: 12, fontWeight: 800, color: "#0A0E1A", textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>Job History</div>
         {stats && (
           <div style={{ fontSize: 12, color: "#6B7280" }}>
@@ -1867,31 +1915,53 @@ function JobHistoryPanel({ clientId: _clientId, jhData, isLoading }: { clientId:
       {rows.length === 0 ? (
         <div style={{ padding: "40px 20px", textAlign: "center" as const, color: "#9E9B94", fontSize: 13 }}>No job history records found</div>
       ) : (
-        <div>
-          <div style={{ display: "grid", gridTemplateColumns: "90px 1fr 80px 60px 72px", padding: "8px 20px", background: "#FAFAF8", borderBottom: "1px solid #E5E2DC" }}>
-            {["Date", "Technician", "Add-on", "Duration", "Amount"].map(h => (
-              <div key={h} style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>{h}</div>
-            ))}
+        <>
+          <div style={{ overflowX: "auto" as const }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" as const }}>
+              <thead>
+                <tr style={{ background: "#FAFAF8" }}>
+                  {["Date", "Technician(s)", "Scope", "Add-On", "Duration", "Amount"].map(h => (
+                    <th key={h} style={TH_STYLE}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pageRows.map((row: any) => {
+                  const { duration, addOn } = parseJobNotes(row.notes);
+                  return (
+                    <tr key={row.id}>
+                      <td style={TD_STYLE}>
+                        <span style={{ fontSize: 12, fontWeight: 600 }}>
+                          {new Date(row.job_date + "T12:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" })}
+                        </span>
+                      </td>
+                      <td style={{ ...TD_STYLE, maxWidth: 140 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{row.technician || "—"}</div>
+                      </td>
+                      <td style={{ ...TD_STYLE, fontSize: 12, color: "#6B7280" }}>{row.service_type || "—"}</td>
+                      <td style={{ ...TD_STYLE, fontSize: 11, color: addOn ? "#6B7280" : "#D0CEC9" }}>{addOn || "—"}</td>
+                      <td style={{ ...TD_STYLE, fontSize: 12, color: "#6B7280" }}>{duration ? `${duration}h` : "—"}</td>
+                      <td style={{ ...TD_STYLE, fontSize: 13, fontWeight: 700 }}>${parseFloat(row.revenue).toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-          {rows.map((row: any) => {
-            const { duration, addOn } = parseJobNotes(row.notes);
-            const amount = parseFloat(row.revenue);
-            return (
-              <div key={row.id} style={{ display: "grid", gridTemplateColumns: "90px 1fr 80px 60px 72px", padding: "11px 20px", borderBottom: "1px solid #F0EEE9", alignItems: "center" }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "#1A1917" }}>
-                  {new Date(row.job_date + "T12:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" })}
-                </div>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "#1A1917" }}>{row.technician || "—"}</div>
-                  {row.service_type && <div style={{ fontSize: 11, color: "#9E9B94", marginTop: 1 }}>{row.service_type}</div>}
-                </div>
-                <div style={{ fontSize: 11, color: addOn ? "#6B7280" : "#D0CEC9" }}>{addOn || "—"}</div>
-                <div style={{ fontSize: 12, color: "#6B7280" }}>{duration ? `${duration}h` : "—"}</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#1A1917" }}>${amount.toFixed(2)}</div>
-              </div>
-            );
-          })}
-        </div>
+          {totalPages > 1 && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderTop: "1px solid #E5E2DC", background: "#FAFAF8" }}>
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 10px", border: "1px solid #E5E2DC", borderRadius: 6, background: page === 1 ? "#F3F4F6" : "#FFFFFF", color: page === 1 ? "#9E9B94" : "#1A1917", fontSize: 12, cursor: page === 1 ? "default" : "pointer", fontFamily: FF }}>
+                <ChevronLeft size={13} /> Previous
+              </button>
+              <span style={{ fontSize: 12, color: "#6B7280" }}>Page {page} of {totalPages}</span>
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 10px", border: "1px solid #E5E2DC", borderRadius: 6, background: page === totalPages ? "#F3F4F6" : "#FFFFFF", color: page === totalPages ? "#9E9B94" : "#1A1917", fontSize: 12, cursor: page === totalPages ? "default" : "pointer", fontFamily: FF }}>
+                Next <ChevronRight size={13} />
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -1899,7 +1969,6 @@ function JobHistoryPanel({ clientId: _clientId, jhData, isLoading }: { clientId:
 
 // ─── Client Intelligence Panel (right 25%) ────────────────────────────────────
 function ClientIntelligencePanel({ jhStats, profile }: { jhStats: any; profile: any }) {
-  const FF = "'Plus Jakarta Sans', sans-serif";
   if (!jhStats) {
     return (
       <div style={{ background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 10, padding: 24, fontFamily: FF }}>
@@ -1909,61 +1978,45 @@ function ClientIntelligencePanel({ jhStats, profile }: { jhStats: any; profile: 
     );
   }
 
-  const { total_revenue, total_visits, unique_techs, revenue_last_12mo, avg_bill, revenue_trend_pct } = jhStats;
-  const consistencyColor = unique_techs <= 2 ? "#16A34A" : unique_techs <= 5 ? "#D97706" : "#DC2626";
-  const consistencyBg = unique_techs <= 2 ? "#DCFCE7" : unique_techs <= 5 ? "#FEF3C7" : "#FEE2E2";
+  const { total_revenue, total_visits, unique_techs, revenue_last_12mo, avg_bill, revenue_trend_pct, pending_jobs, ecard_pct } = jhStats;
+  const techColor = unique_techs >= 6 ? "#DC2626" : unique_techs >= 3 ? "#D97706" : "#16A34A";
+  const techBg = unique_techs >= 6 ? "#FEE2E2" : unique_techs >= 3 ? "#FEF3C7" : "#DCFCE7";
   const trendUp = revenue_trend_pct !== null && revenue_trend_pct >= 0;
 
+  const SR = ({ label, value, color }: { label: string; value: string | number; color?: string }) => (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <span style={{ fontSize: 12, color: "#6B7280" }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 700, color: color || "#1A1917" }}>{value}</span>
+    </div>
+  );
+
   return (
-    <div style={{ background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 10, padding: "20px", fontFamily: FF, display: "flex", flexDirection: "column", gap: 18 }}>
+    <div style={{ background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 10, padding: "20px", fontFamily: FF, display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ fontSize: 12, fontWeight: 800, color: "#0A0E1A", textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>Intelligence</div>
-      <div style={{ background: consistencyBg, borderRadius: 8, padding: "14px 16px" }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: consistencyColor, textTransform: "uppercase" as const, letterSpacing: "0.07em", marginBottom: 6 }}>Tech Consistency</div>
-        <div style={{ fontSize: 20, fontWeight: 900, color: consistencyColor }}>
-          {unique_techs} tech{unique_techs !== 1 ? "s" : ""}
-        </div>
-        <div style={{ fontSize: 11, color: consistencyColor, marginTop: 2 }}>
+      <div style={{ background: techBg, borderRadius: 8, padding: "14px 16px" }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: techColor, textTransform: "uppercase" as const, letterSpacing: "0.07em", marginBottom: 4 }}>Tech Consistency</div>
+        <div style={{ fontSize: 20, fontWeight: 900, color: techColor }}>{unique_techs} tech{unique_techs !== 1 ? "s" : ""}</div>
+        <div style={{ fontSize: 11, color: techColor, marginTop: 2 }}>
           across {total_visits} visit{total_visits !== 1 ? "s" : ""}
-          {total_visits > 0 && ` · ${((unique_techs / total_visits) * 100).toFixed(0)}% rotation`}
+          {total_visits > 0 && unique_techs > 0 && ` · ${((unique_techs / total_visits) * 100).toFixed(0)}% rotation`}
         </div>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: FF }}>
-          <span style={{ fontSize: 12, color: "#6B7280" }}>Lifetime Revenue</span>
-          <span style={{ fontSize: 13, fontWeight: 800, color: "#1A1917" }}>${total_revenue.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: FF }}>
-          <span style={{ fontSize: 12, color: "#6B7280" }}>Last 12 Months</span>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1917" }}>${revenue_last_12mo.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: FF }}>
-          <span style={{ fontSize: 12, color: "#6B7280" }}>Avg Bill</span>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1917" }}>${avg_bill.toFixed(2)}</span>
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: FF }}>
-          <span style={{ fontSize: 12, color: "#6B7280" }}>Total Visits</span>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1917" }}>{total_visits}</span>
-        </div>
-        {revenue_trend_pct !== null && (
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: FF }}>
-            <span style={{ fontSize: 12, color: "#6B7280" }}>Revenue Trend</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: trendUp ? "#16A34A" : "#DC2626" }}>
-              {trendUp ? "+" : ""}{revenue_trend_pct.toFixed(0)}% vs prior 6mo
-            </span>
-          </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+        <SR label="Lifetime Revenue" value={`$${total_revenue.toLocaleString("en-US", { maximumFractionDigits: 0 })}`} />
+        <SR label="Last 12 Months" value={`$${revenue_last_12mo.toLocaleString("en-US", { maximumFractionDigits: 0 })}`} />
+        <SR label="Avg Bill (12mo)" value={`$${avg_bill.toFixed(2)}`} />
+        <SR label="Total Visits" value={total_visits} />
+        {(pending_jobs !== null && pending_jobs !== undefined) && (
+          <SR label="Pending Jobs" value={pending_jobs} color={pending_jobs > 0 ? "var(--brand)" : "#1A1917"} />
         )}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: FF }}>
-          <span style={{ fontSize: 12, color: "#6B7280" }}>Skips</span>
-          <span style={{ fontSize: 13, fontWeight: 700, color: (jhStats.skips || 0) > 0 ? "#DC2626" : "#1A1917" }}>
-            {jhStats.skips || 0}
-          </span>
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: FF }}>
-          <span style={{ fontSize: 12, color: "#6B7280" }}>Bumps</span>
-          <span style={{ fontSize: 13, fontWeight: 700, color: (jhStats.bumps || 0) > 0 ? "#D97706" : "#1A1917" }}>
-            {jhStats.bumps || 0}
-          </span>
-        </div>
+        {(revenue_trend_pct !== null && revenue_trend_pct !== undefined) && (
+          <SR label="Revenue Trend" value={`${trendUp ? "+" : ""}${revenue_trend_pct.toFixed(0)}% vs prior 6mo`} color={trendUp ? "#16A34A" : "#DC2626"} />
+        )}
+        <SR label="Skips" value={jhStats.skips ?? 0} color={(jhStats.skips ?? 0) > 0 ? "#DC2626" : "#1A1917"} />
+        <SR label="Bumps" value={jhStats.bumps ?? 0} color={(jhStats.bumps ?? 0) > 0 ? "#D97706" : "#1A1917"} />
+        {(ecard_pct !== null && ecard_pct !== undefined) && (
+          <SR label="eCard Rate" value={`${ecard_pct}%`} color={ecard_pct >= 50 ? "#16A34A" : "#6B7280"} />
+        )}
       </div>
       {profile?.stats?.scorecard_avg && (
         <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 14 }}>
@@ -1977,13 +2030,241 @@ function ClientIntelligencePanel({ jhStats, profile }: { jhStats: any; profile: 
   );
 }
 
+// ─── Service Details Section ───────────────────────────────────────────────────
+function ServiceDetailsSection({ client, onUpdate, refetch, recurringSchedule }: {
+  client: any; onUpdate: (d: any) => Promise<void>; refetch: () => void; recurringSchedule: any;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <OverviewTab client={client} onUpdate={onUpdate} refetch={refetch} />
+      {recurringSchedule && (
+        <div style={{ background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 10, padding: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#1A1917", marginBottom: 12 }}>Recurring Schedule</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+            <DL label="Frequency" value={FREQ_LABELS[recurringSchedule.frequency] || recurringSchedule.frequency} />
+            <DL label="Day of Week" value={DAY_LABELS[recurringSchedule.day_of_week] || recurringSchedule.day_of_week} />
+            <DL label="Start Date" value={fmtDate(recurringSchedule.start_date)} />
+            {recurringSchedule.base_fee && <DL label="Base Fee" value={`$${recurringSchedule.base_fee}`} />}
+            {recurringSchedule.duration_minutes && <DL label="Duration" value={`${recurringSchedule.duration_minutes} min`} />}
+            {recurringSchedule.service_type && <DL label="Scope" value={recurringSchedule.service_type} />}
+          </div>
+          {recurringSchedule.notes && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 2 }}>Schedule Notes</div>
+              <div style={{ fontSize: 13, color: "#374151" }}>{recurringSchedule.notes}</div>
+            </div>
+          )}
+        </div>
+      )}
+      <div style={{ background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 10, padding: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#1A1917", marginBottom: 8 }}>Rate History</div>
+        <div style={{ fontSize: 13, color: "#9E9B94" }}>
+          {client.rate_increase_last_date
+            ? `Last increase: ${fmtDate(client.rate_increase_last_date)}${client.rate_increase_last_pct ? ` · ${client.rate_increase_last_pct}%` : ""}`
+            : "No rate changes recorded"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Billing Section ──────────────────────────────────────────────────────────
+function BillingSection({ client, invoices, refetch }: { client: any; invoices: any[]; refetch: () => void }) {
+  const outstanding = invoices.filter(i => !i.paid_at && i.status !== "draft").reduce((s: number, i: any) => s + parseFloat(i.total || "0"), 0);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {(client.card_last_four || client.default_card_last_4) && outstanding > 0 && (
+        <div style={{ padding: "10px 14px", background: "#FEF3C7", borderRadius: 8, fontSize: 12, color: "#92400E", fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}>
+          <CreditCard size={14} />
+          Outstanding balance: ${outstanding.toFixed(2)}
+        </div>
+      )}
+      <CardOnFileTab client={client} refetch={refetch} />
+      <BillingTab invoices={invoices} />
+      <PaymentsTab clientId={client.id} client={client} />
+      <QuickBooksTab clientId={client.id} client={client} refetch={refetch} />
+    </div>
+  );
+}
+
+// ─── Contact Tickets Section ──────────────────────────────────────────────────
+function ContactTicketsSection({ clientId }: { clientId: number }) {
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ ticket_type: "skip", notes: "" });
+
+  const { data: tickets = [], isLoading, refetch } = useQuery<any[]>({
+    queryKey: ["client-tickets", clientId],
+    queryFn: () => apiFetch(`/api/clients/${clientId}/contact-tickets`),
+    staleTime: 30000,
+  });
+
+  const createMut = useMutation({
+    mutationFn: (d: any) => apiFetch(`/api/clients/${clientId}/contact-tickets`, { method: "POST", body: JSON.stringify(d) }),
+    onSuccess: () => { refetch(); setShowForm(false); setForm({ ticket_type: "skip", notes: "" }); qc.invalidateQueries({ queryKey: ["client-tickets", clientId] }); },
+  });
+
+  const TICKET_LABELS: Record<string, string> = {
+    skip: "Skip", complaint: "Complaint", compliment: "Compliment",
+    schedule_change: "Schedule Change", cancellation: "Cancellation", breakage: "Breakage",
+  };
+
+  const TICKET_COLORS: Record<string, { background: string; color: string }> = {
+    skip: { background: "#FEF3C7", color: "#92400E" },
+    complaint: { background: "#FEE2E2", color: "#991B1B" },
+    compliment: { background: "#DCFCE7", color: "#166534" },
+    schedule_change: { background: "#EDE9FE", color: "#5B21B6" },
+    cancellation: { background: "#FEE2E2", color: "#991B1B" },
+    breakage: { background: "#FEF3C7", color: "#92400E" },
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button onClick={() => setShowForm(v => !v)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: "var(--brand)", border: "none", borderRadius: 8, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FF }}>
+          <Plus size={13} /> Create New Ticket
+        </button>
+      </div>
+      {showForm && (
+        <div style={{ background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 10, padding: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#1A1917", marginBottom: 14 }}>New Contact Ticket</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: "#6B7280", display: "block", marginBottom: 4 }}>Ticket Type</label>
+              <select value={form.ticket_type} onChange={e => setForm(f => ({ ...f, ticket_type: e.target.value }))} style={{ width: "100%", padding: "8px 10px", border: "1px solid #E5E2DC", borderRadius: 6, fontSize: 13, outline: "none", background: "#FFFFFF", fontFamily: FF }}>
+                {Object.entries(TICKET_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: "#6B7280", display: "block", marginBottom: 4 }}>Notes</label>
+              <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3}
+                style={{ width: "100%", padding: "8px 10px", border: "1px solid #E5E2DC", borderRadius: 6, fontSize: 13, outline: "none", resize: "vertical" as const, boxSizing: "border-box" as const, fontFamily: FF }} />
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setShowForm(false)} style={{ padding: "8px 14px", border: "1px solid #E5E2DC", borderRadius: 7, background: "#FFFFFF", color: "#6B7280", fontSize: 13, cursor: "pointer", fontFamily: FF }}>Cancel</button>
+              <button onClick={() => createMut.mutate(form)} disabled={createMut.isPending} style={{ padding: "8px 14px", background: "var(--brand)", border: "none", borderRadius: 7, color: "#FFFFFF", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FF }}>
+                {createMut.isPending ? "Saving..." : "Save Ticket"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isLoading ? (
+        <div style={{ textAlign: "center" as const, color: "#9E9B94", fontSize: 13, padding: "24px 0" }}>Loading tickets...</div>
+      ) : (
+        <div style={{ background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 10, overflow: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" as const }}>
+            <thead>
+              <tr style={{ background: "#FAFAF8" }}>
+                {["Created", "Type", "Job ID", "Notes", "Created By"].map(h => <th key={h} style={TH_STYLE}>{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {tickets.length === 0 ? (
+                <tr><td colSpan={5} style={{ padding: "40px", textAlign: "center" as const, color: "#9E9B94", fontSize: 13 }}>No tickets yet</td></tr>
+              ) : tickets.map((t: any) => {
+                const tc = TICKET_COLORS[t.ticket_type] || { background: "#F3F4F6", color: "#6B7280" };
+                return (
+                  <tr key={t.id}>
+                    <td style={TD_STYLE}>{fmtDate(t.created_at)}</td>
+                    <td style={TD_STYLE}>
+                      <span style={{ ...tc, padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.04em" }}>
+                        {TICKET_LABELS[t.ticket_type] || t.ticket_type}
+                      </span>
+                    </td>
+                    <td style={{ ...TD_STYLE, color: "#6B7280" }}>{t.job_id ? `#${t.job_id}` : "—"}</td>
+                    <td style={{ ...TD_STYLE, fontSize: 12, color: "#374151", maxWidth: 240 }}>{t.notes || "—"}</td>
+                    <td style={{ ...TD_STYLE, fontSize: 12, color: "#6B7280" }}>{t.created_by_first ? `${t.created_by_first} ${t.created_by_last}` : "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Inspections Section ──────────────────────────────────────────────────────
+function InspectionsSection() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: "var(--brand)", border: "none", borderRadius: 8, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FF }}>
+          <Plus size={13} /> Create New Inspection
+        </button>
+      </div>
+      <div style={{ background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 10, overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" as const }}>
+          <thead>
+            <tr style={{ background: "#FAFAF8" }}>
+              {["Date", "Inspector", "Score", "Result", "Notes"].map(h => <th key={h} style={TH_STYLE}>{h}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colSpan={5} style={{ padding: "40px", textAlign: "center" as const, color: "#9E9B94", fontSize: 13 }}>No inspections on record</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Attachments Section ──────────────────────────────────────────────────────
+function AttachmentsSection({ clientId }: { clientId: number }) {
+  return <AttachmentsTab clientId={clientId} />;
+}
+
+// ─── Home Images Section ──────────────────────────────────────────────────────
+function HomeImagesSection({ clientId }: { clientId: number }) {
+  const { data: items = [], isLoading } = useQuery<any[]>({
+    queryKey: ["client-attachments-images", clientId],
+    queryFn: () => apiFetch(`/api/clients/${clientId}/attachments`),
+    staleTime: 60000,
+  });
+
+  const photos = items.filter((a: any) => ["image/jpeg", "image/jpg", "image/png", "image/webp"].includes((a.file_type || "").toLowerCase()));
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: "var(--brand)", border: "none", borderRadius: 8, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FF, opacity: 0.6 }} title="File uploads require storage configuration">
+          <Upload size={13} /> Upload Photo
+        </button>
+      </div>
+      {isLoading ? (
+        <div style={{ textAlign: "center" as const, color: "#9E9B94", fontSize: 13, padding: 24 }}>Loading...</div>
+      ) : photos.length === 0 ? (
+        <div style={{ textAlign: "center" as const, color: "#9E9B94", fontSize: 13, padding: 40, border: "1px dashed #E5E2DC", borderRadius: 10 }}>
+          <Image size={28} style={{ color: "#D0CEC9", display: "block", margin: "0 auto 8px" }} />
+          No home images uploaded yet
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
+          {photos.map((p: any) => (
+            <div key={p.id} style={{ border: "1px solid #E5E2DC", borderRadius: 8, overflow: "hidden" }}>
+              <img src={p.file_url} alt={p.name} style={{ width: "100%", height: 120, objectFit: "cover" as const }} />
+              <div style={{ padding: "6px 8px" }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "#1A1917", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{p.name}</div>
+                <div style={{ fontSize: 10, color: "#9E9B94" }}>{fmtDate(p.created_at)}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Profile Page ─────────────────────────────────────────────────────────
 export default function CustomerProfilePage() {
   const [, navigate] = useLocation();
   const [, params] = useRoute("/customers/:id");
   const clientId = parseInt(params?.id || "0");
+  const qc = useQueryClient();
 
-  const { data: profile, isLoading } = useQuery<any>({
+  const { data: profile, isLoading, refetch: refetchProfile } = useQuery<any>({
     queryKey: ["client-profile", clientId],
     queryFn: () => apiFetch(`/api/clients/${clientId}/full-profile`),
     enabled: clientId > 0,
@@ -1997,10 +2278,22 @@ export default function CustomerProfilePage() {
     staleTime: 30000,
   });
 
+  const { data: recurringSchedule } = useQuery<any>({
+    queryKey: ["client-recurring", clientId],
+    queryFn: () => apiFetch(`/api/clients/${clientId}/recurring-schedule`),
+    enabled: clientId > 0,
+    staleTime: 60000,
+  });
+
+  const updateMut = useMutation({
+    mutationFn: (data: any) => apiFetch(`/api/clients/${clientId}`, { method: "PUT", body: JSON.stringify(data) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["client-profile", clientId] }); refetchProfile(); },
+  });
+
   if (isLoading || !profile) {
     return (
       <DashboardLayout>
-        <div style={{ padding: "48px", textAlign: "center", color: "#9E9B94", fontSize: "13px" }}>
+        <div style={{ padding: "48px", textAlign: "center", color: "#9E9B94", fontSize: "13px", fontFamily: FF }}>
           Loading client profile...
         </div>
       </DashboardLayout>
@@ -2011,10 +2304,10 @@ export default function CustomerProfilePage() {
 
   return (
     <DashboardLayout>
-      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 0, fontFamily: FF }}>
         {/* Breadcrumb */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: 20 }}>
-          <button onClick={() => navigate("/customers")} style={{ display: "flex", alignItems: "center", gap: "6px", background: "none", border: "none", cursor: "pointer", color: "#9E9B94", fontSize: "13px", padding: 0 }}>
+          <button onClick={() => navigate("/customers")} style={{ display: "flex", alignItems: "center", gap: "6px", background: "none", border: "none", cursor: "pointer", color: "#9E9B94", fontSize: "13px", padding: 0, fontFamily: FF }}>
             <ArrowLeft size={14} /> Clients
           </button>
           <span style={{ color: "#C4C0BB", fontSize: "13px" }}>/</span>
@@ -2026,18 +2319,57 @@ export default function CustomerProfilePage() {
           client={profile}
           stats={profile.stats}
           jhStats={jhStats}
+          recurringSchedule={recurringSchedule}
           onSchedule={() => navigate("/dispatch")}
           onMessage={() => navigate(`/clients/${clientId}/messages`)}
           onInvoice={() => navigate(`/clients/${clientId}/invoices`)}
           onEdit={() => navigate(`/customers/${clientId}/edit`)}
         />
 
-        {/* 3-column grid: details | job history | intelligence */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr", gap: 20, alignItems: "start" }}>
-          <ClientDetailsPanel client={profile} />
+        {/* 3-column grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr", gap: 20, alignItems: "start", marginBottom: 24 }}>
+          <ClientDetailsPanel client={profile} jhStats={jhStats} recurringSchedule={recurringSchedule} />
           <JobHistoryPanel clientId={clientId} jhData={jhData} isLoading={jhLoading} />
           <ClientIntelligencePanel jhStats={jhStats} profile={profile} />
         </div>
+
+        {/* Collapsible sections */}
+        <CollapsibleSection title="Service Details" defaultOpen>
+          <ServiceDetailsSection client={profile} onUpdate={updateMut.mutateAsync} refetch={refetchProfile} recurringSchedule={recurringSchedule} />
+        </CollapsibleSection>
+        <CollapsibleSection title="Billing & Payments">
+          <BillingSection client={profile} invoices={profile.invoices || []} refetch={refetchProfile} />
+        </CollapsibleSection>
+        <CollapsibleSection title="Quotes">
+          <QuotesTab clientId={clientId} client={profile} />
+        </CollapsibleSection>
+        <CollapsibleSection title="Agreements">
+          <AgreementsTab clientId={clientId} agreements={profile.agreements || []} refetch={refetchProfile} />
+        </CollapsibleSection>
+        <CollapsibleSection title="Scorecards">
+          <ScorecardsTab scorecards={profile.scorecards || []} />
+        </CollapsibleSection>
+        <CollapsibleSection title="Contacts & Notifications">
+          <ContactsTab clientId={clientId} notifications={profile.notification_settings || []} refetch={refetchProfile} />
+        </CollapsibleSection>
+        <CollapsibleSection title="Client Portal">
+          <PortalTab clientId={clientId} client={profile} onPortalInvite={() => apiFetch(`/api/clients/${clientId}/portal-invite`, { method: "POST" })} refetch={refetchProfile} />
+        </CollapsibleSection>
+        <CollapsibleSection title="Technician Preferences">
+          <TechPrefsTab clientId={clientId} prefs={profile.tech_preferences || []} refetch={refetchProfile} />
+        </CollapsibleSection>
+        <CollapsibleSection title="Contact Tickets">
+          <ContactTicketsSection clientId={clientId} />
+        </CollapsibleSection>
+        <CollapsibleSection title="Inspections">
+          <InspectionsSection />
+        </CollapsibleSection>
+        <CollapsibleSection title="Attachments">
+          <AttachmentsSection clientId={clientId} />
+        </CollapsibleSection>
+        <CollapsibleSection title="Home Images">
+          <HomeImagesSection clientId={clientId} />
+        </CollapsibleSection>
       </div>
     </DashboardLayout>
   );

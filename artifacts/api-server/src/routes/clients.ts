@@ -4,7 +4,8 @@ import {
   clientsTable, jobsTable, usersTable, invoicesTable,
   scorecardsTable, clientHomesTable, technicianPreferencesTable,
   clientNotificationsTable, clientCommunicationsTable, clientAgreementsTable,
-  serviceZonesTable,
+  serviceZonesTable, quotesTable, contactTicketsTable, clientAttachmentsTable,
+  recurringSchedulesTable,
 } from "@workspace/db/schema";
 import { eq, and, ilike, or, count, sum, desc, sql, gte, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
@@ -783,6 +784,30 @@ router.get("/:id/job-history", requireAuth, async (req, res) => {
 
     const revenue_trend_pct = prior6Rev > 0 ? ((last6Rev - prior6Rev) / prior6Rev) * 100 : null;
 
+    // Pending jobs count
+    let pending_jobs = 0;
+    try {
+      const pendingRes = await db.execute(sql`
+        SELECT COUNT(*)::int AS cnt FROM jobs
+        WHERE client_id = ${clientId} AND company_id = ${companyId}
+          AND status::text = 'scheduled' AND scheduled_date >= CURRENT_DATE
+      `);
+      pending_jobs = parseInt(String((pendingRes.rows[0] as any)?.cnt ?? 0));
+    } catch (_err) { /* default 0 */ }
+
+    // eCard % — scorecards submitted / total visits
+    let ecard_pct = 0;
+    if (total_visits > 0) {
+      try {
+        const scRes = await db.execute(sql`
+          SELECT COUNT(*)::int AS cnt FROM scorecards
+          WHERE client_id = ${clientId} AND company_id = ${companyId} AND (excluded IS NULL OR excluded = false)
+        `);
+        const scCount = parseInt(String((scRes.rows[0] as any)?.cnt ?? 0));
+        ecard_pct = Math.round((scCount / total_visits) * 100);
+      } catch (_err) { /* default 0 */ }
+    }
+
     return res.json({
       rows: records,
       stats: {
@@ -797,10 +822,137 @@ router.get("/:id/job-history", requireAuth, async (req, res) => {
         is_recurring,
         skips,
         bumps,
+        pending_jobs,
+        ecard_pct,
       },
     });
   } catch (err) {
     console.error("Job history error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── GET CLIENT QUOTES ────────────────────────────────────────────────────────
+router.get("/:id/quotes", requireAuth, async (req, res) => {
+  try {
+    const clientId = parseInt(req.params.id);
+    const companyId = req.auth!.companyId;
+    const rows = await db.select().from(quotesTable)
+      .where(and(eq(quotesTable.client_id, clientId), eq(quotesTable.company_id, companyId)))
+      .orderBy(desc(quotesTable.created_at));
+    return res.json(rows);
+  } catch (err) {
+    console.error("Client quotes error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── GET CLIENT CONTACT TICKETS ───────────────────────────────────────────────
+router.get("/:id/contact-tickets", requireAuth, async (req, res) => {
+  try {
+    const clientId = parseInt(req.params.id);
+    const companyId = req.auth!.companyId;
+    const rows = await db.select({
+      id: contactTicketsTable.id,
+      ticket_type: contactTicketsTable.ticket_type,
+      notes: contactTicketsTable.notes,
+      job_id: contactTicketsTable.job_id,
+      created_at: contactTicketsTable.created_at,
+      created_by_first: usersTable.first_name,
+      created_by_last: usersTable.last_name,
+    })
+      .from(contactTicketsTable)
+      .leftJoin(usersTable, eq(contactTicketsTable.created_by, usersTable.id))
+      .where(and(eq(contactTicketsTable.client_id, clientId), eq(contactTicketsTable.company_id, companyId)))
+      .orderBy(desc(contactTicketsTable.created_at));
+    return res.json(rows);
+  } catch (err) {
+    console.error("Contact tickets error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── POST CLIENT CONTACT TICKET ───────────────────────────────────────────────
+router.post("/:id/contact-tickets", requireAuth, requireRole("owner", "admin", "office"), async (req, res) => {
+  try {
+    const clientId = parseInt(req.params.id);
+    const companyId = req.auth!.companyId;
+    const { ticket_type, notes, job_id } = req.body;
+    const [row] = await db.insert(contactTicketsTable).values({
+      client_id: clientId,
+      company_id: companyId,
+      user_id: req.auth!.userId,
+      created_by: req.auth!.userId,
+      ticket_type,
+      notes,
+      job_id: job_id || null,
+    }).returning();
+    return res.json(row);
+  } catch (err) {
+    console.error("Create ticket error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── GET CLIENT ATTACHMENTS ───────────────────────────────────────────────────
+router.get("/:id/attachments", requireAuth, async (req, res) => {
+  try {
+    const clientId = parseInt(req.params.id);
+    const companyId = req.auth!.companyId;
+    const rows = await db.select({
+      id: clientAttachmentsTable.id,
+      name: clientAttachmentsTable.name,
+      file_url: clientAttachmentsTable.file_url,
+      file_type: clientAttachmentsTable.file_type,
+      file_size: clientAttachmentsTable.file_size,
+      category: clientAttachmentsTable.category,
+      created_at: clientAttachmentsTable.created_at,
+      uploader_first: usersTable.first_name,
+      uploader_last: usersTable.last_name,
+    })
+      .from(clientAttachmentsTable)
+      .leftJoin(usersTable, eq(clientAttachmentsTable.uploaded_by, usersTable.id))
+      .where(and(eq(clientAttachmentsTable.client_id, clientId), eq(clientAttachmentsTable.company_id, companyId)))
+      .orderBy(desc(clientAttachmentsTable.created_at));
+    return res.json(rows);
+  } catch (err) {
+    console.error("Attachments error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── GET CLIENT RECURRING SCHEDULE ───────────────────────────────────────────
+router.get("/:id/recurring-schedule", requireAuth, async (req, res) => {
+  try {
+    const clientId = parseInt(req.params.id);
+    const companyId = req.auth!.companyId;
+    const rows = await db.select({
+      id: recurringSchedulesTable.id,
+      frequency: recurringSchedulesTable.frequency,
+      day_of_week: recurringSchedulesTable.day_of_week,
+      start_date: recurringSchedulesTable.start_date,
+      end_date: recurringSchedulesTable.end_date,
+      service_type: recurringSchedulesTable.service_type,
+      duration_minutes: recurringSchedulesTable.duration_minutes,
+      base_fee: recurringSchedulesTable.base_fee,
+      notes: recurringSchedulesTable.notes,
+      is_active: recurringSchedulesTable.is_active,
+      assigned_employee_id: recurringSchedulesTable.assigned_employee_id,
+      tech_first: usersTable.first_name,
+      tech_last: usersTable.last_name,
+    })
+      .from(recurringSchedulesTable)
+      .leftJoin(usersTable, eq(recurringSchedulesTable.assigned_employee_id, usersTable.id))
+      .where(and(
+        eq(recurringSchedulesTable.customer_id, clientId),
+        eq(recurringSchedulesTable.company_id, companyId),
+        eq(recurringSchedulesTable.is_active, true),
+      ))
+      .orderBy(desc(recurringSchedulesTable.created_at))
+      .limit(1);
+    return res.json(rows[0] || null);
+  } catch (err) {
+    console.error("Recurring schedule error:", err);
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });
