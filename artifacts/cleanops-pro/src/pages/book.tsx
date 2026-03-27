@@ -277,10 +277,14 @@ export default function BookPage() {
       pubFetch(`/api/public/frequencies/${scopeId}`),
       pubFetch(`/api/public/addons/${scopeId}`),
     ]).then(([freqs, ads]) => {
-      setFrequencies(freqs);
+      const filteredFreqs = (freqs as PricingFrequency[]).filter(f => {
+        if (scopeId === 11) return !f.frequency.toLowerCase().includes("onetime") && !f.frequency.toLowerCase().includes("one_time") && f.frequency !== "onetime";
+        return true;
+      });
+      setFrequencies(filteredFreqs);
       setAddons(ads);
-      const oneTime = freqs.find((f: PricingFrequency) => f.frequency.toLowerCase().includes("one") || f.frequency.toLowerCase().includes("single"));
-      setFrequencyStr(oneTime?.frequency ?? freqs[0]?.frequency ?? "");
+      const defaultFreq = filteredFreqs.find((f: PricingFrequency) => f.frequency === "weekly") ?? filteredFreqs[0];
+      setFrequencyStr(defaultFreq?.frequency ?? "");
     }).catch(() => {});
   }, [scopeId]);
 
@@ -850,31 +854,35 @@ export default function BookPage() {
               <p style={s.h2}>What type of cleaning do you need?</p>
               <p style={s.sub}>Select a service and tell us about your home.</p>
 
-              {/* Scope cards grouped by scope_group */}
-              {Object.entries(
-                company.active_scopes.reduce<Record<string, typeof company.active_scopes>>((acc, sc) => {
-                  const g = sc.scope_group || "Other";
-                  if (!acc[g]) acc[g] = [];
-                  acc[g].push(sc);
-                  return acc;
-                }, {})
-              ).map(([group, groupScopes]) => (
-                <div key={group} style={{ marginBottom: 20 }}>
-                  <p style={{ fontSize: 11, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>{group}</p>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    {groupScopes.map(sc => (
-                      <div key={sc.id} style={s.scopeCard(scopeId === sc.id)} onClick={() => setScopeId(sc.id)}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <div style={{ width: 18, height: 18, borderRadius: "50%", border: `2px solid ${scopeId === sc.id ? brand : "#C4C1BA"}`, background: scopeId === sc.id ? brand : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                            {scopeId === sc.id && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }} />}
+              {/* Scope cards — fixed 4-scope allowlist in 2 groups */}
+              {(() => {
+                const ALLOWED_IDS = [1, 3, 11, 7];
+                const allScopes = company.active_scopes.filter(sc => ALLOWED_IDS.includes(sc.id));
+                const residentialIds = [1, 3, 11];
+                const commercialIds = [7];
+                const residentialScopes = residentialIds.map(id => allScopes.find(sc => sc.id === id)).filter(Boolean) as typeof allScopes;
+                const commercialScopes = commercialIds.map(id => allScopes.find(sc => sc.id === id)).filter(Boolean) as typeof allScopes;
+                const groups: [string, typeof allScopes][] = [];
+                if (residentialScopes.length > 0) groups.push(["Residential", residentialScopes]);
+                if (commercialScopes.length > 0) groups.push(["Commercial", commercialScopes]);
+                return groups.map(([group, groupScopes]) => (
+                  <div key={group} style={{ marginBottom: 20 }}>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>{group}</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      {groupScopes.map(sc => (
+                        <div key={sc.id} style={s.scopeCard(scopeId === sc.id)} onClick={() => setScopeId(sc.id)}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <div style={{ width: 18, height: 18, borderRadius: "50%", border: `2px solid ${scopeId === sc.id ? brand : "#C4C1BA"}`, background: scopeId === sc.id ? brand : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                              {scopeId === sc.id && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }} />}
+                            </div>
+                            <span style={{ fontWeight: 600, fontSize: 14, color: "#1A1917" }}>{sc.name}</span>
                           </div>
-                          <span style={{ fontWeight: 600, fontSize: 14, color: "#1A1917" }}>{sc.name}</span>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ));
+              })()}
 
               {scopeId && !isCommercial && (
                 <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 24, marginTop: 8 }}>
