@@ -174,6 +174,14 @@ export default function BookPage() {
 
   const brand = company?.brand_color || "#00C9A0";
 
+  // Resolve relative logo URLs to absolute so they work in any embed context
+  function resolveUrl(url: string | null): string | null {
+    if (!url) return null;
+    if (url.startsWith("http://") || url.startsWith("https://")) return url;
+    return `${window.location.origin}${url.startsWith("/") ? url : `/${url}`}`;
+  }
+  const logoSrc = resolveUrl(company?.logo_url ?? null);
+
   // ── Step state ───────────────────────────────────────────────────────────
   const [step, setStep] = useState(0);
   const TOTAL_STEPS = 6;
@@ -499,8 +507,8 @@ export default function BookPage() {
       <div style={{ position: "sticky", top: 24, display: "flex", flexDirection: "column", gap: 16 }}>
         {/* Company info */}
         <div style={s.card}>
-          {company.logo_url && (
-            <img src={company.logo_url} alt={company.name} style={{ height: 40, objectFit: "contain", marginBottom: 12 }} />
+          {logoSrc && (
+            <img src={logoSrc} alt={company.name} style={{ height: 40, objectFit: "contain", marginBottom: 12 }} />
           )}
           <p style={{ margin: "0 0 12px", fontWeight: 700, fontSize: 16, color: "#1A1917" }}>{company.name}</p>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -569,8 +577,8 @@ export default function BookPage() {
     <div style={{ minHeight: "100vh", background: "#F7F6F3", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       {/* Top bar */}
       <div style={{ background: "#fff", borderBottom: "1px solid #E5E2DC", padding: "14px 32px", display: "flex", alignItems: "center", gap: 16 }}>
-        {company.logo_url ? (
-          <img src={company.logo_url} alt={company.name} style={{ height: 32, objectFit: "contain" }} />
+        {logoSrc ? (
+          <img src={logoSrc} alt={company.name} style={{ height: 32, objectFit: "contain" }} />
         ) : (
           <span style={{ fontWeight: 800, fontSize: 18, color: brand }}>{company.name}</span>
         )}
