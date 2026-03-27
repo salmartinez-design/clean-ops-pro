@@ -125,6 +125,9 @@ router.patch("/me", requireAuth, async (req, res) => {
     if (auto_charge_on_invoice !== undefined) patch.auto_charge_on_invoice = auto_charge_on_invoice;
     const { online_booking_lead_hours } = req.body;
     if (online_booking_lead_hours !== undefined) patch.online_booking_lead_hours = online_booking_lead_hours;
+    const { dispatch_start_hour, dispatch_end_hour } = req.body;
+    if (dispatch_start_hour !== undefined) patch.dispatch_start_hour = Number(dispatch_start_hour);
+    if (dispatch_end_hour !== undefined) patch.dispatch_end_hour = Number(dispatch_end_hour);
 
     if (Object.keys(patch).length === 0) return res.json({ success: true });
 

@@ -56,6 +56,8 @@ export const companiesTable = pgTable("companies", {
   business_hours: text("business_hours"),
   booking_policies: text("booking_policies"),
   online_booking_lead_hours: integer("online_booking_lead_hours").notNull().default(48),
+  dispatch_start_hour: integer("dispatch_start_hour").notNull().default(8),
+  dispatch_end_hour: integer("dispatch_end_hour").notNull().default(18),
   invoice_sequence_start: integer("invoice_sequence_start").notNull().default(1),
   qb_access_token: text("qb_access_token"),
   qb_refresh_token: text("qb_refresh_token"),

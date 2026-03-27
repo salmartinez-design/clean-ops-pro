@@ -19,9 +19,21 @@ const FF = "'Plus Jakarta Sans', sans-serif";
 const SLOT_W = 80;
 const COL_W = 180;
 const ROW_H = 64;
-const DAY_START = 7 * 60;
-const DAY_END = 20 * 60;
-const TOTAL_SLOTS = (DAY_END - DAY_START) / 30;
+// Mutable — overwritten by company dispatch_start_hour / dispatch_end_hour settings
+let DAY_START = 8 * 60;   // default: 8 AM
+let DAY_END   = 18 * 60;  // default: 6 PM
+let TOTAL_SLOTS = (DAY_END - DAY_START) / 30;
+let TIMES: string[] = [];
+
+function refreshTimeline() {
+  TOTAL_SLOTS = (DAY_END - DAY_START) / 30;
+  TIMES = Array.from({ length: TOTAL_SLOTS }, (_, i) => {
+    const mins = DAY_START + i * 30;
+    const h = Math.floor(mins / 60), m = mins % 60;
+    return `${h === 0 ? 12 : h > 12 ? h - 12 : h}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+  });
+}
+refreshTimeline();
 
 const STATUS: Record<string, { bg: string; border: string; text: string; dot: string }> = {
   scheduled:   { bg: "#DBEAFE", border: "#93C5FD", text: "#1D4ED8", dot: "#3B82F6" },
@@ -30,12 +42,6 @@ const STATUS: Record<string, { bg: string; border: string; text: string; dot: st
   cancelled:   { bg: "#F3F4F6", border: "#D1D5DB", text: "#6B7280", dot: "#9CA3AF" },
   flagged:     { bg: "#FEE2E2", border: "#FCA5A5", text: "#991B1B", dot: "#EF4444" },
 };
-
-const TIMES = Array.from({ length: TOTAL_SLOTS }, (_, i) => {
-  const mins = DAY_START + i * 30;
-  const h = Math.floor(mins / 60), m = mins % 60;
-  return `${h === 0 ? 12 : h > 12 ? h - 12 : h}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
-});
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 interface ClockEntry { id: number; clock_in_at: string | null; clock_out_at: string | null; distance_from_job_ft: number | null; is_flagged: boolean; }
@@ -911,10 +917,9 @@ const TIME_OFF_BG: Record<string, string> = {
   absent: "#FFEBEE",
 };
 
-// 9am–6pm band coordinates relative to DAY_START
-const BAND_LEFT  = ((9  * 60 - DAY_START) / 30) * SLOT_W; // 9am
-const BAND_RIGHT = ((18 * 60 - DAY_START) / 30) * SLOT_W; // 6pm
-const BAND_WIDTH = BAND_RIGHT - BAND_LEFT;
+// Time-off band covers the full dispatch timeline (since the board IS business hours)
+function getBandLeft()  { return 0; }
+function getBandWidth() { return TOTAL_SLOTS * SLOT_W; }
 
 function EmployeeRow({ employee, onChipClick, nowLine }: { employee: Employee; onChipClick: (j: DispatchJob) => void; nowLine: number }) {
   const { setNodeRef, isOver } = useDroppable({ id: `row-${employee.id}` });
@@ -946,7 +951,7 @@ function EmployeeRow({ employee, onChipClick, nowLine }: { employee: Employee; o
         {TIMES.map((_, i) => <div key={i} style={{ position: "absolute", left: i * SLOT_W, top: 0, bottom: 0, borderRight: i % 2 === 1 ? "1px solid #E5E2DC" : "1px solid #EEECE7" }} />)}
         {/* Time-off band sits behind job chips (zIndex 0) */}
         {timeOffBg && (
-          <div style={{ position: "absolute", left: BAND_LEFT, width: BAND_WIDTH, top: 0, bottom: 0, backgroundColor: timeOffBg, zIndex: 0, pointerEvents: "none" }} />
+          <div style={{ position: "absolute", left: getBandLeft(), width: getBandWidth(), top: 0, bottom: 0, backgroundColor: timeOffBg, zIndex: 0, pointerEvents: "none" }} />
         )}
         {nowLine >= 0 && nowLine <= TOTAL_SLOTS * SLOT_W && <div style={{ position: "absolute", left: nowLine, top: 0, bottom: 0, width: 2, backgroundColor: "#EF4444", zIndex: 3, pointerEvents: "none" }} />}
         {employee.jobs.map(j => <JobChip key={j.id} job={j} onClick={onChipClick} assignedName={employee.name} />)}
@@ -1016,6 +1021,27 @@ export default function JobsPage() {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const timelineRef = useRef<HTMLDivElement>(null);
 
+  const [, forceUpdate] = useState(0);
+
+  // Load company dispatch hour settings once on mount
+  useEffect(() => {
+    const _API = import.meta.env.BASE_URL.replace(/\/$/, "");
+    fetch(`${_API}/api/companies/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(c => {
+        if (!c) return;
+        const sh = c.dispatch_start_hour ?? 8;
+        const eh = c.dispatch_end_hour ?? 18;
+        if (sh !== DAY_START / 60 || eh !== DAY_END / 60) {
+          DAY_START = sh * 60;
+          DAY_END   = eh * 60;
+          refreshTimeline();
+          forceUpdate(n => n + 1); // trigger re-render with new timeline
+        }
+      })
+      .catch(() => {});
+  }, [token]);
+
   const load = useCallback(async () => {
     const id = ++refreshRef.current;
     setLoading(true);
@@ -1045,11 +1071,10 @@ export default function JobsPage() {
       .catch(() => {});
   }, [token]);
 
-  // Scroll to 9am on mount and date change
+  // Scroll to start of dispatch window on mount and date change
   useEffect(() => {
     if (!timelineRef.current) return;
-    const scrollTo9am = (9 * 60 - DAY_START) / 30 * SLOT_W; // (540-420)/30*80 = 320px
-    timelineRef.current.scrollLeft = scrollTo9am;
+    timelineRef.current.scrollLeft = 0;
   }, [selectedDate, loading]);
 
   // Close zone dropdown on outside click

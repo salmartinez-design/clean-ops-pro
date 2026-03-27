@@ -335,6 +335,12 @@ function BrandingTab() {
   );
 }
 
+const HOUR_OPTIONS = Array.from({ length: 19 }, (_, i) => {
+  const h = i + 5; // 5 AM → 11 PM
+  const label = h === 12 ? "12:00 PM" : h < 12 ? `${h}:00 AM` : `${h - 12}:00 PM`;
+  return { value: h, label };
+});
+
 function GeneralTab() {
   const { data: company } = useGetMyCompany({ request: { headers: getAuthHeaders() } });
   const updateCompany = useUpdateMyCompany({ request: { headers: getAuthHeaders() } });
@@ -342,18 +348,26 @@ function GeneralTab() {
   const [name, setName] = useState('');
   const [payCadence, setPayCadence] = useState('biweekly');
   const [paymentTermsDays, setPaymentTermsDays] = useState(0);
+  const [dispatchStartHour, setDispatchStartHour] = useState(8);
+  const [dispatchEndHour, setDispatchEndHour] = useState(18);
 
   useEffect(() => {
     if (company) {
       setName(company.name || '');
       setPayCadence(company.pay_cadence || 'biweekly');
       setPaymentTermsDays((company as any).payment_terms_days ?? 0);
+      setDispatchStartHour((company as any).dispatch_start_hour ?? 8);
+      setDispatchEndHour((company as any).dispatch_end_hour ?? 18);
     }
   }, [company]);
 
   const handleSave = () => {
+    if (dispatchEndHour <= dispatchStartHour) {
+      toast({ variant: "destructive", title: "Invalid hours", description: "End time must be after start time." });
+      return;
+    }
     updateCompany.mutate(
-      { data: { name, pay_cadence: payCadence as any, payment_terms_days: paymentTermsDays } as any },
+      { data: { name, pay_cadence: payCadence as any, payment_terms_days: paymentTermsDays, dispatch_start_hour: dispatchStartHour, dispatch_end_hour: dispatchEndHour } as any },
       {
         onSuccess: () => toast({ title: "Settings saved", description: "Company profile updated." }),
         onError: () => toast({ variant: "destructive", title: "Error", description: "Failed to save settings." }),
@@ -397,6 +411,26 @@ function GeneralTab() {
           <option value={15}>NET 15</option>
           <option value={30}>NET 30</option>
         </select>
+      </Section>
+      <Section title="Dispatch Board Hours" desc="The dispatch timeline will only show this window by default. Jobs outside this range cannot be scheduled from the board.">
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ display: 'block', fontFamily: FF, fontSize: '11px', fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>Start</label>
+            <select value={dispatchStartHour} onChange={e => setDispatchStartHour(parseInt(e.target.value))} style={selectStyle}>
+              {HOUR_OPTIONS.filter(o => o.value < dispatchEndHour).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div style={{ paddingTop: 20, color: '#9E9B94', fontFamily: FF, fontSize: 13 }}>to</div>
+          <div style={{ flex: 1 }}>
+            <label style={{ display: 'block', fontFamily: FF, fontSize: '11px', fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>End</label>
+            <select value={dispatchEndHour} onChange={e => setDispatchEndHour(parseInt(e.target.value))} style={selectStyle}>
+              {HOUR_OPTIONS.filter(o => o.value > dispatchStartHour).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+        </div>
+        <p style={{ fontFamily: FF, fontSize: 11, color: '#9E9B94', margin: '8px 0 0' }}>
+          Default: 8:00 AM – 6:00 PM. Changes take effect on next page load.
+        </p>
       </Section>
       <button onClick={handleSave} disabled={updateCompany.isPending} style={{ alignSelf: 'flex-start', padding: '10px 24px', backgroundColor: 'var(--brand)', color: '#FFFFFF', borderRadius: '6px', fontSize: '13px', fontFamily: FF, fontWeight: 600, border: 'none', cursor: 'pointer', opacity: updateCompany.isPending ? 0.7 : 1 }}>
         {updateCompany.isPending ? 'Saving...' : 'Save Settings'}
