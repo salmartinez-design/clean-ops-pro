@@ -587,4 +587,164 @@ router.post("/book", rateLimit, async (req, res) => {
   }
 });
 
+// ── POST /api/public/book/walkthrough ─────────────────────────────────────────
+// Commercial walkthrough: no Stripe, sends alert email to info@phes.io
+router.post("/book/walkthrough", rateLimit, async (req, res) => {
+  try {
+    const {
+      company_id, first_name, last_name, phone, email, zip,
+      referral_source, sms_consent, address, preferred_date,
+    } = req.body;
+
+    if (!company_id || !first_name || !last_name || !phone || !email) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const { sql: drizzleSql } = await import("drizzle-orm");
+
+    const existingClients = await db.execute(
+      drizzleSql`SELECT id FROM clients WHERE email = ${email} AND company_id = ${company_id} LIMIT 1`
+    );
+    let clientId: number;
+    if (existingClients.rows.length > 0) {
+      clientId = (existingClients.rows[0] as any).id;
+    } else {
+      const newClient = await db.execute(
+        drizzleSql`
+          INSERT INTO clients (company_id, first_name, last_name, phone, email, referral_source, address, created_at)
+          VALUES (${company_id}, ${first_name}, ${last_name}, ${phone}, ${email}, ${referral_source || null}, ${address || null}, NOW())
+          RETURNING id
+        `
+      );
+      clientId = (newClient.rows[0] as any).id;
+    }
+
+    const jobNotes = `Commercial Walkthrough — booked via online widget. Address: ${address || "N/A"}.`;
+    const jobResult = await db.execute(
+      drizzleSql`
+        INSERT INTO jobs (company_id, client_id, service_type, status, scheduled_date, frequency, base_fee, estimated_hours, hourly_rate, notes, created_at)
+        VALUES (${company_id}, ${clientId}, 'office_cleaning', 'scheduled', ${preferred_date || null}, 'on_demand', 0, 0, 0, ${jobNotes}, NOW())
+        RETURNING id
+      `
+    );
+    const jobId = (jobResult.rows[0] as any).id;
+
+    const resendKey = process.env.RESEND_API_KEY;
+    if (resendKey) {
+      try {
+        const { Resend } = await import("resend");
+        const resend = new Resend(resendKey);
+        const dateStr = preferred_date
+          ? new Date(preferred_date + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })
+          : "Not specified";
+        await resend.emails.send({
+          from: "Qleno <noreply@phes.io>",
+          to: ["info@phes.io"],
+          subject: "New Commercial Walkthrough Request",
+          html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:32px;background:#F7F6F3;">
+<div style="background:#fff;border:1px solid #E5E2DC;border-radius:8px;padding:32px;">
+<div style="background:#5B9BD5;padding:16px 24px;border-radius:4px;margin-bottom:24px;">
+  <span style="color:#fff;font-size:18px;font-weight:bold;">Phes — New Walkthrough Request</span>
+</div>
+<table style="width:100%;border-collapse:collapse;font-size:14px;color:#1A1917;">
+  <tr><td style="padding:8px 0;color:#6B6860;width:140px;">Name</td><td style="padding:8px 0;font-weight:600;">${first_name} ${last_name}</td></tr>
+  <tr><td style="padding:8px 0;color:#6B6860;">Phone</td><td style="padding:8px 0;">${phone}</td></tr>
+  <tr><td style="padding:8px 0;color:#6B6860;">Email</td><td style="padding:8px 0;">${email}</td></tr>
+  <tr><td style="padding:8px 0;color:#6B6860;">Address</td><td style="padding:8px 0;">${address || "Not provided"}</td></tr>
+  <tr><td style="padding:8px 0;color:#6B6860;">Appointment</td><td style="padding:8px 0;font-weight:600;">${dateStr}</td></tr>
+  <tr><td style="padding:8px 0;color:#6B6860;">Source</td><td style="padding:8px 0;">Booking Widget — Commercial Walkthrough</td></tr>
+</table>
+</div></div>`,
+        });
+      } catch (emailErr) {
+        console.error("[walkthrough] Resend error:", emailErr);
+      }
+    }
+
+    console.log(`[WALKTHROUGH] Booked — client_id=${clientId} job_id=${jobId}`);
+    return res.status(201).json({ ok: true, client_id: clientId, job_id: jobId });
+  } catch (err: any) {
+    console.error("POST /public/book/walkthrough:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ── POST /api/public/book/commercial-confirm ───────────────────────────────────
+// Commercial single-visit: $180 flat, Stripe card capture required
+router.post("/book/commercial-confirm", rateLimit, async (req, res) => {
+  try {
+    const {
+      company_id, first_name, last_name, phone, email, zip,
+      referral_source, sms_consent, address, preferred_date,
+      payment_method_id, stripe_customer_id,
+    } = req.body;
+
+    if (!company_id || !first_name || !last_name || !phone || !email) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey || !payment_method_id) {
+      return res.status(400).json({ error: "Card verification required" });
+    }
+
+    const Stripe = (await import("stripe")).default;
+    const stripe = new Stripe(stripeKey, { apiVersion: "2024-12-18.acacia" });
+
+    let cardLast4: string | null = null;
+    let cardBrand: string | null = null;
+    let cardExpiry: string | null = null;
+    try {
+      const pm = await stripe.paymentMethods.retrieve(payment_method_id);
+      cardLast4 = pm.card?.last4 || null;
+      cardBrand = pm.card?.brand || null;
+      cardExpiry = pm.card?.exp_month && pm.card?.exp_year
+        ? `${String(pm.card.exp_month).padStart(2, "0")}/${pm.card.exp_year}` : null;
+      if (stripe_customer_id && !pm.customer) {
+        await stripe.paymentMethods.attach(payment_method_id, { customer: stripe_customer_id });
+        await stripe.customers.update(stripe_customer_id, { invoice_settings: { default_payment_method: payment_method_id } });
+      }
+    } catch {
+      return res.status(422).json({ error: "We were unable to verify your card. Please check your details or use a different card." });
+    }
+
+    const { sql: drizzleSql } = await import("drizzle-orm");
+    const existingClients = await db.execute(
+      drizzleSql`SELECT id FROM clients WHERE email = ${email} AND company_id = ${company_id} LIMIT 1`
+    );
+    let clientId: number;
+    if (existingClients.rows.length > 0) {
+      clientId = (existingClients.rows[0] as any).id;
+      await db.execute(
+        drizzleSql`UPDATE clients SET stripe_customer_id = COALESCE(stripe_customer_id, ${stripe_customer_id || null}), stripe_payment_method_id = ${payment_method_id}, payment_source = 'stripe', card_last_four = ${cardLast4}, card_brand = ${cardBrand}, card_expiry = ${cardExpiry}, card_saved_at = NOW() WHERE id = ${clientId}`
+      );
+    } else {
+      const newClient = await db.execute(
+        drizzleSql`
+          INSERT INTO clients (company_id, first_name, last_name, phone, email, referral_source, stripe_customer_id, stripe_payment_method_id, payment_source, card_last_four, card_brand, card_expiry, card_saved_at, created_at)
+          VALUES (${company_id}, ${first_name}, ${last_name}, ${phone}, ${email}, ${referral_source || null}, ${stripe_customer_id || null}, ${payment_method_id}, 'stripe', ${cardLast4}, ${cardBrand}, ${cardExpiry}, NOW(), NOW())
+          RETURNING id
+        `
+      );
+      clientId = (newClient.rows[0] as any).id;
+    }
+
+    const jobNotes = `Commercial Single Visit — booked via online widget. Address: ${address || "N/A"}. $180 for up to 3 hours, $60/additional hour.`;
+    const jobResult = await db.execute(
+      drizzleSql`
+        INSERT INTO jobs (company_id, client_id, service_type, status, scheduled_date, frequency, base_fee, estimated_hours, hourly_rate, notes, created_at)
+        VALUES (${company_id}, ${clientId}, 'office_cleaning', 'scheduled', ${preferred_date || null}, 'on_demand', 180, 3, 60, ${jobNotes}, NOW())
+        RETURNING id
+      `
+    );
+    const jobId = (jobResult.rows[0] as any).id;
+
+    console.log(`[COMMERCIAL] Single visit confirmed — client_id=${clientId} job_id=${jobId} card=${cardBrand} *${cardLast4}`);
+    return res.status(201).json({ ok: true, client_id: clientId, job_id: jobId, pricing: { final_total: 180 }, card_last4: cardLast4, card_brand: cardBrand });
+  } catch (err: any) {
+    console.error("POST /public/book/commercial-confirm:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 export default router;

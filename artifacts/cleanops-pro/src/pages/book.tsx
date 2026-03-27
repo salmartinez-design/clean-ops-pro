@@ -223,6 +223,10 @@ export default function BookPage() {
   const [bookError, setBookError] = useState("");
   const [booking, setBooking] = useState(false);
 
+  // Commercial booking
+  const [commercialOption, setCommercialOption] = useState<"single" | "walkthrough" | null>(null);
+  const [walkthroughBooking, setWalkthroughBooking] = useState(false);
+
   // Step 4: Stripe card capture
   const [stripeEnabled, setStripeEnabled] = useState<boolean | null>(null); // null = unknown
   const [stripeSetupLoading, setStripeSetupLoading] = useState(false);
@@ -398,9 +402,17 @@ export default function BookPage() {
           return;
         }
         const paymentMethodId = setupIntent.payment_method;
-        const result = await pubFetch("/api/public/book/confirm", {
+        const isCommercialSingle = commercialOption === "single";
+        const result = await pubFetch(isCommercialSingle ? "/api/public/book/commercial-confirm" : "/api/public/book/confirm", {
           method: "POST",
-          body: JSON.stringify({
+          body: JSON.stringify(isCommercialSingle ? {
+            company_id: company.id,
+            first_name: firstName, last_name: lastName, phone, email, zip,
+            referral_source: referral || null, sms_consent: smsConsent,
+            address, preferred_date: selectedDate,
+            payment_method_id: paymentMethodId,
+            stripe_customer_id: stripeCustomerId,
+          } : {
             company_id: company.id,
             first_name: firstName, last_name: lastName, phone, email, zip,
             referral_source: referral || null, sms_consent: smsConsent,
@@ -438,6 +450,32 @@ export default function BookPage() {
       setBookError(msg);
     } finally {
       setBooking(false);
+    }
+  }
+
+  // ── Walkthrough submission (no Stripe) ───────────────────────────────────
+  async function submitWalkthroughBooking() {
+    if (!company) return;
+    setWalkthroughBooking(true);
+    setBookError("");
+    try {
+      const result = await pubFetch("/api/public/book/walkthrough", {
+        method: "POST",
+        body: JSON.stringify({
+          company_id: company.id,
+          first_name: firstName, last_name: lastName, phone, email, zip,
+          referral_source: referral || null, sms_consent: smsConsent,
+          address, preferred_date: selectedDate,
+        }),
+      });
+      setBookResult(result);
+      setStep(5);
+    } catch (err: any) {
+      let msg = err.message || "Something went wrong. Please try again.";
+      try { const parsed = JSON.parse(msg); if (parsed.error) msg = parsed.error; } catch {}
+      setBookError(msg);
+    } finally {
+      setWalkthroughBooking(false);
     }
   }
 
@@ -497,6 +535,7 @@ export default function BookPage() {
   }
 
   const selectedScope = company.active_scopes.find(s => s.id === scopeId);
+  const isCommercial = (selectedScope?.name ?? "").toLowerCase().includes("commercial");
   const cleanlinessLabel: Record<number, string> = { 1: "Very Clean", 2: "Moderately Clean", 3: "Very Dirty" };
 
   const stepLabels = ["Contact", "Scope", "Frequency", "Date", "Payment", "Confirmed"];
@@ -759,7 +798,7 @@ export default function BookPage() {
                 </div>
               ))}
 
-              {scopeId && (
+              {scopeId && !isCommercial && (
                 <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 24, marginTop: 8 }}>
                   <p style={{ fontWeight: 700, fontSize: 15, color: "#1A1917", marginBottom: 16 }}>Home Details</p>
 
@@ -806,12 +845,58 @@ export default function BookPage() {
                 </div>
               )}
 
+              {scopeId && isCommercial && (
+                <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 24, marginTop: 8 }}>
+                  <p style={{ fontWeight: 700, fontSize: 15, color: "#1A1917", marginBottom: 4 }}>Select Service Type</p>
+                  <p style={{ fontSize: 13, color: "#6B6860", marginBottom: 20 }}>Choose the option that fits your needs.</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+                    {/* Single Visit */}
+                    <div
+                      onClick={() => setCommercialOption("single")}
+                      style={{
+                        padding: "18px 20px", borderRadius: 10, cursor: "pointer", transition: "all 0.15s",
+                        border: `2px solid ${commercialOption === "single" ? brand : "#E5E2DC"}`,
+                        background: commercialOption === "single" ? `${brand}10` : "#fff",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                        <div style={{ width: 18, height: 18, borderRadius: "50%", border: `2px solid ${commercialOption === "single" ? brand : "#C4C1BA"}`, background: commercialOption === "single" ? brand : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          {commercialOption === "single" && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }} />}
+                        </div>
+                        <span style={{ fontWeight: 700, fontSize: 15, color: "#1A1917" }}>Single Visit Cleaning</span>
+                      </div>
+                      <p style={{ margin: "0 0 0 28px", fontSize: 13, color: "#6B6860" }}>$180 for up to 3 hours. Each additional hour is $60.</p>
+                    </div>
+
+                    {/* Cleaning Walkthrough */}
+                    <div
+                      onClick={() => setCommercialOption("walkthrough")}
+                      style={{
+                        padding: "18px 20px", borderRadius: 10, cursor: "pointer", transition: "all 0.15s", position: "relative",
+                        border: `2px solid ${brand}`,
+                        background: commercialOption === "walkthrough" ? `${brand}10` : "#fff",
+                      }}
+                    >
+                      <div style={{ position: "absolute", top: -11, left: 16, background: brand, color: "#fff", fontSize: 11, fontWeight: 700, padding: "2px 12px", borderRadius: 20, letterSpacing: "0.04em" }}>Recommended</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                        <div style={{ width: 18, height: 18, borderRadius: "50%", border: `2px solid ${commercialOption === "walkthrough" ? brand : "#C4C1BA"}`, background: commercialOption === "walkthrough" ? brand : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          {commercialOption === "walkthrough" && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }} />}
+                        </div>
+                        <span style={{ fontWeight: 700, fontSize: 15, color: "#1A1917" }}>Cleaning Walkthrough</span>
+                      </div>
+                      <p style={{ margin: "0 0 0 28px", fontSize: 13, color: "#6B6860" }}>Free assessment. We visit your space, understand your needs, and build a custom recurring cleaning plan.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
                 <button style={s.btn(false)} onClick={() => setStep(0)}>Back</button>
                 <button
-                  style={{ ...s.btn(), opacity: !scopeId || !sqft ? 0.5 : 1 }}
-                  disabled={!scopeId || !sqft}
-                  onClick={() => setStep(2)}
+                  style={{ ...s.btn(), opacity: (isCommercial ? !commercialOption : (!scopeId || !sqft)) ? 0.5 : 1 }}
+                  disabled={isCommercial ? !commercialOption : (!scopeId || !sqft)}
+                  onClick={() => isCommercial ? setStep(3) : setStep(2)}
                 >
                   Continue
                 </button>
@@ -929,10 +1014,26 @@ export default function BookPage() {
                 </div>
               )}
 
+              {bookError && (
+                <div style={{ marginTop: 16, padding: "12px 16px", background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#DC2626" }}>
+                  <AlertCircle size={14} /> {bookError}
+                </div>
+              )}
+
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
-                <button style={s.btn(false)} onClick={() => setStep(2)}>Back</button>
-                <button style={{ ...s.btn(), opacity: !selectedDate ? 0.5 : 1 }} disabled={!selectedDate} onClick={() => setStep(4)}>
-                  Continue
+                <button style={s.btn(false)} onClick={() => isCommercial ? setStep(1) : setStep(2)}>Back</button>
+                <button
+                  style={{ ...s.btn(), opacity: (!selectedDate || walkthroughBooking) ? 0.5 : 1 }}
+                  disabled={!selectedDate || walkthroughBooking}
+                  onClick={() => {
+                    if (isCommercial && commercialOption === "walkthrough") {
+                      submitWalkthroughBooking();
+                    } else {
+                      setStep(4);
+                    }
+                  }}
+                >
+                  {walkthroughBooking ? "Scheduling..." : (isCommercial && commercialOption === "walkthrough") ? "Schedule Walkthrough" : "Continue"}
                 </button>
               </div>
             </div>
@@ -1003,7 +1104,30 @@ export default function BookPage() {
           )}
 
           {/* ── Step 5: Confirmation ──────────────────────────────────────────── */}
-          {step === 5 && bookResult && (
+          {step === 5 && bookResult && isCommercial && commercialOption === "walkthrough" && (
+            <div style={s.card}>
+              <div style={{ textAlign: "center", marginBottom: 32 }}>
+                <div style={{ width: 64, height: 64, borderRadius: "50%", background: `${brand}20`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+                  <Calendar size={32} color={brand} />
+                </div>
+                <p style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800, color: "#1A1917" }}>We'll see you soon.</p>
+                <p style={{ margin: 0, fontSize: 14, color: "#6B6860" }}>Your walkthrough is scheduled. A member of our team will reach out to confirm your appointment and answer any questions before your visit.</p>
+              </div>
+
+              <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 24 }}>
+                <p style={{ margin: "0 0 16px", fontWeight: 700, fontSize: 15, color: "#1A1917" }}>Appointment Details</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <Row label="Name" value={`${firstName} ${lastName}`} />
+                  <Row label="Email" value={email} />
+                  <Row label="Phone" value={phone} />
+                  {address && <Row label="Address" value={address} />}
+                  {selectedDate && <Row label="Walkthrough Date" value={new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })} bold />}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === 5 && bookResult && !(isCommercial && commercialOption === "walkthrough") && (
             <div style={s.card}>
               <div style={{ textAlign: "center", marginBottom: 32 }}>
                 <div style={{ width: 64, height: 64, borderRadius: "50%", background: `${brand}20`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
@@ -1022,7 +1146,8 @@ export default function BookPage() {
                   {address && <Row label="Address" value={address} />}
                   <Row label="Service" value={selectedScope?.name ?? ""} />
                   {sqft > 0 && <Row label="Sq Ft" value={`${sqft.toLocaleString()} sqft · ${bedrooms}br / ${bathrooms}ba`} />}
-                  <Row label="Frequency" value={frequencyStr} />
+                  {!isCommercial && <Row label="Frequency" value={frequencyStr} />}
+                  {isCommercial && commercialOption === "single" && <Row label="Rate" value="$180 for up to 3 hrs · $60/additional hr" />}
                   {selectedDate && <Row label="First Cleaning" value={new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })} bold />}
                   {bookResult.pricing?.final_total !== undefined && <Row label="Estimated Total" value={`$${bookResult.pricing.final_total.toFixed(2)}`} bold />}
                 </div>
