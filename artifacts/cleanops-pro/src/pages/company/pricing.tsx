@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAuthHeaders } from "@/lib/auth";
-import { Plus, Trash2, ChevronDown, ChevronRight, Save, ToggleLeft, ToggleRight, Edit2, X, Check } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronRight, Save, ToggleLeft, ToggleRight, Edit2, X, Check, Tag } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -244,6 +244,9 @@ export function PricingTab() {
 
       {/* ── Fee Rules ───────────────────────────────────────────────────── */}
       <FeesSection fees={fees} />
+
+      {/* ── Bundles & Promotions ────────────────────────────────────────── */}
+      <BundlesSection />
     </div>
   );
 }
@@ -723,6 +726,276 @@ function FeesSection({ fees }: { fees: FeeRule[] }) {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// ── Bundles & Promotions Section ───────────────────────────────────────────────
+
+interface Bundle {
+  id: number;
+  name: string;
+  description: string | null;
+  discount_type: string;
+  discount_value: string;
+  active: boolean;
+  valid_from: string | null;
+  valid_until: string | null;
+  items: Array<{ id: number; addon_id: number; addon_name: string; price_type: string }>;
+}
+
+interface FlatAddon {
+  id: number;
+  name: string;
+  price_type: string;
+  price_value: string;
+}
+
+const emptyBundleForm = () => ({
+  name: "",
+  description: "",
+  discount_type: "flat_per_item",
+  discount_value: "",
+  valid_from: "",
+  valid_until: "",
+  active: true,
+  addon_ids: [] as number[],
+});
+
+function BundlesSection() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [showModal, setShowModal] = useState(false);
+  const [editBundle, setEditBundle] = useState<Bundle | null>(null);
+  const [form, setForm] = useState(emptyBundleForm());
+
+  const { data: bundles = [] } = useQuery<Bundle[]>({
+    queryKey: ["bundles"],
+    queryFn: () => apiFetch("/api/bundles"),
+  });
+
+  const { data: flatAddons = [] } = useQuery<FlatAddon[]>({
+    queryKey: ["bundle-flat-addons"],
+    queryFn: () => apiFetch("/api/bundles/flat-addons"),
+  });
+
+  const createBundle = useMutation({
+    mutationFn: (body: typeof form) => apiFetch("/api/bundles", { method: "POST", body: JSON.stringify({ ...body, discount_value: parseFloat(body.discount_value) || 0 }) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["bundles"] }); setShowModal(false); setForm(emptyBundleForm()); toast({ title: "Bundle created" }); },
+    onError: () => toast({ title: "Failed to create bundle", variant: "destructive" }),
+  });
+
+  const updateBundle = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: typeof form }) => apiFetch(`/api/bundles/${id}`, { method: "PUT", body: JSON.stringify({ ...body, discount_value: parseFloat(body.discount_value) || 0 }) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["bundles"] }); setShowModal(false); setEditBundle(null); setForm(emptyBundleForm()); toast({ title: "Bundle updated" }); },
+    onError: () => toast({ title: "Failed to update bundle", variant: "destructive" }),
+  });
+
+  const toggleBundle = useMutation({
+    mutationFn: (id: number) => apiFetch(`/api/bundles/${id}/toggle`, { method: "PUT" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bundles"] }),
+  });
+
+  const deleteBundle = useMutation({
+    mutationFn: (id: number) => apiFetch(`/api/bundles/${id}`, { method: "DELETE" }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["bundles"] }); toast({ title: "Bundle deleted" }); },
+    onError: () => toast({ title: "Failed to delete", variant: "destructive" }),
+  });
+
+  function openNew() {
+    setEditBundle(null);
+    setForm(emptyBundleForm());
+    setShowModal(true);
+  }
+
+  function openEdit(b: Bundle) {
+    setEditBundle(b);
+    setForm({
+      name: b.name,
+      description: b.description || "",
+      discount_type: b.discount_type,
+      discount_value: parseFloat(b.discount_value).toString(),
+      valid_from: b.valid_from || "",
+      valid_until: b.valid_until || "",
+      active: b.active,
+      addon_ids: b.items.map(it => it.addon_id),
+    });
+    setShowModal(true);
+  }
+
+  function handleSave() {
+    if (!form.name.trim() || !form.discount_value || form.addon_ids.length < 2) {
+      toast({ title: "Bundle requires a name, discount amount, and at least 2 add-ons", variant: "destructive" });
+      return;
+    }
+    if (editBundle) updateBundle.mutate({ id: editBundle.id, body: form });
+    else createBundle.mutate(form);
+  }
+
+  const discountLabel = (b: Bundle) => {
+    const v = parseFloat(b.discount_value).toFixed(2).replace(/\.00$/, "");
+    if (b.discount_type === "flat_per_item") return `$${v} off each`;
+    if (b.discount_type === "flat_total") return `$${v} off total`;
+    return `${v}% off each`;
+  };
+
+  const dateRangeLabel = (b: Bundle) => {
+    if (!b.valid_from && !b.valid_until) return "Always active";
+    const fmt = (d: string) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    if (b.valid_from && b.valid_until) return `${fmt(b.valid_from)} – ${fmt(b.valid_until)}`;
+    if (b.valid_from) return `From ${fmt(b.valid_from)}`;
+    return `Until ${fmt(b.valid_until!)}`;
+  };
+
+  const discountTypeLabel = (dt: string) => {
+    if (dt === "flat_per_item") return "$ Off Each Item";
+    if (dt === "flat_total") return "$ Off Total";
+    return "% Off Each Item";
+  };
+
+  const discountValueLabel = (dt: string) => {
+    if (dt === "flat_per_item") return "$ per item";
+    if (dt === "flat_total") return "$ total";
+    return "% per item";
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div>
+          <div style={sectionHead}>Bundles &amp; Promotions</div>
+          <div style={sectionSub}>Group add-ons together with automatic discounts. Customers see savings in real time when selecting bundled items.</div>
+        </div>
+        <button style={btn("primary")} onClick={openNew}><Plus size={14} />Add Bundle</button>
+      </div>
+
+      <div style={card}>
+        {bundles.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 32, color: "#9E9B94", fontSize: 13 }}>
+            No bundles yet. Create your first bundle to start offering automatic discounts.
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+            {bundles.map((b, i) => (
+              <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: i < bundles.length - 1 ? "1px solid #E5E2DC" : "none", opacity: b.active ? 1 : 0.5 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 8, background: b.active ? "#D1FAE5" : "#F3F4F6", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Tag size={16} color={b.active ? "#2D6A4F" : "#9E9B94"} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: "#1A1917" }}>{b.name}</div>
+                  <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                    {b.items.map(it => (
+                      <span key={it.id} style={{ fontSize: 11, background: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: 12, padding: "1px 8px", color: "#6B6860" }}>{it.addon_name}</span>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, color: "#6B6860", flexShrink: 0, minWidth: 90, textAlign: "right" }}>
+                  <div style={{ fontWeight: 600, color: "#1A1917" }}>{discountLabel(b)}</div>
+                  <div style={{ fontSize: 11, marginTop: 2 }}>{dateRangeLabel(b)}</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  <button style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }} onClick={() => toggleBundle.mutate(b.id)}>
+                    {b.active ? <ToggleRight size={20} color="var(--brand)" /> : <ToggleLeft size={20} color="#9E9B94" />}
+                  </button>
+                  <button style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }} onClick={() => openEdit(b)}>
+                    <Edit2 size={14} color="#6B6860" />
+                  </button>
+                  <button style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }} onClick={() => { if (confirm(`Delete "${b.name}"?`)) deleteBundle.mutate(b.id); }}>
+                    <Trash2 size={14} color="#DC2626" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {showModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ background: "#fff", borderRadius: 12, padding: 28, width: 520, maxWidth: "calc(100vw - 32px)", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 12px 40px rgba(0,0,0,0.18)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+              <p style={{ margin: 0, fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: 15, color: "#1A1917" }}>
+                {editBundle ? "Edit Bundle" : "Add Bundle"}
+              </p>
+              <button style={{ background: "none", border: "none", cursor: "pointer" }} onClick={() => { setShowModal(false); setEditBundle(null); }}>
+                <X size={18} color="#9E9B94" />
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#9E9B94", marginBottom: 4 }}>BUNDLE NAME</div>
+                <input style={inp} placeholder="e.g. Appliance Bundle" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
+              </div>
+
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#9E9B94", marginBottom: 4 }}>DESCRIPTION (optional)</div>
+                <textarea style={{ ...inp, resize: "vertical" as const, minHeight: 60 }} placeholder="Shown to customers on hover" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} />
+              </div>
+
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#9E9B94", marginBottom: 6 }}>ADD-ONS INCLUDED (select at least 2)</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, background: "#F7F6F3", borderRadius: 8, padding: 12 }}>
+                  {flatAddons.map(a => (
+                    <label key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: "#1A1917" }}>
+                      <input
+                        type="checkbox"
+                        checked={form.addon_ids.includes(a.id)}
+                        onChange={e => setForm(p => ({ ...p, addon_ids: e.target.checked ? [...p.addon_ids, a.id] : p.addon_ids.filter(x => x !== a.id) }))}
+                      />
+                      {a.name} <span style={{ color: "#9E9B94", fontSize: 11 }}>(${parseFloat(a.price_value).toFixed(2)})</span>
+                    </label>
+                  ))}
+                  {flatAddons.length === 0 && <span style={{ fontSize: 12, color: "#9E9B94" }}>No flat-priced add-ons found.</span>}
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#9E9B94", marginBottom: 6 }}>DISCOUNT TYPE</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {(["flat_per_item", "flat_total", "percentage"] as const).map(dt => (
+                    <button
+                      key={dt}
+                      style={{ ...btn(form.discount_type === dt ? "primary" : "secondary"), padding: "7px 12px", fontSize: 12 }}
+                      onClick={() => setForm(p => ({ ...p, discount_type: dt }))}
+                    >
+                      {discountTypeLabel(dt)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#9E9B94", marginBottom: 4 }}>DISCOUNT AMOUNT ({discountValueLabel(form.discount_type)})</div>
+                <input style={inp} type="number" min="0" step="0.01" placeholder={form.discount_type === "percentage" ? "10" : "10.00"} value={form.discount_value} onChange={e => setForm(p => ({ ...p, discount_value: e.target.value }))} />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#9E9B94", marginBottom: 4 }}>START DATE (optional)</div>
+                  <input style={inp} type="date" value={form.valid_from} onChange={e => setForm(p => ({ ...p, valid_from: e.target.value }))} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#9E9B94", marginBottom: 4 }}>END DATE (optional)</div>
+                  <input style={inp} type="date" value={form.valid_until} onChange={e => setForm(p => ({ ...p, valid_until: e.target.value }))} />
+                </div>
+              </div>
+
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#1A1917", cursor: "pointer" }}>
+                <input type="checkbox" checked={form.active} onChange={e => setForm(p => ({ ...p, active: e.target.checked }))} />
+                Active (bundle will be shown to customers)
+              </label>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
+              <button style={{ ...btn("secondary"), padding: "10px 20px" }} onClick={() => { setShowModal(false); setEditBundle(null); }}>Cancel</button>
+              <button style={{ ...btn("primary"), padding: "10px 20px" }} onClick={handleSave} disabled={createBundle.isPending || updateBundle.isPending}>
+                <Check size={14} />{editBundle ? "Save Changes" : "Create Bundle"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

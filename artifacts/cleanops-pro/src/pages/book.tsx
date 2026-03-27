@@ -245,6 +245,9 @@ export default function BookPage() {
   const [frequencies, setFrequencies] = useState<PricingFrequency[]>([]);
   const [addons, setAddons] = useState<PricingAddon[]>([]);
 
+  // Bundles
+  const [bundles, setBundles] = useState<any[]>([]);
+
   // Step 0 errors
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -255,7 +258,11 @@ export default function BookPage() {
     if (!slug) return;
     setLoading(true);
     pubFetch(`/api/public/company/${slug}`)
-      .then(d => { setCompany(d); setLoading(false); })
+      .then(d => {
+        setCompany(d);
+        setLoading(false);
+        pubFetch(`/api/public/bundles/${d.id}`).then(bs => setBundles(bs)).catch(() => {});
+      })
       .catch(() => { setNotFound(true); setLoading(false); });
   }, [slug]);
 
@@ -421,6 +428,8 @@ export default function BookPage() {
             bedrooms, bathrooms, half_baths: halfBaths, floors, people, pets, cleanliness,
             home_condition_rating: showCleanlinessQ ? (cleanliness || 1) : null,
             condition_multiplier: showCleanlinessQ ? conditionMultiplier : null,
+            applied_bundle_id: activeBundleId,
+            bundle_discount_total: bundleSavings > 0 ? bundleSavings : null,
             address, preferred_date: selectedDate,
             payment_method_id: paymentMethodId,
             stripe_customer_id: stripeCustomerId,
@@ -547,6 +556,62 @@ export default function BookPage() {
     scopeNameLower.startsWith("recurring")
   );
   const conditionMultiplier = (showCleanlinessQ && cleanliness === 3) ? 1.08 : 1.0;
+
+  // ── Bundle detection ──────────────────────────────────────────────────────
+  const visibleAddons = addons.filter(a => !a.name.toLowerCase().includes("loyalty discount"));
+
+  const isDynamicPricedAddon = (addonId: number) => {
+    const a = addons.find(x => x.id === addonId);
+    return a && (a.price_type === "percentage" || a.price_type === "percent" || a.price_type === "sqft_pct");
+  };
+
+  const activeBundleId: number | null = (() => {
+    for (const b of bundles) {
+      const items = b.items as { addon_id: number }[];
+      if (items.every(it => selectedAddonIds.includes(it.addon_id))) return b.id as number;
+    }
+    return null;
+  })();
+  const activeBundle = bundles.find(b => b.id === activeBundleId) ?? null;
+
+  const calcBundleSavings = (bundle: any): number => {
+    const items = (bundle.items as { addon_id: number; price_type: string }[]).filter(it => !isDynamicPricedAddon(it.addon_id));
+    const dv = parseFloat(bundle.discount_value);
+    if (bundle.discount_type === "flat_per_item") return items.length * dv;
+    if (bundle.discount_type === "flat_total") return dv;
+    if (bundle.discount_type === "percentage") {
+      let sum = 0;
+      for (const it of items) {
+        const ab = calcResult?.addon_breakdown.find(x => x.id === it.addon_id);
+        if (ab) sum += ab.amount * dv / 100;
+      }
+      return Math.round(sum * 100) / 100;
+    }
+    return 0;
+  };
+  const bundleSavings = activeBundle ? calcBundleSavings(activeBundle) : 0;
+
+  const partialBundleNudge: { bundleName: string; missingName: string } | null = (() => {
+    if (activeBundleId !== null) return null;
+    for (const b of bundles) {
+      const items = b.items as { addon_id: number; addon_name: string }[];
+      const selected = items.filter(it => selectedAddonIds.includes(it.addon_id));
+      const missing = items.filter(it => !selectedAddonIds.includes(it.addon_id));
+      if (selected.length > 0 && missing.length === 1) return { bundleName: b.name, missingName: missing[0].addon_name };
+    }
+    return null;
+  })();
+
+  const bundleAddonIds = new Set(bundles.flatMap(b => (b.items as { addon_id: number }[]).map(it => it.addon_id)));
+
+  const addonPersuasionLine = (() => {
+    if (!scopeNameLower || isCommercial) return null;
+    if (scopeNameLower.includes("deep clean")) return "Deep cleans are the perfect time to tackle appliances and those forgotten spots — add extras while we're already there.";
+    if (scopeNameLower.includes("one-time") || scopeNameLower.includes("one time")) return "Make the most of your single visit — add any extras you want handled today.";
+    if (scopeNameLower.startsWith("recurring")) return "Regular clients save the most by including consistent extras in every visit.";
+    if (scopeNameLower.includes("move")) return "Moving out or in? Add appliance and cabinet cleaning to leave the place spotless.";
+    return null;
+  })();
 
   const stepLabels = ["Contact", "Scope", "Frequency", "Date", "Payment", "Confirmed"];
 
@@ -950,25 +1015,31 @@ export default function BookPage() {
                     {frequencies.map(f => (
                       <button key={f.id} style={s.freqCard(frequencyStr === f.frequency)} onClick={() => setFrequencyStr(f.frequency)}>
                         <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#1A1917" }}>{f.label || f.frequency}</p>
-                        <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9E9B94" }}>
-                          {f.rate_override ? `$${parseFloat(f.rate_override).toFixed(0)}/hr` : `×${parseFloat(f.multiplier).toFixed(2)} rate`}
-                        </p>
                       </button>
                     ))}
                   </div>
                 </div>
               )}
 
-              {addons.length > 0 && (
+              {visibleAddons.length > 0 && (
                 <div style={{ marginBottom: 24 }}>
+                  {addonPersuasionLine && (
+                    <p style={{ fontSize: 12, color: "#6B6860", marginBottom: 10, fontStyle: "italic", lineHeight: 1.5 }}>
+                      {addonPersuasionLine}
+                    </p>
+                  )}
                   <span style={s.label}>Add-ons (optional)</span>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {addons.map(a => {
+                    {visibleAddons.map(a => {
                       const sel = selectedAddonIds.includes(a.id);
+                      const isBundleAddon = bundleAddonIds.has(a.id);
                       const fromResult = calcResult?.addon_breakdown.find(b => b.id === a.id);
                       const pv = parseFloat(String((a as any).price_value ?? a.price ?? 0));
                       const isPct = a.price_type === "percentage" || a.price_type === "percent";
-                      const displayPrice = fromResult
+                      const bundleDiscount = (activeBundle && isBundleAddon && !isDynamicPricedAddon(a.id))
+                        ? parseFloat(activeBundle.discount_value)
+                        : 0;
+                      let displayPrice = fromResult
                         ? (fromResult.amount < 0 ? `-$${Math.abs(fromResult.amount).toFixed(2)}` : `+$${fromResult.amount.toFixed(2)}`)
                         : a.price_type === "time_only"
                         ? "No additional charge"
@@ -977,21 +1048,49 @@ export default function BookPage() {
                         : isPct
                         ? (pv < 0 ? `${Math.abs(pv).toFixed(0)}% off — calculated on estimate` : `${pv.toFixed(0)}% of estimate — price varies by home size`)
                         : "";
+                      if (bundleDiscount > 0 && a.price_type === "flat" && pv > 0) {
+                        const discounted = pv - bundleDiscount;
+                        displayPrice = (
+                          <span>
+                            <span style={{ textDecoration: "line-through", color: "#9E9B94", marginRight: 4 }}>+${pv.toFixed(2)}</span>
+                            <span style={{ color: "#2D6A4F", fontWeight: 600 }}>+${discounted.toFixed(2)}</span>
+                          </span>
+                        ) as any;
+                      }
                       return (
-                        <div key={a.id} style={s.addonCard(sel)} onClick={() => setSelectedAddonIds(prev => sel ? prev.filter(x => x !== a.id) : [...prev, a.id])}>
-                          <div style={{ width: 20, height: 20, borderRadius: 4, border: `2px solid ${sel ? brand : "#C4C1BA"}`, background: sel ? brand : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2 }}>
-                            {sel && <CheckCircle2 size={13} color="#fff" />}
+                        <div key={a.id} style={{ position: "relative" }}>
+                          <div style={s.addonCard(sel)} onClick={() => setSelectedAddonIds(prev => sel ? prev.filter(x => x !== a.id) : [...prev, a.id])}>
+                            <div style={{ width: 20, height: 20, borderRadius: 4, border: `2px solid ${sel ? brand : "#C4C1BA"}`, background: sel ? brand : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2 }}>
+                              {sel && <CheckCircle2 size={13} color="#fff" />}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: "#1A1917" }}>{a.name}</p>
+                              <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9E9B94" }}>{displayPrice}</p>
+                            </div>
+                            {isBundleAddon && (
+                              <span style={{ fontSize: 10, fontWeight: 700, background: brand, color: "#fff", padding: "2px 7px", borderRadius: 20, flexShrink: 0, alignSelf: "center" }}>
+                                Most Popular
+                              </span>
+                            )}
                           </div>
-                          <div>
-                            <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: "#1A1917" }}>{a.name}</p>
-                            <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9E9B94" }}>
-                              {displayPrice}{a.time_add_minutes > 0 ? ` · +${a.time_add_minutes}min` : ""}
+                          {partialBundleNudge && partialBundleNudge.missingName === a.name && !sel && (
+                            <p style={{ fontSize: 11, color: "#92400E", margin: "4px 0 0", paddingLeft: 4 }}>
+                              Add this to unlock the {partialBundleNudge.bundleName} discount
                             </p>
-                          </div>
+                          )}
                         </div>
                       );
                     })}
                   </div>
+
+                  {activeBundle && bundleSavings > 0 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, padding: "8px 12px", background: "#D1FAE5", borderRadius: 8 }}>
+                      <Tag size={13} color="#2D6A4F" />
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "#2D6A4F" }}>
+                        {activeBundle.name} applied — you're saving ${bundleSavings.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1021,7 +1120,11 @@ export default function BookPage() {
                 <input style={s.input} value={address} onChange={e => setAddressField(e.target.value)} placeholder="3165 W 84th Place, Chicago, IL" />
               </FieldWrap>
 
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
+              <p style={{ fontSize: 11, color: "#9E9B94", marginBottom: 16, marginTop: -4, lineHeight: 1.5 }}>
+                Add extras now — requesting them later may require a separate visit.
+              </p>
+
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
                 <button style={s.btn(false)} onClick={() => setStep(1)}>Back</button>
                 <button style={{ ...s.btn(), opacity: !frequencyStr ? 0.5 : 1 }} disabled={!frequencyStr} onClick={() => setStep(3)}>
                   Continue

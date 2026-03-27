@@ -129,6 +129,42 @@ router.get("/addons/:scopeId", rateLimit, async (req, res) => {
   }
 });
 
+// ── GET /api/public/bundles/:companyId ──────────────────────────────────────
+router.get("/bundles/:companyId", rateLimit, async (req, res) => {
+  try {
+    const companyId = parseInt(req.params.companyId);
+    if (isNaN(companyId)) return res.status(400).json({ error: "Invalid companyId" });
+
+    const { sql: drSql } = await import("drizzle-orm");
+    const today = new Date().toISOString().split("T")[0];
+    const result = await db.execute(drSql`
+      SELECT
+        b.id, b.name, b.description, b.discount_type, b.discount_value,
+        b.valid_from, b.valid_until,
+        COALESCE(
+          json_agg(
+            json_build_object('addon_id', bi.addon_id, 'addon_name', pa.name, 'price_type', pa.price_type)
+            ORDER BY bi.id
+          ) FILTER (WHERE bi.id IS NOT NULL),
+          '[]'
+        ) AS items
+      FROM addon_bundles b
+      LEFT JOIN addon_bundle_items bi ON bi.bundle_id = b.id
+      LEFT JOIN pricing_addons pa ON pa.id = bi.addon_id
+      WHERE b.company_id = ${companyId}
+        AND b.active = true
+        AND (b.valid_from IS NULL OR b.valid_from <= ${today}::date)
+        AND (b.valid_until IS NULL OR b.valid_until >= ${today}::date)
+      GROUP BY b.id
+      ORDER BY b.discount_value DESC
+    `);
+    return res.json((result as any).rows ?? []);
+  } catch (err) {
+    console.error("GET /public/bundles/:companyId:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 // ── Map human-readable scope name → service_type enum ───────────────────────
 function scopeNameToServiceType(name: string): string {
   const n = (name || "").toLowerCase();
@@ -361,6 +397,7 @@ router.post("/book/confirm", rateLimit, async (req, res) => {
       scope_id, sqft, frequency, addon_ids, discount_code,
       bedrooms, bathrooms, half_baths, floors, people, pets, cleanliness,
       home_condition_rating, condition_multiplier,
+      applied_bundle_id, bundle_discount_total,
       address, preferred_date,
       payment_method_id, stripe_customer_id,
     } = req.body;
@@ -461,17 +498,24 @@ router.post("/book/confirm", rateLimit, async (req, res) => {
     const adjustedTotal = Math.round(pricing.final_total * condMult * 100) / 100;
     const jobNotes = `Booked via online widget. Cleanliness: ${cleanliness || "N/A"}. Condition rating: ${condRating}. People: ${people || "N/A"}. Floors: ${floors || "N/A"}. Home ID: ${homeId}.`;
 
+    const bundleId = applied_bundle_id ? parseInt(String(applied_bundle_id)) : null;
+    const bundleDiscount = bundle_discount_total ? parseFloat(String(bundle_discount_total)) : null;
+
     const jobResult = await db.execute(
       drizzleSql`
         INSERT INTO jobs (
           company_id, client_id, service_type, status,
           scheduled_date, frequency, base_fee, estimated_hours, hourly_rate,
-          home_condition_rating, condition_multiplier, notes, created_at
+          home_condition_rating, condition_multiplier,
+          applied_bundle_id, bundle_discount_total,
+          notes, created_at
         ) VALUES (
           ${company_id}, ${clientId}, ${serviceTypeEnum}, 'scheduled',
           ${preferred_date || null}, ${frequency},
           ${adjustedTotal}, ${pricing.base_hours}, ${pricing.hourly_rate},
-          ${condRating}, ${condMult}, ${jobNotes}, NOW()
+          ${condRating}, ${condMult},
+          ${bundleId}, ${bundleDiscount},
+          ${jobNotes}, NOW()
         ) RETURNING id
       `
     );

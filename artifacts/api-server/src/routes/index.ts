@@ -58,6 +58,7 @@ import mileageRequestsRouter from "./mileage-requests.js";
 import pricingRouter from "./pricing.js";
 import publicRouter from "./public.js";
 import quickbooksRouter from "./integrations/quickbooks.js";
+import bundlesRouter from "./bundles.js";
 
 const router: IRouter = Router();
 
@@ -118,6 +119,7 @@ router.use("/document-templates", documentTemplatesRouter);
 router.use("/document-requests", documentRequestsRouter);
 router.use("/mileage-requests", mileageRequestsRouter);
 router.use("/pricing", pricingRouter);
+router.use("/bundles", bundlesRouter);
 router.use("/public", publicRouter);
 router.use("/integrations/quickbooks", quickbooksRouter);
 
