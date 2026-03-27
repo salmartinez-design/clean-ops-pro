@@ -206,7 +206,8 @@ export async function seedIfNeeded() {
           city: "Oak Lawn",
           state: "IL",
           zip: "60453",
-          business_hours: "Mon–Fri: 8:00 AM – 5:00 PM\nSat: 9:00 AM – 2:00 PM\nSun: Closed",
+          logo_url: "/api/uploads/logos/phes-logo.jpeg",
+          business_hours: "Monday \u2013 Friday: 9:00 AM \u2013 6:00 PM\nSaturday: 9:00 AM \u2013 12:00 PM\nSunday: Closed",
         })
         .where(eq(companiesTable.slug, "phes-cleaning"));
       console.log("[seed] Phes already seeded — name, brand color, and contact info ensured");
