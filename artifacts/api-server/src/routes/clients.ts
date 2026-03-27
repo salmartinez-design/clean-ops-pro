@@ -155,7 +155,7 @@ router.get("/", requireAuth, async (req, res) => {
 // ─── CREATE CLIENT ─────────────────────────────────────────────────────────────
 router.post("/", requireAuth, async (req, res) => {
   try {
-    const { first_name, last_name, email, phone, address, city, state, zip, notes, company_name, frequency, service_type, base_fee, allowed_hours } = req.body;
+    const { first_name, last_name, email, phone, address, city, state, zip, notes, company_name, frequency, service_type, base_fee, allowed_hours, send_welcome } = req.body;
     const geo = address ? await geocodeAddress(address, city, state, zip) : null;
     const zoneId = await resolveZoneForZip(req.auth!.companyId, zip);
     const newClient = await db.insert(clientsTable).values({
@@ -171,6 +171,16 @@ router.post("/", requireAuth, async (req, res) => {
     // QB sync (fire and forget)
     if (newClient[0]) {
       queueSync(() => syncCustomer(req.auth!.companyId, newClient[0].id));
+    }
+
+    // new_client_welcome notification (non-blocking)
+    if (newClient[0] && send_welcome) {
+      const companyId = req.auth!.companyId;
+      const mv = { first_name: first_name || "" };
+      import("../services/notificationService.js").then(({ sendNotification }) => {
+        sendNotification("new_client_welcome", "email", companyId, email ?? null, null, mv).catch(() => {});
+        sendNotification("new_client_welcome", "sms",   companyId, null, phone ?? null, mv).catch(() => {});
+      });
     }
 
     return res.status(201).json(newClient[0]);

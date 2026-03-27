@@ -11,7 +11,9 @@ export const notificationTemplatesTable = pgTable("notification_templates", {
   trigger: text("trigger").notNull(),
   channel: notificationChannelEnum("channel").notNull(),
   subject: text("subject"),
-  body: text("body").notNull(),
+  body: text("body").notNull().default(""),
+  body_html: text("body_html"),
+  body_text: text("body_text"),
   is_active: boolean("is_active").notNull().default(true),
   created_at: timestamp("created_at").notNull().defaultNow(),
 });
@@ -23,6 +25,7 @@ export const notificationLogTable = pgTable("notification_log", {
   channel: text("channel"),
   trigger: text("trigger"),
   status: text("status").notNull().default("sent"),
+  error_message: text("error_message"),
   metadata: jsonb("metadata"),
   sent_at: timestamp("sent_at").notNull().defaultNow(),
 });

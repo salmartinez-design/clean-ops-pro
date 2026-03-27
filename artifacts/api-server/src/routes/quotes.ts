@@ -216,12 +216,26 @@ router.patch("/:id", requireAuth, requireRole("owner", "admin", "office"), async
 router.post("/:id/send", requireAuth, requireRole("owner", "admin", "office"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    const companyId = req.auth!.companyId;
     const [q] = await db.update(quotesTable)
       .set({ status: "sent", sent_at: new Date() })
-      .where(and(eq(quotesTable.id, id), eq(quotesTable.company_id, req.auth!.companyId)))
+      .where(and(eq(quotesTable.id, id), eq(quotesTable.company_id, companyId)))
       .returning();
     if (!q) return res.status(404).json({ error: "Not found" });
     console.log(`[QUOTE SENT] id=${id} lead_email=${q.lead_email}`);
+    // fire quote_sent notification (non-blocking)
+    import("../services/notificationService.js").then(({ sendNotification }) => {
+      const mv = {
+        first_name:     (q as any).lead_name?.split(" ")[0] || "",
+        quote_number:   String(id),
+        quote_total:    parseFloat((q as any).total_price || (q as any).base_price || "0").toFixed(2),
+        quote_link:     `https://clean-ops-pro.replit.app/quote/${id}`,
+        quote_expires:  new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
+        service_address: (q as any).address || "",
+      };
+      sendNotification("quote_sent", "email", companyId, (q as any).lead_email ?? null, null, mv).catch(() => {});
+      sendNotification("quote_sent", "sms",   companyId, null, (q as any).lead_phone ?? null, mv).catch(() => {});
+    });
     return res.json({ success: true, quote: q });
   } catch (err) {
     return res.status(500).json({ error: "Internal Server Error" });

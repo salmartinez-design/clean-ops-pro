@@ -506,6 +506,9 @@ export async function runPhesDataMigration(): Promise<void> {
 
   // Run client job history migrations
   await runDamianJobHistoryMigration();
+
+  // Seed notification templates
+  await runNotificationTemplateSeed();
 }
 
 // ── Alejandra Cuervo — Full MC data migration ─────────────────────────────────
@@ -934,5 +937,358 @@ async function runDamianJobHistoryMigration() {
     console.log(`[damian-migration] Inserted ${records.length} job history records for client #${CUSTOMER_ID}`);
   } catch (err) {
     console.error("[damian-migration] Migration error (non-fatal):", err);
+  }
+}
+
+// ── Notification Template Seeding ────────────────────────────────────────────
+async function runNotificationTemplateSeed() {
+  try {
+    const PHES = 1;
+
+    // Ensure DDL columns exist (safe to run repeatedly)
+    await db.execute(sql`ALTER TABLE notification_templates ADD COLUMN IF NOT EXISTS body_html TEXT`);
+    await db.execute(sql`ALTER TABLE notification_templates ADD COLUMN IF NOT EXISTS body_text TEXT`);
+    await db.execute(sql`ALTER TABLE notification_log ADD COLUMN IF NOT EXISTS error_message TEXT`);
+    await db.execute(sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS survey_last_sent TIMESTAMP`);
+    await db.execute(sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS review_link TEXT`);
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token TEXT`);
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMP`);
+
+    // Set default review link for PHES
+    await db.execute(sql`
+      UPDATE companies SET review_link = 'https://g.page/r/phes/review'
+      WHERE id = ${PHES} AND review_link IS NULL
+    `);
+
+    type TplDef = {
+      trigger: string;
+      channel: string;
+      subject: string | null;
+      body_html: string | null;
+      body_text: string | null;
+    };
+
+    const templates: TplDef[] = [
+      // ── 1. REMINDER 3 DAY ───────────────────────────────────────────────
+      {
+        trigger: "reminder_3day", channel: "email",
+        subject: "Your cleaning appointment is coming up \u2014 {{appointment_date}}",
+        body_html: `<p style="margin:0 0 20px">Hi {{first_name}},</p>
+<p style="margin:0 0 20px">Just a heads-up that your cleaning is scheduled for <strong>{{appointment_date}}</strong>. Here is everything you need to know before we arrive.</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E2DC;border-radius:6px;background:#FFFFFF;margin:0 0 24px">
+<tr><td style="padding:20px">
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Date</p>
+  <p style="margin:0 0 16px;font-size:15px;color:#1A1917;font-weight:600">{{appointment_date}}</p>
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Arrival Window</p>
+  <p style="margin:0 0 16px;font-size:15px;color:#1A1917">{{appointment_window}}</p>
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Service</p>
+  <p style="margin:0 0 16px;font-size:15px;color:#1A1917">{{scope}}</p>
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Address</p>
+  <p style="margin:0;font-size:15px;color:#1A1917">{{service_address}}</p>
+</td></tr>
+</table>
+<p style="margin:0 0 8px;font-weight:600;color:#1A1917">A few things to have ready</p>
+<ul style="margin:0 0 20px;padding-left:20px;color:#1A1917;line-height:1.8">
+  <li>Countertops and surfaces cleared</li>
+  <li>Running water and electricity available</li>
+  <li>Pets secured before arrival</li>
+  <li>Confirm your entry method is current (key, code, or be home)</li>
+</ul>
+<p style="margin:0 0 8px;font-weight:600;color:#1A1917">Need to reschedule?</p>
+<p style="margin:0 0 24px;color:#1A1917">We require 48 business hours notice to avoid a cancellation fee. Sundays do not count toward that window. Call or text us at <strong>{{company_phone}}</strong> or reply to this email.</p>
+<p style="margin:0">We look forward to seeing you.</p>`,
+        body_text: "Hi {{first_name}}, your cleaning with {{company_name}} is confirmed for {{appointment_date}}, {{appointment_window}}. Need to reschedule? Call/text {{company_phone}} (48hr notice required).",
+      },
+      {
+        trigger: "reminder_3day", channel: "sms",
+        subject: null,
+        body_html: null,
+        body_text: "Hi {{first_name}}, your cleaning with {{company_name}} is confirmed for {{appointment_date}}, {{appointment_window}}. Need to reschedule? Call/text {{company_phone}} (48hr notice required).",
+      },
+
+      // ── 2. REMINDER 1 DAY ───────────────────────────────────────────────
+      {
+        trigger: "reminder_1day", channel: "email",
+        subject: "Your cleaning is tomorrow \u2014 {{appointment_date}}",
+        body_html: `<p style="margin:0 0 20px">Hi {{first_name}},</p>
+<p style="margin:0 0 20px">Your appointment is tomorrow. Here are your details one more time.</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E2DC;border-radius:6px;background:#FFFFFF;margin:0 0 24px">
+<tr><td style="padding:20px">
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Date</p>
+  <p style="margin:0 0 16px;font-size:15px;color:#1A1917;font-weight:600">{{appointment_date}}</p>
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Arrival Window</p>
+  <p style="margin:0 0 16px;font-size:15px;color:#1A1917">{{appointment_window}}</p>
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Service</p>
+  <p style="margin:0 0 16px;font-size:15px;color:#1A1917">{{scope}}</p>
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Address</p>
+  <p style="margin:0;font-size:15px;color:#1A1917">{{service_address}}</p>
+</td></tr>
+</table>
+<p style="margin:0 0 8px;font-weight:600;color:#1A1917">Last-minute checklist</p>
+<ul style="margin:0 0 20px;padding-left:20px;color:#1A1917;line-height:1.8">
+  <li>Countertops and surfaces cleared</li>
+  <li>Dishes out of the sink</li>
+  <li>Pets secured</li>
+  <li>Entry method confirmed</li>
+  <li>Special instructions on file \u2014 if anything changed, call us tonight at {{company_phone}}</li>
+</ul>
+<table width="100%" cellpadding="0" cellspacing="0" style="border-left:4px solid #5B9BD5;background:#F0F6FC;border-radius:0 6px 6px 0;margin:0 0 24px">
+<tr><td style="padding:16px;color:#1A1917;font-size:14px;line-height:1.6">
+  Cancellations made less than 48 business hours before your appointment result in a full service charge. Call us as soon as possible if you need to cancel: <strong>{{company_phone}}</strong>.
+</td></tr>
+</table>
+<p style="margin:0">We will see you tomorrow.</p>`,
+        body_text: "Hi {{first_name}}, reminder: your cleaning with {{company_name}} is TOMORROW {{appointment_date}}, arrival {{appointment_window}} at {{service_address}}. Questions? {{company_phone}}.",
+      },
+      {
+        trigger: "reminder_1day", channel: "sms",
+        subject: null,
+        body_html: null,
+        body_text: "Hi {{first_name}}, reminder: your cleaning with {{company_name}} is TOMORROW {{appointment_date}}, arrival {{appointment_window}} at {{service_address}}. Questions? {{company_phone}}.",
+      },
+
+      // ── 3. ON MY WAY ────────────────────────────────────────────────────
+      {
+        trigger: "on_my_way", channel: "email",
+        subject: "Your cleaner is on the way",
+        body_html: `<p style="margin:0 0 20px">Hi {{first_name}},</p>
+<p style="margin:0 0 20px"><strong>{{technician_name}}</strong> is on the way and will arrive during your scheduled window.</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E2DC;border-radius:6px;background:#FFFFFF;margin:0 0 24px">
+<tr><td style="padding:20px">
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Cleaner</p>
+  <p style="margin:0 0 16px;font-size:15px;color:#1A1917;font-weight:600">{{technician_name}}</p>
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Arriving</p>
+  <p style="margin:0 0 16px;font-size:15px;color:#1A1917">{{appointment_window}}</p>
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Address</p>
+  <p style="margin:0;font-size:15px;color:#1A1917">{{service_address}}</p>
+</td></tr>
+</table>
+<p style="margin:0">Need to reach us before arrival? Call or text <strong>{{company_phone}}</strong>.</p>`,
+        body_text: "Hi {{first_name}}, {{technician_name}} from {{company_name}} is on the way \u2014 arriving during your {{appointment_window}} window. Questions? {{company_phone}}.",
+      },
+      {
+        trigger: "on_my_way", channel: "sms",
+        subject: null,
+        body_html: null,
+        body_text: "Hi {{first_name}}, {{technician_name}} from {{company_name}} is on the way \u2014 arriving during your {{appointment_window}} window. Questions? {{company_phone}}.",
+      },
+
+      // ── 4. JOB COMPLETED ────────────────────────────────────────────────
+      {
+        trigger: "job_completed", channel: "email",
+        subject: "Your cleaning is complete \u2014 thank you, {{first_name}}",
+        body_html: `<p style="margin:0 0 20px">Hi {{first_name}},</p>
+<p style="margin:0 0 20px">Your home has been cleaned. Thank you for trusting <strong>{{company_name}}</strong>.</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E2DC;border-radius:6px;background:#FFFFFF;margin:0 0 24px">
+<tr><td style="padding:20px">
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Completed</p>
+  <p style="margin:0 0 16px;font-size:15px;color:#1A1917;font-weight:600">{{appointment_date}}</p>
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Service</p>
+  <p style="margin:0 0 16px;font-size:15px;color:#1A1917">{{scope}}</p>
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Address</p>
+  <p style="margin:0;font-size:15px;color:#1A1917">{{service_address}}</p>
+</td></tr>
+</table>
+<p style="margin:0 0 8px;font-weight:600;color:#1A1917">Our 24-Hour Guarantee</p>
+<p style="margin:0 0 20px;color:#1A1917">If we missed anything, contact us within 24 hours and we will return to re-clean that area at no charge. No questions asked.</p>
+<p style="margin:0 0 20px;color:#1A1917">Reach us at <strong>{{company_phone}}</strong> or <strong>{{company_email}}</strong>.</p>
+<p style="margin:0">We look forward to your next visit.</p>`,
+        body_text: "Hi {{first_name}}, your cleaning is complete! If we missed anything contact us within 24 hours and we will make it right. Thank you \u2014 {{company_name}} {{company_phone}}.",
+      },
+      {
+        trigger: "job_completed", channel: "sms",
+        subject: null,
+        body_html: null,
+        body_text: "Hi {{first_name}}, your cleaning is complete! If we missed anything contact us within 24 hours and we will make it right. Thank you \u2014 {{company_name}} {{company_phone}}.",
+      },
+
+      // ── 5. REVIEW REQUEST ────────────────────────────────────────────────
+      {
+        trigger: "review_request", channel: "email",
+        subject: "How did we do, {{first_name}}?",
+        body_html: `<p style="margin:0 0 20px">Hi {{first_name}},</p>
+<p style="margin:0 0 24px">We hope your home is feeling great. We would love to hear about your experience.</p>
+<div style="text-align:center;margin:0 0 24px">
+  <a href="{{review_link}}" style="display:inline-block;background:#5B9BD5;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:6px">Leave Us a Review</a>
+</div>
+<p style="margin:0 0 20px;color:#1A1917">Your feedback helps our team improve and helps other families in the Chicagoland area find a service they can trust. It takes less than two minutes.</p>
+<p style="margin:0">If anything fell short of your expectations, please reach out before posting \u2014 we want the chance to make it right. Call or text <strong>{{company_phone}}</strong>.</p>`,
+        body_text: "Hi {{first_name}}, thank you for your recent cleaning with {{company_name}}. Would you mind leaving a quick review? {{review_link}} \u2014 means a lot to our team.",
+      },
+      {
+        trigger: "review_request", channel: "sms",
+        subject: null,
+        body_html: null,
+        body_text: "Hi {{first_name}}, thank you for your recent cleaning with {{company_name}}. Would you mind leaving a quick review? {{review_link}} \u2014 means a lot to our team.",
+      },
+
+      // ── 6. INVOICE SENT ──────────────────────────────────────────────────
+      {
+        trigger: "invoice_sent", channel: "email",
+        subject: "Invoice #{{invoice_number}} from {{company_name}} \u2014 ${{invoice_amount}} due {{invoice_due_date}}",
+        body_html: `<p style="margin:0 0 20px">Hi {{first_name}},</p>
+<p style="margin:0 0 20px">Your invoice is ready. Payment is due by <strong>{{invoice_due_date}}</strong>.</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E2DC;border-radius:6px;background:#FFFFFF;margin:0 0 24px">
+<tr><td style="padding:20px">
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Invoice</p>
+  <p style="margin:0 0 16px;font-size:15px;color:#1A1917;font-weight:600">#{{invoice_number}}</p>
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Amount Due</p>
+  <p style="margin:0 0 16px;font-size:18px;color:#1A1917;font-weight:700">\${{invoice_amount}}</p>
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Due Date</p>
+  <p style="margin:0 0 16px;font-size:15px;color:#1A1917">{{invoice_due_date}}</p>
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Address</p>
+  <p style="margin:0;font-size:15px;color:#1A1917">{{service_address}}</p>
+</td></tr>
+</table>
+<div style="text-align:center;margin:0 0 24px">
+  <a href="{{invoice_link}}" style="display:inline-block;background:#5B9BD5;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:6px">View and Pay Invoice</a>
+</div>
+<p style="margin:0 0 20px;color:#6B6860;font-size:14px">If your card on file is set to auto-charge, no action is needed. Payment will process automatically on or before the due date.</p>
+<p style="margin:0;color:#1A1917">Questions? <strong>{{company_phone}}</strong> or <strong>{{company_email}}</strong>.</p>`,
+        body_text: "Hi {{first_name}}, invoice #{{invoice_number}} for ${{invoice_amount}} from {{company_name}} is ready. Due {{invoice_due_date}}. Pay: {{invoice_link}} or call {{company_phone}}.",
+      },
+      {
+        trigger: "invoice_sent", channel: "sms",
+        subject: null,
+        body_html: null,
+        body_text: "Hi {{first_name}}, invoice #{{invoice_number}} for ${{invoice_amount}} from {{company_name}} is ready. Due {{invoice_due_date}}. Pay: {{invoice_link}} or call {{company_phone}}.",
+      },
+
+      // ── 7. PAYMENT RECEIVED ──────────────────────────────────────────────
+      {
+        trigger: "payment_received", channel: "email",
+        subject: "Payment confirmed \u2014 thank you, {{first_name}}",
+        body_html: `<p style="margin:0 0 20px">Hi {{first_name}},</p>
+<p style="margin:0 0 20px">We have received your payment. Thank you.</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E2DC;border-radius:6px;background:#FFFFFF;margin:0 0 24px">
+<tr><td style="padding:20px">
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Amount Paid</p>
+  <p style="margin:0 0 16px;font-size:18px;color:#1A1917;font-weight:700">\${{payment_amount}}</p>
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Date</p>
+  <p style="margin:0 0 16px;font-size:15px;color:#1A1917">{{payment_date}}</p>
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Invoice</p>
+  <p style="margin:0;font-size:15px;color:#1A1917">#{{invoice_number}}</p>
+</td></tr>
+</table>
+<p style="margin:0 0 20px;color:#1A1917">Please save this email as your receipt. Questions? <strong>{{company_phone}}</strong> or <strong>{{company_email}}</strong>.</p>
+<p style="margin:0">We look forward to your next appointment.</p>`,
+        body_text: "Hi {{first_name}}, payment of ${{payment_amount}} received for invoice #{{invoice_number}}. Thank you! {{company_name}} {{company_phone}}.",
+      },
+      {
+        trigger: "payment_received", channel: "sms",
+        subject: null,
+        body_html: null,
+        body_text: "Hi {{first_name}}, payment of ${{payment_amount}} received for invoice #{{invoice_number}}. Thank you! {{company_name}} {{company_phone}}.",
+      },
+
+      // ── 8. NEW CLIENT WELCOME ────────────────────────────────────────────
+      {
+        trigger: "new_client_welcome", channel: "email",
+        subject: "Welcome to {{company_name}}, {{first_name}}",
+        body_html: `<p style="margin:0 0 20px">Hi {{first_name}},</p>
+<p style="margin:0 0 24px">Welcome to <strong>{{company_name}}</strong>. We are glad to have you.</p>
+<p style="margin:0 0 8px;font-weight:600;color:#1A1917">What to expect</p>
+<p style="margin:0 0 20px;color:#1A1917">Our team arrives within your scheduled window fully equipped. We bring all supplies \u2014 you do not need to provide anything unless noted in your service instructions.</p>
+<p style="margin:0 0 20px;color:#1A1917">After every cleaning you will receive a completion confirmation. If anything is ever less than excellent, contact us within 24 hours and we will return to make it right at no charge.</p>
+<p style="margin:0 0 8px;font-weight:600;color:#1A1917">Service policies at a glance</p>
+<ul style="margin:0 0 20px;padding-left:20px;color:#1A1917;line-height:1.9">
+  <li>48-hour cancellation notice required (Sundays do not count)</li>
+  <li>Monday appointments: notify us by Friday at 6:00 PM CT</li>
+  <li>Tuesday appointments: notify us by Saturday at 12:00 PM CT</li>
+  <li>Late cancellations and no-shows are charged at 100% of the service fee</li>
+  <li>One reschedule per appointment \u2014 additional reschedules are treated as cancellations</li>
+</ul>
+<p style="margin:0 0 8px;font-weight:600;color:#1A1917">How to reach us</p>
+<p style="margin:0 0 4px;color:#1A1917">Call or text: <strong>{{company_phone}}</strong></p>
+<p style="margin:0 0 4px;color:#1A1917">Email: <strong>{{company_email}}</strong></p>
+<p style="margin:0 0 4px;color:#1A1917">Website: phes.io</p>
+<p style="margin:0 0 24px;color:#1A1917">Hours: Monday through Saturday, 8:00 AM to 6:00 PM CT</p>
+<p style="margin:0">Thank you for choosing <strong>{{company_name}}</strong>.</p>`,
+        body_text: "Hi {{first_name}}, welcome to {{company_name}}! We look forward to your first cleaning. Questions anytime: {{company_phone}}. See you soon.",
+      },
+      {
+        trigger: "new_client_welcome", channel: "sms",
+        subject: null,
+        body_html: null,
+        body_text: "Hi {{first_name}}, welcome to {{company_name}}! We look forward to your first cleaning. Questions anytime: {{company_phone}}. See you soon.",
+      },
+
+      // ── 9. QUOTE SENT ────────────────────────────────────────────────────
+      {
+        trigger: "quote_sent", channel: "email",
+        subject: "Your quote from {{company_name}} \u2014 #{{quote_number}}",
+        body_html: `<p style="margin:0 0 20px">Hi {{first_name}},</p>
+<p style="margin:0 0 20px">Thank you for reaching out. Your quote is ready.</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E2DC;border-radius:6px;background:#FFFFFF;margin:0 0 24px">
+<tr><td style="padding:20px">
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Quote</p>
+  <p style="margin:0 0 16px;font-size:15px;color:#1A1917;font-weight:600">#{{quote_number}}</p>
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Estimate</p>
+  <p style="margin:0 0 16px;font-size:18px;color:#1A1917;font-weight:700">\${{quote_total}}</p>
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Valid Until</p>
+  <p style="margin:0 0 16px;font-size:15px;color:#1A1917">{{quote_expires}}</p>
+  <p style="margin:0 0 8px;font-size:13px;color:#6B6860;text-transform:uppercase;letter-spacing:.05em">Address</p>
+  <p style="margin:0;font-size:15px;color:#1A1917">{{service_address}}</p>
+</td></tr>
+</table>
+<div style="text-align:center;margin:0 0 24px">
+  <a href="{{quote_link}}" style="display:inline-block;background:#5B9BD5;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:6px">Review Your Quote</a>
+</div>
+<p style="margin:0 0 20px;color:#6B6860;font-size:14px">This estimate is based on the information provided. If your home\u2019s condition differs significantly, we may revise it before or at the start of service. Additional time is billed at $65 per hour per cleaner.</p>
+<p style="margin:0">To book, approve the quote online or call us at <strong>{{company_phone}}</strong>.</p>`,
+        body_text: "Hi {{first_name}}, your quote #{{quote_number}} from {{company_name}} is ready \u2014 ${{quote_total}} estimated. Review: {{quote_link}} or call {{company_phone}} to book.",
+      },
+      {
+        trigger: "quote_sent", channel: "sms",
+        subject: null,
+        body_html: null,
+        body_text: "Hi {{first_name}}, your quote #{{quote_number}} from {{company_name}} is ready \u2014 ${{quote_total}} estimated. Review: {{quote_link}} or call {{company_phone}} to book.",
+      },
+
+      // ── 10. PASSWORD RESET ───────────────────────────────────────────────
+      {
+        trigger: "password_reset", channel: "email",
+        subject: "Reset your Qleno password",
+        body_html: `<p style="margin:0 0 20px">Hi {{first_name}},</p>
+<p style="margin:0 0 20px">We received a request to reset the password for your Qleno account. Use the button below to set a new password.</p>
+<div style="text-align:center;margin:0 0 24px">
+  <a href="{{reset_link}}" style="display:inline-block;background:#5B9BD5;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:6px">Reset My Password</a>
+</div>
+<p style="margin:0 0 20px;color:#6B6860;font-size:14px">This link expires in {{reset_expiry}}. If you did not request this, ignore this email \u2014 your password will not change.</p>
+<p style="margin:0;color:#6B6860;font-size:14px">Trouble accessing your account? Contact your administrator or email <strong>{{company_email}}</strong>.</p>`,
+        body_text: null,
+      },
+    ];
+
+    let seeded = 0;
+    for (const t of templates) {
+      await db.execute(sql`
+        INSERT INTO notification_templates
+          (company_id, trigger, channel, subject, body, body_html, body_text, is_active)
+        SELECT
+          ${PHES}, ${t.trigger}, ${t.channel}::notification_channel,
+          ${t.subject}, '', ${t.body_html}, ${t.body_text}, true
+        WHERE NOT EXISTS (
+          SELECT 1 FROM notification_templates
+          WHERE company_id = ${PHES} AND trigger = ${t.trigger} AND channel = ${t.channel}::notification_channel
+        )
+      `);
+      seeded++;
+    }
+
+    // Verify count
+    const emailCount = await db.execute(sql`
+      SELECT COUNT(*)::int AS cnt FROM notification_templates
+      WHERE company_id = ${PHES} AND channel = 'email' AND is_active = true
+    `);
+    const smsCount = await db.execute(sql`
+      SELECT COUNT(*)::int AS cnt FROM notification_templates
+      WHERE company_id = ${PHES} AND channel = 'sms' AND is_active = true
+    `);
+    const ec = (emailCount.rows[0] as any).cnt;
+    const sc = (smsCount.rows[0] as any).cnt;
+    console.log(`TEMPLATE SYSTEM READY \u2014 ${ec} email templates, ${sc} SMS templates active for PHES tenant`);
+  } catch (err) {
+    console.error("[notification-templates] Seed error (non-fatal):", err);
   }
 }

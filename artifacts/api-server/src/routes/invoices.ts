@@ -4,6 +4,7 @@ import { invoicesTable, clientsTable, jobsTable, paymentsTable, notificationLogT
 import { eq, and, desc, count, sum, sql, lt, isNull, or, ne, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
 import { syncInvoice, syncPayment, queueSync } from "../services/quickbooks-sync.js";
+import { sendNotification } from "../services/notificationService.js";
 
 const router = Router();
 
@@ -417,7 +418,8 @@ router.post("/:id/send", requireAuth, requireRole("owner", "admin", "office"), a
     const invoiceId = parseInt(req.params.id);
 
     const [invoice] = await db
-      .select({ id: invoicesTable.id, client_id: invoicesTable.client_id, total: invoicesTable.total })
+      .select({ id: invoicesTable.id, client_id: invoicesTable.client_id, total: invoicesTable.total,
+                invoice_number: invoicesTable.invoice_number, due_date: invoicesTable.due_date })
       .from(invoicesTable)
       .where(and(eq(invoicesTable.id, invoiceId), eq(invoicesTable.company_id, req.auth!.companyId)))
       .limit(1);
@@ -431,19 +433,26 @@ router.post("/:id/send", requireAuth, requireRole("owner", "admin", "office"), a
       .returning();
 
     const [client] = await db
-      .select({ first_name: clientsTable.first_name, last_name: clientsTable.last_name, email: clientsTable.email })
+      .select({ first_name: clientsTable.first_name, last_name: clientsTable.last_name,
+                email: clientsTable.email, phone: clientsTable.phone,
+                address: clientsTable.address, city: clientsTable.city })
       .from(clientsTable)
       .where(eq(clientsTable.id, invoice.client_id))
       .limit(1);
 
-    await db.insert(notificationLogTable).values({
-      company_id: req.auth!.companyId,
-      recipient: client?.email || "system",
-      channel: "email",
-      trigger: "invoice_sent",
-      status: "sent",
-      metadata: { invoice_id: invoiceId, amount: parseFloat(invoice.total || "0") } as any,
-    });
+    const companyId = req.auth!.companyId;
+    const invNum  = invoice.invoice_number || generateInvoiceNumber(invoiceId);
+    const invLink = `https://clean-ops-pro.replit.app/pay/${invoiceId}`;
+    const mergeVars = {
+      first_name:       client?.first_name || "",
+      invoice_number:   invNum,
+      invoice_amount:   parseFloat(invoice.total || "0").toFixed(2),
+      invoice_due_date: invoice.due_date ? new Date(invoice.due_date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "upon receipt",
+      invoice_link:     invLink,
+      service_address:  [client?.address, client?.city].filter(Boolean).join(", "),
+    };
+    sendNotification("invoice_sent", "email", companyId, client?.email ?? null, null, mergeVars).catch(() => {});
+    sendNotification("invoice_sent", "sms",   companyId, null, client?.phone ?? null, mergeVars).catch(() => {});
 
     return res.json(formatInvoice({
       ...updated,

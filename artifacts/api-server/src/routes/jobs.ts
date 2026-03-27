@@ -6,6 +6,7 @@ import { requireAuth } from "../lib/auth.js";
 import { generateJobCompletionPdf } from "../lib/generate-job-pdf.js";
 import { geocodeAddress } from "../lib/geocode.js";
 import { resolveZoneForZip } from "./zones.js";
+import { sendNotification, labelServiceType } from "../services/notificationService.js";
 
 const router = Router();
 
@@ -872,6 +873,29 @@ router.post("/:id/complete", requireAuth, async (req, res) => {
         },
         body: JSON.stringify({ job_id: jobId, customer_id: clientId }),
       }).catch((npsErr: Error) => console.error("NPS send error (non-fatal):", npsErr));
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
+    // ── job_completed notification (non-blocking) ─────────────────────────
+    const companyId = req.auth!.companyId;
+    if (clientId && jobDetail[0]) {
+      const jd = jobDetail[0];
+      db.select({ email: clientsTable.email, phone: clientsTable.phone,
+                  address: clientsTable.address, city: clientsTable.city, state: clientsTable.state,
+                  first_name: clientsTable.first_name })
+        .from(clientsTable).where(eq(clientsTable.id, clientId)).limit(1)
+        .then(([cl]) => {
+          if (!cl) return;
+          const addr = [cl.address, cl.city, cl.state].filter(Boolean).join(", ");
+          const mv = {
+            first_name:       cl.first_name || "",
+            appointment_date: jd.scheduled_date || new Date().toISOString().slice(0, 10),
+            scope:            labelServiceType(jd.service_type),
+            service_address:  addr,
+          };
+          sendNotification("job_completed", "email", companyId, cl.email, null, mv).catch(() => {});
+          sendNotification("job_completed", "sms",   companyId, null, cl.phone, mv).catch(() => {});
+        }).catch(() => {});
     }
     // ─────────────────────────────────────────────────────────────────────
 

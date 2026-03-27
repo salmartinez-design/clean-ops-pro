@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { paymentsTable, invoicesTable } from "@workspace/db/schema";
+import { paymentsTable, invoicesTable, clientsTable } from "@workspace/db/schema";
 import { eq, and, desc, sum } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
+import { sendNotification } from "../services/notificationService.js";
 
 const router = Router();
 
@@ -27,8 +28,9 @@ router.post("/", requireAuth, requireRole("owner", "admin"), async (req, res) =>
   try {
     const { client_id, invoice_id, amount, method, last_4, card_brand, stripe_payment_id } = req.body;
     if (!client_id || !amount) return res.status(400).json({ error: "client_id and amount required" });
+    const companyId = req.auth!.companyId;
     const [p] = await db.insert(paymentsTable).values({
-      company_id: req.auth!.companyId,
+      company_id: companyId,
       client_id: parseInt(client_id),
       invoice_id: invoice_id ? parseInt(invoice_id) : null,
       amount: amount.toString(),
@@ -40,8 +42,28 @@ router.post("/", requireAuth, requireRole("owner", "admin"), async (req, res) =>
     if (invoice_id) {
       await db.update(invoicesTable)
         .set({ paid_at: new Date(), status: "paid" as any })
-        .where(and(eq(invoicesTable.id, parseInt(invoice_id)), eq(invoicesTable.company_id, req.auth!.companyId)));
+        .where(and(eq(invoicesTable.id, parseInt(invoice_id)), eq(invoicesTable.company_id, companyId)));
     }
+    // fire payment_received notification (non-blocking)
+    db.select({ first_name: clientsTable.first_name, email: clientsTable.email, phone: clientsTable.phone })
+      .from(clientsTable).where(eq(clientsTable.id, parseInt(client_id))).limit(1)
+      .then(async ([cl]) => {
+        if (!cl) return;
+        let invNum = invoice_id ? String(invoice_id) : "";
+        if (invoice_id) {
+          const [inv] = await db.select({ invoice_number: invoicesTable.invoice_number })
+            .from(invoicesTable).where(eq(invoicesTable.id, parseInt(invoice_id))).limit(1);
+          if (inv?.invoice_number) invNum = inv.invoice_number;
+        }
+        const mv = {
+          first_name:      cl.first_name || "",
+          payment_amount:  parseFloat(amount).toFixed(2),
+          payment_date:    new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
+          invoice_number:  invNum,
+        };
+        sendNotification("payment_received", "email", companyId, cl.email, null, mv).catch(() => {});
+        sendNotification("payment_received", "sms",   companyId, null, cl.phone, mv).catch(() => {});
+      }).catch(() => {});
     res.status(201).json(p);
   } catch (e: any) {
     console.error("Create payment error:", e);

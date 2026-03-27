@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { jobsTable, clientsTable, usersTable, companiesTable, jobStatusLogsTable } from "@workspace/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { requireAuth } from "../lib/auth.js";
+import { sendNotification } from "../services/notificationService.js";
 
 const router = Router();
 
@@ -75,6 +76,20 @@ router.post("/:id/sms-status", requireAuth, async (req, res) => {
       company_id: companyId, job_id: jobId, user_id: userId,
       event: event as any, sms_sent: false,
     }).returning();
+
+    // Fire template-based email for on_my_way event (non-blocking)
+    if (event === "on_my_way" && client?.phone) {
+      const emailMv = {
+        first_name:         client.first_name || "",
+        technician_name:    `${emp?.first_name ?? ""} ${emp?.last_name ?? ""}`.trim(),
+        appointment_window: "shortly",
+        service_address:    [client.address, client.city].filter(Boolean).join(", "),
+      };
+      const clientEmail = await db.select({ email: clientsTable.email })
+        .from(clientsTable).where(eq(clientsTable.id, job.client_id)).limit(1)
+        .then(r => r[0]?.email ?? null);
+      sendNotification("on_my_way", "email", companyId, clientEmail, null, emailMv).catch(() => {});
+    }
 
     // Check SMS enabled for this event
     const settingKey = SMS_SETTING_MAP[event];

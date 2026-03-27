@@ -1,10 +1,12 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import { randomBytes } from "crypto";
 import { requireAuth, signToken } from "../lib/auth.js";
 import { logAudit } from "../lib/audit.js";
+import { sendNotification } from "../services/notificationService.js";
 
 const router = Router();
 
@@ -124,6 +126,67 @@ router.post("/change-password", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("Change password error:", err);
     return res.status(500).json({ error: "Internal Server Error", message: "Failed to change password" });
+  }
+});
+
+// ── FORGOT PASSWORD ──────────────────────────────────────────────────────────
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ error: "Bad Request", message: "Email required" });
+    }
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase().trim())).limit(1);
+    // Always return success to avoid user enumeration
+    if (!user) return res.json({ success: true, message: "If that email exists, a reset link has been sent." });
+
+    const token = randomBytes(32).toString("hex");
+    const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await db.update(usersTable)
+      .set({ reset_token: token, reset_token_expires_at: expires } as any)
+      .where(eq(usersTable.id, user.id));
+
+    const resetLink = `https://clean-ops-pro.replit.app/reset-password?token=${token}`;
+    const mv = {
+      first_name:   user.first_name || "",
+      reset_link:   resetLink,
+      reset_expiry: "1 hour",
+    };
+    await sendNotification("password_reset", "email", user.company_id, user.email, null, mv);
+
+    return res.json({ success: true, message: "If that email exists, a reset link has been sent." });
+  } catch (err) {
+    console.error("Forgot password error:", err);
+    return res.status(500).json({ error: "Internal Server Error", message: "Failed to process request" });
+  }
+});
+
+// ── RESET PASSWORD ────────────────────────────────────────────────────────────
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { token, password } = req.body;
+    if (!token || !password || typeof password !== "string" || password.length < 6) {
+      return res.status(400).json({ error: "Bad Request", message: "Valid token and password (min 6 chars) required" });
+    }
+
+    const [user] = await db.select().from(usersTable)
+      .where(eq((usersTable as any).reset_token, token)).limit(1);
+
+    if (!user || !(user as any).reset_token_expires_at || new Date((user as any).reset_token_expires_at) < new Date()) {
+      return res.status(400).json({ error: "Bad Request", message: "Invalid or expired reset token" });
+    }
+
+    const hash = await bcrypt.hash(password, 10);
+    await db.update(usersTable)
+      .set({ password_hash: hash, reset_token: null, reset_token_expires_at: null } as any)
+      .where(eq(usersTable.id, user.id));
+
+    await logAudit(req, "password_reset", "user", user.id);
+    return res.json({ success: true, message: "Password reset successfully. You can now log in." });
+  } catch (err) {
+    console.error("Reset password error:", err);
+    return res.status(500).json({ error: "Internal Server Error", message: "Failed to reset password" });
   }
 });
 
