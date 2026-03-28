@@ -636,7 +636,7 @@ export default function BookPage() {
   const isRecurringScope = !isCommercial && !!scopeId && (selectedScope?.name ?? "").toLowerCase() === "recurring cleaning";
   const isMoveInOut = displayScopeKey === "move_in_out";
   const isDeepClean = displayScopeKey === "deep_clean";
-  const isDeepCleanScope = !isMoveInOut && (selectedScope?.name ?? "").toLowerCase().includes("deep clean");
+  const isDeepCleanScope = selectedScope?.name?.toLowerCase().trim() === "deep clean";
   const getOverageRate = (freq: string) => freq === "weekly" ? 60 : freq === "biweekly" ? 65 : 70;
   const cleanlinessLabel: Record<number, string> = { 1: "Very Clean", 2: "Moderately Clean", 3: "Very Dirty" };
 
@@ -948,8 +948,8 @@ export default function BookPage() {
                   {
                     group: "Residential",
                     scopes: [
-                      { key: "deep_clean",       displayName: "Deep Clean",           match: (n) => n.includes("deep clean") || n.includes("move in") },
-                      { key: "move_in_out",       displayName: "Move In / Move Out",   match: (n) => n.includes("deep clean") || n.includes("move in") },
+                      { key: "deep_clean",       displayName: "Deep Clean",           match: (n) => n === "deep clean" },
+                      { key: "move_in_out",       displayName: "Move In / Move Out",   match: (n) => n === "move in / move out" },
                       { key: "one_time_standard", displayName: "One-Time Standard Clean", match: (n) => n.includes("one-time standard") || n.includes("one time standard") },
                       { key: "recurring",         displayName: "Recurring Cleaning",   match: (n) => n === "recurring cleaning" },
                     ],
@@ -1047,7 +1047,7 @@ export default function BookPage() {
                         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                           <button
                             onClick={() => {
-                              const dcScope = company.active_scopes.find(s => s.name.toLowerCase().includes("deep clean") || s.name.toLowerCase().includes("move in"));
+                              const dcScope = company.active_scopes.find(s => s.name.toLowerCase().trim() === "deep clean");
                               if (dcScope) selectScope(dcScope.id, "deep_clean");
                             }}
                             style={{ padding: "10px 18px", background: brand, color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif" }}

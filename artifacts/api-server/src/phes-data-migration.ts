@@ -100,7 +100,8 @@ export async function runPhesDataMigration(): Promise<void> {
     // NOTE: "Recurring Cleaning" kept for backward-compat with scope 11 (inactive)
     // Active recurring scopes are: Recurring Cleaning - Weekly/Every 2 Weeks/Every 4 Weeks
     const scopeDefs = [
-      { name: "Deep Clean or Move In/Out",          method: "sqft",   rate: "70.00", min: "210.00" },
+      { name: "Deep Clean",                          method: "sqft",   rate: "70.00", min: "210.00" },
+      { name: "Move In / Move Out",                  method: "sqft",   rate: "70.00", min: "210.00" },
       { name: "One-Time Standard Clean",             method: "sqft",   rate: "60.00", min: "150.00" },
       { name: "Recurring Cleaning",                  method: "sqft",   rate: "55.00", min: "120.00" },
       { name: "Hourly Deep Clean",                   method: "hourly", rate: "70.00", min: "210.00" },
@@ -236,7 +237,8 @@ export async function runPhesDataMigration(): Promise<void> {
       // Clear any stale legacy addon records (pre-scope_ids era)
       await db.execute(sql`DELETE FROM pricing_addons WHERE company_id = ${PHES}`);
 
-      const D  = scopeMap["Deep Clean or Move In/Out"];
+      const D   = scopeMap["Deep Clean"];
+      const MIO = scopeMap["Move In / Move Out"];
       const S  = scopeMap["One-Time Standard Clean"];
       const R  = scopeMap["Recurring Cleaning"];
       const HD = scopeMap["Hourly Deep Clean"];
@@ -264,7 +266,7 @@ export async function runPhesDataMigration(): Promise<void> {
         {
           name: "Oven Cleaning",
           addon_type: "cleaning_extras",
-          scope_ids: [D, S, R].filter(Boolean),
+          scope_ids: [D, MIO, S, R].filter(Boolean),
           price_type: "flat", price_value: 50,
           time_minutes: 45, time_unit: "each",
           is_itemized: true, show_office: true, show_online: true, show_portal: true, sort_order: 10,
@@ -280,7 +282,7 @@ export async function runPhesDataMigration(): Promise<void> {
         {
           name: "Refrigerator Cleaning",
           addon_type: "cleaning_extras",
-          scope_ids: [D, S, R].filter(Boolean),
+          scope_ids: [D, MIO, S, R].filter(Boolean),
           price_type: "flat", price_value: 50,
           time_minutes: 45, time_unit: "each",
           is_itemized: true, show_office: true, show_online: true, show_portal: true, sort_order: 20,
@@ -296,7 +298,7 @@ export async function runPhesDataMigration(): Promise<void> {
         {
           name: "Kitchen Cabinets (must be empty upon arrival)",
           addon_type: "cleaning_extras",
-          scope_ids: [D, S].filter(Boolean),
+          scope_ids: [D, MIO, S].filter(Boolean),
           price_type: "flat", price_value: 50,
           time_minutes: 45, time_unit: "each",
           is_itemized: true, show_office: true, show_online: true, show_portal: true, sort_order: 30,
@@ -329,7 +331,7 @@ export async function runPhesDataMigration(): Promise<void> {
         {
           name: "Windows (inside panes) — Deep Clean",
           addon_type: "cleaning_extras",
-          scope_ids: [D].filter(Boolean),
+          scope_ids: [D, MIO].filter(Boolean),
           price_type: "sqft_pct", price_value: 15,
           time_minutes: 45, time_unit: "sqft",
           is_itemized: true, show_office: true, show_online: true, show_portal: true, sort_order: 50,
@@ -354,7 +356,7 @@ export async function runPhesDataMigration(): Promise<void> {
         {
           name: "Clean Basement — Deep / Standard",
           addon_type: "cleaning_extras",
-          scope_ids: [D, S].filter(Boolean),
+          scope_ids: [D, MIO, S].filter(Boolean),
           price_type: "sqft_pct", price_value: 15,
           time_minutes: 45, time_unit: "sqft",
           is_itemized: true, show_office: true, show_online: true, show_portal: true, sort_order: 60,
@@ -379,7 +381,7 @@ export async function runPhesDataMigration(): Promise<void> {
         {
           name: "Parking Fee",
           addon_type: "cleaning_extras",
-          scope_ids: [D, S, R, HD, HS, C, P].filter(Boolean),
+          scope_ids: [D, MIO, S, R, HD, HS, C, P].filter(Boolean),
           price_type: "flat", price_value: 20,
           time_minutes: 0, time_unit: "each",
           is_itemized: true, show_office: true, show_online: true, show_portal: true, sort_order: 70,
@@ -388,7 +390,7 @@ export async function runPhesDataMigration(): Promise<void> {
         {
           name: "Manual Adjustment",
           addon_type: "cleaning_extras",
-          scope_ids: [D, S, R].filter(Boolean),
+          scope_ids: [D, MIO, S, R].filter(Boolean),
           price_type: "manual_adj", price_value: 0,
           time_minutes: 0, time_unit: "each",
           is_itemized: true, show_office: true, show_online: false, show_portal: false, sort_order: 99,
@@ -397,7 +399,7 @@ export async function runPhesDataMigration(): Promise<void> {
         {
           name: "Loyalty Discount — $100",
           addon_type: "other",
-          scope_ids: [D, S, R, HS, P].filter(Boolean),
+          scope_ids: [D, MIO, S, R, HS, P].filter(Boolean),
           price_type: "flat", price_value: -100,
           time_minutes: 0, time_unit: "each",
           is_itemized: true, show_office: true, show_online: true, show_portal: true, sort_order: 110,
@@ -405,7 +407,7 @@ export async function runPhesDataMigration(): Promise<void> {
         {
           name: "Loyalty Discount — $50",
           addon_type: "other",
-          scope_ids: [D, S, R, HD, HS, P].filter(Boolean),
+          scope_ids: [D, MIO, S, R, HD, HS, P].filter(Boolean),
           price_type: "flat", price_value: -50,
           time_minutes: 0, time_unit: "each",
           is_itemized: true, show_office: true, show_online: true, show_portal: true, sort_order: 111,

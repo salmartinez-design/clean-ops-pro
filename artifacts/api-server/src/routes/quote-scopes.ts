@@ -7,7 +7,8 @@ import { requireAuth } from "../lib/auth.js";
 const router = Router();
 
 const PHES_SCOPES = [
-  { name: "Deep Clean or Move In/Out", category: "house_cleaning", pricing_method: "sqft", base_hourly_rate: "70", min_bill_rate: "210", available_office: true, available_online: true },
+  { name: "Deep Clean", category: "house_cleaning", pricing_method: "sqft", base_hourly_rate: "70", min_bill_rate: "210", available_office: true, available_online: true },
+  { name: "Move In / Move Out", category: "house_cleaning", pricing_method: "sqft", base_hourly_rate: "70", min_bill_rate: "210", available_office: true, available_online: true },
   { name: "One-Time Flat-Rate Standard Cleaning", category: "house_cleaning", pricing_method: "sqft", base_hourly_rate: "65", min_bill_rate: "180", available_office: true, available_online: true },
   { name: "Recurring Cleaning", category: "house_cleaning", pricing_method: "sqft", base_hourly_rate: "65", min_bill_rate: "180", available_office: true, available_online: true },
   { name: "Hourly Deep Clean", category: "house_cleaning", pricing_method: "hourly", base_hourly_rate: "70", min_bill_rate: "210", available_office: true, available_online: false },
