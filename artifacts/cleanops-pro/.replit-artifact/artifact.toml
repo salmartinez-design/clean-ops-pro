@@ -22,6 +22,8 @@ PORT = "19325"
 BASE_PATH = "/"
 
 [services.production]
-serve = "static"
-publicDir = "artifacts/cleanops-pro/dist/public"
-build = ["pnpm", "--filter", "@workspace/cleanops-pro", "run", "build"]
+build = ["pnpm", "--filter", "@workspace/api-server", "run", "build"]
+run = ["node", "artifacts/api-server/dist/index.mjs"]
+
+[services.production.health.startup]
+path = "/api/healthz"
