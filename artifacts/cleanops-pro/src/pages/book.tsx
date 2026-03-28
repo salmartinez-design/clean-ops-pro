@@ -650,11 +650,7 @@ export default function BookPage() {
       cursor: "pointer", background: sel ? `${brand}12` : "#fff", transition: "all 0.15s", textAlign: "left" as const,
       width: "100%",
     }),
-    addonCard: (sel: boolean) => ({
-      display: "flex", alignItems: "flex-start", gap: 10, padding: "12px 16px",
-      border: `2px solid ${sel ? brand : "#E5E2DC"}`, borderRadius: 10,
-      cursor: "pointer", background: sel ? `${brand}12` : "#fff", transition: "all 0.15s",
-    }),
+    addonCard: (_sel: boolean) => ({ display: "none" }), // replaced by icon-card layout
   };
 
   // ── Loading / not found states ────────────────────────────────────────────
@@ -1570,92 +1566,221 @@ export default function BookPage() {
                 </div>
               )}
 
-              {/* Add-ons grid */}
-              {visibleAddons.length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                  {/* Persuasion line */}
-                  {isDeepCleanScope && (
-                    <p style={{ fontSize: 13, color: "#6B6860", marginBottom: 12, lineHeight: 1.5 }}>
-                      {upsellAccepted
-                        ? "Most customers add oven and refrigerator cleaning — save a separate visit."
-                        : "Deep cleans are the perfect time to tackle appliances — add extras while we're already there."}
-                    </p>
-                  )}
-                  {!isDeepCleanScope && !isCommercial && (
-                    <p style={{ fontSize: 13, color: "#6B6860", marginBottom: 12, lineHeight: 1.5 }}>
-                      A great time to tackle the extras while we're already there.
-                    </p>
-                  )}
+              {/* Add-ons grid — icon card layout */}
+              {visibleAddons.length > 0 && (() => {
+                const ADDON_DISPLAY_ORDER = [8, 10, 12, 16, 19];
+                const sortedAddons = [...visibleAddons].sort((a, b) => {
+                  const ai = ADDON_DISPLAY_ORDER.indexOf(a.id);
+                  const bi = ADDON_DISPLAY_ORDER.indexOf(b.id);
+                  if (ai === -1 && bi === -1) return 0;
+                  if (ai === -1) return 1;
+                  if (bi === -1) return -1;
+                  return ai - bi;
+                });
+                const deepBase = calcResult?.base_price ?? 0;
+                const dynPrice = (deepBase > 0 && sqft > 0)
+                  ? Math.round(deepBase * 0.15 * 100) / 100
+                  : null;
+                const applianceActive = selectedAddonIds.includes(8) && selectedAddonIds.includes(10);
+                const bundleDisc = parseFloat(activeBundle?.discount_value ?? "0");
 
-                  <span style={s.label}>Add-ons (optional)</span>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {visibleAddons.map(a => {
-                      const sel = selectedAddonIds.includes(a.id);
-                      const isBundleAddon = bundleAddonIds.has(a.id);
-                      const fromResult = calcResult?.addon_breakdown.find(b => b.id === a.id);
-                      const pv = parseFloat(String((a as any).price_value ?? a.price ?? 0));
-                      const isPct = a.price_type === "percentage" || a.price_type === "percent";
-                      const bundleDiscount = (activeBundle && isBundleAddon && !isDynamicPricedAddon(a.id))
-                        ? parseFloat(activeBundle.discount_value)
-                        : 0;
-                      let displayPrice: any = fromResult
-                        ? (fromResult.amount < 0 ? `-$${Math.abs(fromResult.amount).toFixed(2)}` : `+$${fromResult.amount.toFixed(2)}`)
-                        : a.price_type === "time_only"
-                        ? "No additional charge"
-                        : a.price_type === "flat" && pv !== 0
-                        ? (pv < 0 ? `-$${Math.abs(pv).toFixed(2)}` : `+$${pv.toFixed(2)}`)
-                        : isPct
-                        ? "Price varies by home size"
-                        : "";
-                      if (bundleDiscount > 0 && a.price_type === "flat" && pv > 0) {
-                        const discounted = pv - bundleDiscount;
-                        displayPrice = (
-                          <span>
-                            <span style={{ textDecoration: "line-through", color: "#9E9B94", marginRight: 4 }}>+${pv.toFixed(2)}</span>
-                            <span style={{ color: "#2D6A4F", fontWeight: 600 }}>+${discounted.toFixed(2)}</span>
-                          </span>
-                        );
-                      }
-                      return (
-                        <div key={a.id} style={{ position: "relative" }}>
-                          <div style={s.addonCard(sel)} onClick={() => setSelectedAddonIds(prev => sel ? prev.filter(x => x !== a.id) : [...prev, a.id])}>
-                            <div style={{ width: 20, height: 20, borderRadius: 4, border: `2px solid ${sel ? brand : "#C4C1BA"}`, background: sel ? brand : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2 }}>
-                              {sel && <CheckCircle2 size={13} color="#fff" />}
+                return (
+                  <div style={{ marginBottom: 16 }}>
+                    {!isCommercial && (
+                      <p style={{ fontSize: 13, color: "#6B6860", marginBottom: 12, marginTop: 0, lineHeight: 1.5 }}>
+                        Most customers add oven and refrigerator cleaning — save a separate visit.
+                      </p>
+                    )}
+                    <span style={s.label}>Add-ons (optional)</span>
+                    <div className="bw-grid2" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginTop: 8 }}>
+                      {sortedAddons.map(a => {
+                        const sel = selectedAddonIds.includes(a.id);
+                        const isBundleAddon = bundleAddonIds.has(a.id);
+                        const pv = parseFloat(String((a as any).price_value ?? a.price ?? 0));
+                        const isBundleDiscounted = applianceActive && isBundleAddon && a.price_type === "flat";
+                        const discountedPv = isBundleDiscounted ? Math.round((pv - bundleDisc) * 100) / 100 : pv;
+                        const iconAreaBg = sel ? `${brand}10` : "#F7F6F3";
+                        const showBadge = a.id === 8 || a.id === 10;
+
+                        let priceNode: React.ReactNode;
+                        if (a.id === 16 || a.id === 19) {
+                          priceNode = dynPrice !== null ? `+$${dynPrice.toFixed(2)}` : "";
+                        } else if (a.price_type === "flat" && pv > 0) {
+                          priceNode = isBundleDiscounted ? (
+                            <span>
+                              <span style={{ textDecoration: "line-through", color: "#9E9B94", marginRight: 4 }}>+${pv.toFixed(2)}</span>
+                              <span style={{ color: "#2D6A4F", fontWeight: 700 }}>+${discountedPv.toFixed(2)}</span>
+                            </span>
+                          ) : `+$${pv.toFixed(2)}`;
+                        } else {
+                          priceNode = "";
+                        }
+
+                        let subLabel: React.ReactNode = "";
+                        if (a.id === 8 || a.id === 10) subLabel = "Recommended by 9 out of 10 clients";
+                        else if (a.id === 12) subLabel = "Cabinets must be empty upon arrival";
+                        else if (a.id === 16 || a.id === 19) {
+                          subLabel = dynPrice !== null
+                            ? `+$${dynPrice.toFixed(2)} · included with your Deep Clean rate`
+                            : "Price varies by home size";
+                        }
+
+                        const iconMap: Record<number, React.ReactNode> = {
+                          8: (
+                            <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ color: brand }}>
+                              <rect x="8" y="8" width="48" height="48" rx="4" stroke="currentColor" strokeWidth="2.5"/>
+                              <rect x="16" y="24" width="32" height="24" rx="2" stroke="currentColor" strokeWidth="2"/>
+                              <circle cx="20" cy="16" r="3" stroke="currentColor" strokeWidth="2"/>
+                              <circle cx="32" cy="16" r="3" stroke="currentColor" strokeWidth="2"/>
+                              <circle cx="44" cy="16" r="3" stroke="currentColor" strokeWidth="2"/>
+                              <line x1="22" y1="36" x2="42" y2="36" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                            </svg>
+                          ),
+                          10: (
+                            <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ color: brand }}>
+                              <rect x="12" y="4" width="40" height="56" rx="4" stroke="currentColor" strokeWidth="2.5"/>
+                              <line x1="12" y1="24" x2="52" y2="24" stroke="currentColor" strokeWidth="2"/>
+                              <line x1="28" y1="12" x2="28" y2="20" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                              <line x1="28" y1="32" x2="28" y2="48" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                            </svg>
+                          ),
+                          12: (
+                            <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ color: brand }}>
+                              <rect x="4" y="8" width="26" height="48" rx="2" stroke="currentColor" strokeWidth="2.5"/>
+                              <rect x="34" y="8" width="26" height="48" rx="2" stroke="currentColor" strokeWidth="2.5"/>
+                              <circle cx="24" cy="32" r="2.5" fill="currentColor"/>
+                              <circle cx="40" cy="32" r="2.5" fill="currentColor"/>
+                              <line x1="4" y1="32" x2="30" y2="32" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 3"/>
+                              <line x1="34" y1="32" x2="60" y2="32" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 3"/>
+                            </svg>
+                          ),
+                          16: (
+                            <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ color: brand }}>
+                              <rect x="6" y="6" width="52" height="52" rx="3" stroke="currentColor" strokeWidth="2.5"/>
+                              <line x1="32" y1="6" x2="32" y2="58" stroke="currentColor" strokeWidth="2"/>
+                              <line x1="6" y1="32" x2="58" y2="32" stroke="currentColor" strokeWidth="2"/>
+                              <path d="M14 14 Q20 20 14 26" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.5"/>
+                            </svg>
+                          ),
+                          19: (
+                            <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ color: brand }}>
+                              <path d="M4 28 L32 8 L60 28" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              <rect x="8" y="28" width="48" height="28" rx="2" stroke="currentColor" strokeWidth="2.5"/>
+                              <rect x="24" y="40" width="16" height="16" rx="1" stroke="currentColor" strokeWidth="2"/>
+                              <line x1="8" y1="40" x2="22" y2="40" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                              <line x1="42" y1="40" x2="56" y2="40" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                            </svg>
+                          ),
+                        };
+
+                        const showAmberNudge = partialBundleNudge && partialBundleNudge.missingName === a.name && !sel;
+
+                        return (
+                          <div key={a.id} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            <div
+                              style={{
+                                border: `${sel ? 2 : 1}px solid ${sel ? brand : "#E5E2DC"}`,
+                                borderRadius: 8,
+                                background: "#FFFFFF",
+                                cursor: "pointer",
+                                overflow: "hidden",
+                                transition: "border-color 0.15s",
+                              }}
+                              onClick={() => setSelectedAddonIds(prev => sel ? prev.filter(x => x !== a.id) : [...prev, a.id])}
+                            >
+                              {/* Icon area */}
+                              <div style={{
+                                height: 120,
+                                background: iconAreaBg,
+                                borderRadius: "8px 8px 0 0",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                position: "relative",
+                                transition: "background 0.15s",
+                              }}>
+                                {iconMap[a.id] ?? null}
+                                {showBadge && (
+                                  <span style={{
+                                    position: "absolute", top: 8, right: 8,
+                                    fontSize: 10, fontWeight: 700,
+                                    background: brand, color: "#fff",
+                                    padding: "2px 8px", borderRadius: 20,
+                                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                                  }}>
+                                    Most Popular
+                                  </span>
+                                )}
+                              </div>
+                              {/* Bottom row */}
+                              <div style={{ padding: 16 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                  <div style={{
+                                    width: 18, height: 18, borderRadius: 4,
+                                    border: `2px solid ${sel ? brand : "#C4C1BA"}`,
+                                    background: sel ? brand : "#fff",
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                    flexShrink: 0,
+                                  }}>
+                                    {sel && <CheckCircle2 size={12} color="#fff" />}
+                                  </div>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontWeight: 600, fontSize: 14, color: "#1A1917", lineHeight: 1.3 }}>{a.name}</div>
+                                  </div>
+                                  {priceNode !== "" && (
+                                    <div style={{ fontWeight: 600, fontSize: 13, color: "#1A1917", flexShrink: 0 }}>
+                                      {priceNode}
+                                    </div>
+                                  )}
+                                </div>
+                                {subLabel !== "" && (
+                                  <p style={{ margin: "6px 0 0 28px", fontSize: 12, color: "#6B6860", lineHeight: 1.4 }}>
+                                    {subLabel}
+                                  </p>
+                                )}
+                              </div>
                             </div>
-                            <div style={{ flex: 1 }}>
-                              <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: "#1A1917" }}>{a.name}</p>
-                              <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9E9B94" }}>{displayPrice}</p>
-                            </div>
-                            {isBundleAddon && (
-                              <span style={{ fontSize: 10, fontWeight: 700, background: brand, color: "#fff", padding: "2px 7px", borderRadius: 20, flexShrink: 0, alignSelf: "center" }}>
-                                Most Popular
-                              </span>
+                            {showAmberNudge && (
+                              <p style={{
+                                fontSize: 11, color: "#92400E", margin: 0,
+                                background: "#FEF3C7", padding: "4px 8px", borderRadius: 6, lineHeight: 1.4,
+                                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                              }}>
+                                Add {a.name} to unlock the Appliance Bundle — save $10
+                              </p>
                             )}
                           </div>
-                          {partialBundleNudge && partialBundleNudge.missingName === a.name && !sel && (
-                            <p style={{ fontSize: 11, color: "#92400E", margin: "4px 0 0", paddingLeft: 4 }}>
-                              Add {a.name} to unlock the {partialBundleNudge.bundleName} discount
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {activeBundle && bundleSavings > 0 && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, padding: "8px 12px", background: "#D1FAE5", borderRadius: 8 }}>
-                      <Tag size={13} color="#2D6A4F" />
-                      <span style={{ fontSize: 12, fontWeight: 600, color: "#2D6A4F" }}>
-                        {activeBundle.name} applied — you're saving ${bundleSavings.toFixed(2)}
-                      </span>
+                        );
+                      })}
                     </div>
-                  )}
-                </div>
-              )}
 
-              <p style={{ fontSize: 12, color: "#9E9B94", marginBottom: 16, marginTop: 4, lineHeight: 1.5, textAlign: "center" }}>
+                    {activeBundle && bundleSavings > 0 && (
+                      <div style={{
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        marginTop: 12, padding: "8px 16px",
+                        background: "#2D6A4F", borderRadius: 20,
+                      }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#fff", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                          Appliance Bundle applied — you're saving ${bundleSavings.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              <p style={{ fontSize: 12, color: "#6B6860", marginBottom: 16, marginTop: 4, lineHeight: 1.5, textAlign: "center" }}>
                 Add extras now — requesting them later may require a separate visit.
               </p>
+
+              {/* Running total */}
+              {calcResult && selectedAddonIds.length > 0 && (
+                <div style={{ textAlign: "right", marginBottom: 12 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: "#1A1917", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                    Subtotal: ${(calcResult.final_total).toFixed(2)}
+                  </span>
+                </div>
+              )}
 
               <div className="bw-nav" style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
                 <button style={s.btn(false)} onClick={() => setStep(1)}>Back</button>
