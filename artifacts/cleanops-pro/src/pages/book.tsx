@@ -164,38 +164,67 @@ function SimpleCalendar({ selected, onSelect, brand, leadHours }: { selected: st
 }
 
 // ── Synchronous upsell price calculation (no async, no loading state) ────────
-const UPSELL_TIERS = [
-  { min: 0,    max: 999,   price: 195 },
-  { min: 1000, max: 1299,  price: 214.50 },
-  { min: 1300, max: 1599,  price: 247 },
-  { min: 1600, max: 1899,  price: 280 },
-  { min: 1900, max: 2199,  price: 312 },
-  { min: 2200, max: 2499,  price: 344 },
-  { min: 2500, max: 2799,  price: 377 },
-  { min: 2800, max: 3099,  price: 409 },
-  { min: 3100, max: 3399,  price: 442 },
-  { min: 3400, max: 3699,  price: 474 },
-  { min: 3700, max: 3999,  price: 507 },
-  { min: 4000, max: 4299,  price: 520 },
-  { min: 4300, max: 4599,  price: 546 },
-  { min: 4600, max: 4899,  price: 572 },
-  { min: 4900, max: 5199,  price: 598 },
-  { min: 5200, max: 5499,  price: 624 },
-  { min: 5500, max: 5799,  price: 650 },
-  { min: 5800, max: 6099,  price: 676 },
-  { min: 6100, max: 99999, price: 702 },
-];
-const UPSELL_CADENCE_MULT: Record<string, number> = {
-  weekly: 0.80,
-  biweekly: 0.90,
-  monthly: 1.00,
+// Tiers derived from actual DB data: scope 4 (weekly) × $60/hr,
+// scope 9 (biweekly) × $65/hr, scope 10 (monthly) × $70/hr.
+// Mirrors the server-side rate_override values set in pricing_frequencies.
+type UpsellTier = { min: number; max: number; price: number };
+const UPSELL_TIERS: Record<string, UpsellTier[]> = {
+  weekly: [
+    { min: 0,    max: 749,   price: 174.00 },
+    { min: 750,  max: 999,   price: 174.60 },
+    { min: 1000, max: 1249,  price: 180.00 },
+    { min: 1250, max: 1499,  price: 190.80 },
+    { min: 1500, max: 1749,  price: 198.00 },
+    { min: 1750, max: 1999,  price: 229.20 },
+    { min: 2000, max: 2249,  price: 240.00 },
+    { min: 2250, max: 2499,  price: 270.00 },
+    { min: 2500, max: 2749,  price: 300.00 },
+    { min: 2750, max: 3499,  price: 327.00 },
+    { min: 3500, max: 3749,  price: 327.00 },
+    { min: 3750, max: 3999,  price: 420.00 },
+    { min: 4000, max: 4999,  price: 570.00 },
+    { min: 5000, max: 99999, price: 660.00 },
+  ],
+  biweekly: [
+    { min: 0,    max: 749,   price: 195.00 },
+    { min: 750,  max: 999,   price: 195.00 },
+    { min: 1000, max: 1249,  price: 201.50 },
+    { min: 1250, max: 1499,  price: 212.55 },
+    { min: 1500, max: 1749,  price: 224.25 },
+    { min: 1750, max: 1999,  price: 260.00 },
+    { min: 2000, max: 2249,  price: 265.85 },
+    { min: 2250, max: 2499,  price: 305.50 },
+    { min: 2500, max: 2749,  price: 342.55 },
+    { min: 2750, max: 3499,  price: 364.00 },
+    { min: 3500, max: 3749,  price: 403.00 },
+    { min: 3750, max: 3999,  price: 472.55 },
+    { min: 4000, max: 4999,  price: 650.00 },
+    { min: 5000, max: 99999, price: 780.00 },
+  ],
+  monthly: [
+    { min: 0,    max: 749,   price: 216.30 },
+    { min: 750,  max: 999,   price: 216.30 },
+    { min: 1000, max: 1249,  price: 224.00 },
+    { min: 1250, max: 1499,  price: 241.50 },
+    { min: 1500, max: 1749,  price: 247.80 },
+    { min: 1750, max: 1999,  price: 292.60 },
+    { min: 2000, max: 2249,  price: 317.80 },
+    { min: 2250, max: 2499,  price: 350.00 },
+    { min: 2500, max: 2749,  price: 381.50 },
+    { min: 2750, max: 3499,  price: 420.00 },
+    { min: 3500, max: 3749,  price: 462.00 },
+    { min: 3750, max: 3999,  price: 560.00 },
+    { min: 4000, max: 4999,  price: 735.00 },
+    { min: 5000, max: 99999, price: 910.00 },
+  ],
 };
 function calculateUpsellPrice(sqft: number, cadence: string, discountPct = 15): { recurringRate: number; firstVisitRate: number } | null {
   if (!sqft || sqft <= 0 || !cadence) return null;
-  const tier = UPSELL_TIERS.find(t => sqft >= t.min && sqft <= t.max);
+  const tiers = UPSELL_TIERS[cadence];
+  if (!tiers) return null;
+  const tier = tiers.find(t => sqft >= t.min && sqft <= t.max);
   if (!tier) return null;
-  const mult = UPSELL_CADENCE_MULT[cadence] ?? 1.0;
-  const recurringRate = Math.round(tier.price * mult * 100) / 100;
+  const recurringRate = Math.round(tier.price * 100) / 100;
   const firstVisitRate = Math.round(recurringRate * (1 - discountPct / 100) * 100) / 100;
   return { recurringRate, firstVisitRate };
 }
