@@ -400,6 +400,7 @@ export default function BookPage() {
     if (!email.trim()) errs.email = "Email is required";
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.email = "Enter a valid email address";
     if (!zip.trim()) errs.zip = "Zip code is required";
+    if (!address.trim()) errs.address = "Service address is required";
     if (!termsConsent) errs.terms = "You must agree to the terms";
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -936,6 +937,10 @@ export default function BookPage() {
                 </FieldWrap>
               </div>
 
+              <FieldWrap label="Service Address" error={errors.address}>
+                <input style={s.input} value={address} onChange={e => setAddressField(e.target.value)} placeholder="Enter your service address" />
+              </FieldWrap>
+
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
                   <input type="checkbox" checked={smsConsent} onChange={e => setSmsConsent(e.target.checked)} style={{ marginTop: 3, accentColor: brand, width: 16, height: 16, flexShrink: 0, minHeight: "unset" }} />
@@ -1298,7 +1303,7 @@ export default function BookPage() {
                               </button>
                               {upsellTermsOpen && (
                                 <p style={{ margin: "8px 0 0", fontSize: 12, color: "#6B6860", lineHeight: 1.6, fontStyle: "italic" }}>
-                                  Your recurring rate is locked for {offerSettings?.rate_lock_duration_months ?? 24} months provided your home conditions remain consistent with your original booking. Significant changes to home size, occupants, or pets may require a re-quote. Rate lock is void after {offerSettings?.service_gap_days ?? 60} consecutive days without service, or if actual cleaning time exceeds the estimated time by more than {offerSettings?.overrun_threshold_percent ?? 20}% on {offerSettings?.overrun_jobs_trigger ?? 2} of your first 3 cleans.
+                                  Your rate is guaranteed for {offerSettings?.rate_lock_duration_months ?? 24} months as long as your home stays the same. If your home significantly changes — new pets, more people, or major renovations — we may need to adjust your rate. Your guarantee also pauses if you skip service for more than {offerSettings?.service_gap_days ?? 60} days, or if your first few cleanings consistently take longer than expected.
                                 </p>
                               )}
                             </div>
@@ -1309,7 +1314,7 @@ export default function BookPage() {
                               onClick={() => {
                                 if (!upsellCadence) { setUpsellCadenceError(true); return; }
                                 if (!upsellCalcResult) return;
-                                setUpsellAccepted(true); setUpsellDeclined(false);
+                                setUpsellAccepted(true); setUpsellDeclined(false); setFrequencyStr(upsellCadence);
                               }}
                               disabled={!upsellCadence || !upsellCalcResult}
                               style={{
@@ -1446,30 +1451,51 @@ export default function BookPage() {
           {/* ── Step 2: Frequency + Add-ons ──────────────────────────────────── */}
           {step === 2 && (
             <div style={s.card}>
-              <p style={s.h2}>How often and what extras?</p>
-              <p style={s.sub}>Choose your cleaning frequency and any add-ons.</p>
+              <p style={s.h2}>{upsellAccepted ? "Add extras to your cleaning" : "How often and what extras?"}</p>
+              <p style={s.sub}>{upsellAccepted ? "Your recurring schedule is confirmed. Choose any extras below." : "Choose your cleaning frequency and any add-ons."}</p>
 
-              {frequencies.length > 0 && (
-                <div style={{ marginBottom: 24 }}>
-                  <span style={s.label}>Frequency</span>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    {frequencies.map(f => (
-                      <button key={f.id} style={s.freqCard(frequencyStr === f.frequency)} onClick={() => setFrequencyStr(f.frequency)}>
-                        <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#1A1917" }}>{wLabel(f.frequency)}</p>
-                      </button>
-                    ))}
+              {/* Frequency section — read-only when upsell accepted, interactive otherwise */}
+              {upsellAccepted ? (
+                <div style={{ marginBottom: 24, padding: "14px 16px", background: "#F7F6F3", borderRadius: 10, border: "1px solid #E5E2DC" }}>
+                  <p style={{ margin: "0 0 4px", fontSize: 13, color: "#6B6860", fontWeight: 600 }}>Cleaning Frequency</p>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1A1917" }}>{wLabel(upsellCadence)}</p>
+                    <button
+                      onClick={() => { setUpsellAccepted(false); setUpsellDeclined(false); setStep(1); }}
+                      style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: brand, cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600 }}
+                    >
+                      Change
+                    </button>
                   </div>
-                  {lastCleanedOverride && overageAcknowledged && frequencyStr && (
-                    <p style={{ margin: "10px 0 0", fontSize: 12, color: "#6B6860", lineHeight: 1.5 }}>
-                      Extended service rate applies if additional time is needed: <strong>${getOverageRate(frequencyStr)}/hr</strong> based on your selected frequency.
-                    </p>
-                  )}
                 </div>
+              ) : (
+                frequencies.length > 0 && (
+                  <div style={{ marginBottom: 24 }}>
+                    <span style={s.label}>Frequency</span>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      {frequencies.map(f => (
+                        <button key={f.id} style={s.freqCard(frequencyStr === f.frequency)} onClick={() => setFrequencyStr(f.frequency)}>
+                          <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#1A1917" }}>{wLabel(f.frequency)}</p>
+                        </button>
+                      ))}
+                    </div>
+                    {lastCleanedOverride && overageAcknowledged && frequencyStr && (
+                      <p style={{ margin: "10px 0 0", fontSize: 12, color: "#6B6860", lineHeight: 1.5 }}>
+                        Extended service rate applies if additional time is needed: <strong>${getOverageRate(frequencyStr)}/hr</strong> based on your selected frequency.
+                      </p>
+                    )}
+                  </div>
+                )
               )}
 
               {visibleAddons.length > 0 && (
-                <div style={{ marginBottom: 24 }}>
-                  {addonPersuasionLine && (
+                <div style={{ marginBottom: 16 }}>
+                  {upsellAccepted && isDeepCleanScope && (
+                    <p style={{ fontSize: 12, color: "#6B6860", marginBottom: 10, fontStyle: "italic", lineHeight: 1.5 }}>
+                      Most customers add oven and refrigerator cleaning — save a separate visit.
+                    </p>
+                  )}
+                  {!upsellAccepted && addonPersuasionLine && (
                     <p style={{ fontSize: 12, color: "#6B6860", marginBottom: 10, fontStyle: "italic", lineHeight: 1.5 }}>
                       {addonPersuasionLine}
                     </p>
@@ -1540,39 +1566,17 @@ export default function BookPage() {
                 </div>
               )}
 
-              <FieldWrap label="Discount Code">
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input
-                    style={{ ...s.input, flex: 1 }}
-                    value={discountInput}
-                    onChange={e => { setDiscountInput(e.target.value.toUpperCase()); setDiscountError(""); }}
-                    placeholder="e.g. WELCOME10"
-                  />
-                  <button
-                    style={{ ...s.btn(), padding: "10px 20px", opacity: !discountInput.trim() ? 0.5 : 1, flexShrink: 0 }}
-                    disabled={!discountInput.trim()}
-                    onClick={() => runCalc({ code: discountInput.trim() })}
-                  >
-                    Apply
-                  </button>
-                </div>
-                {discountError && <div style={s.err}><AlertCircle size={12} />{discountError}</div>}
-                {discountCode && calcResult && calcResult.discount_amount > 0 && (
-                  <div style={{ ...s.err, color: "#10B981" }}><CheckCircle2 size={12} />Code applied: -{`$${calcResult.discount_amount.toFixed(2)}`}</div>
-                )}
-              </FieldWrap>
-
-              <FieldWrap label="Service Address">
-                <input style={s.input} value={address} onChange={e => setAddressField(e.target.value)} placeholder="3165 W 84th Place, Chicago, IL" />
-              </FieldWrap>
-
-              <p style={{ fontSize: 11, color: "#9E9B94", marginBottom: 16, marginTop: -4, lineHeight: 1.5 }}>
+              <p style={{ fontSize: 11, color: "#9E9B94", marginBottom: 16, marginTop: 4, lineHeight: 1.5 }}>
                 Add extras now — requesting them later may require a separate visit.
               </p>
 
               <div className="bw-nav" style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
                 <button style={s.btn(false)} onClick={() => setStep(1)}>Back</button>
-                <button style={{ ...s.btn(), opacity: !frequencyStr ? 0.5 : 1 }} disabled={!frequencyStr} onClick={() => setStep(3)}>
+                <button
+                  style={{ ...s.btn(), opacity: (!upsellAccepted && !frequencyStr) ? 0.5 : 1 }}
+                  disabled={!upsellAccepted && !frequencyStr}
+                  onClick={() => setStep(3)}
+                >
                   Continue
                 </button>
               </div>
