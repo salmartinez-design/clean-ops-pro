@@ -163,6 +163,43 @@ function SimpleCalendar({ selected, onSelect, brand, leadHours }: { selected: st
   );
 }
 
+// ── Synchronous upsell price calculation (no async, no loading state) ────────
+const UPSELL_TIERS = [
+  { min: 0,    max: 999,   price: 195 },
+  { min: 1000, max: 1299,  price: 214.50 },
+  { min: 1300, max: 1599,  price: 247 },
+  { min: 1600, max: 1899,  price: 280 },
+  { min: 1900, max: 2199,  price: 312 },
+  { min: 2200, max: 2499,  price: 344 },
+  { min: 2500, max: 2799,  price: 377 },
+  { min: 2800, max: 3099,  price: 409 },
+  { min: 3100, max: 3399,  price: 442 },
+  { min: 3400, max: 3699,  price: 474 },
+  { min: 3700, max: 3999,  price: 507 },
+  { min: 4000, max: 4299,  price: 520 },
+  { min: 4300, max: 4599,  price: 546 },
+  { min: 4600, max: 4899,  price: 572 },
+  { min: 4900, max: 5199,  price: 598 },
+  { min: 5200, max: 5499,  price: 624 },
+  { min: 5500, max: 5799,  price: 650 },
+  { min: 5800, max: 6099,  price: 676 },
+  { min: 6100, max: 99999, price: 702 },
+];
+const UPSELL_CADENCE_MULT: Record<string, number> = {
+  weekly: 0.80,
+  biweekly: 0.90,
+  monthly: 1.00,
+};
+function calculateUpsellPrice(sqft: number, cadence: string, discountPct = 15): { recurringRate: number; firstVisitRate: number } | null {
+  if (!sqft || sqft <= 0 || !cadence) return null;
+  const tier = UPSELL_TIERS.find(t => sqft >= t.min && sqft <= t.max);
+  if (!tier) return null;
+  const mult = UPSELL_CADENCE_MULT[cadence] ?? 1.0;
+  const recurringRate = Math.round(tier.price * mult * 100) / 100;
+  const firstVisitRate = Math.round(recurringRate * (1 - discountPct / 100) * 100) / 100;
+  return { recurringRate, firstVisitRate };
+}
+
 // ── Main booking widget ──────────────────────────────────────────────────────
 export default function BookPage() {
   const [, params] = useRoute("/book/:slug");
@@ -234,9 +271,7 @@ export default function BookPage() {
   const [upsellAccepted, setUpsellAccepted] = useState(false);
   const [upsellDeclined, setUpsellDeclined] = useState(false);
   const [upsellTermsOpen, setUpsellTermsOpen] = useState(false);
-  const [upsellRates, setUpsellRates] = useState<Record<string, CalcResult> | null>(null);
   const [upsellCadenceError, setUpsellCadenceError] = useState(false);
-  const upsellFetchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Step 2: Frequency + Add-ons
   const [frequencyStr, setFrequencyStr] = useState("");
@@ -359,51 +394,6 @@ export default function BookPage() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [scopeId, sqft, frequencyStr, selectedAddonIds]);
 
-  // ── Upsell pricing: pre-fetch all three recurring rates whenever sqft changes ─
-  // Pre-fetches weekly/biweekly/monthly rates in one parallel batch as soon as
-  // sqft is valid. Cadence selection then reads synchronously from the cached
-  // map — no per-selection API round-trip, no silent "Calculating…" hangs.
-  const UPSELL_CADENCES = [
-    { key: "weekly",   scopeId: 4,  hourly: 55 },
-    { key: "biweekly", scopeId: 9,  hourly: 60 },
-    { key: "monthly",  scopeId: 10, hourly: 65 },
-  ] as const;
-  const UPSELL_FALLBACK = [
-    { min: 0,    max: 1000,  w: 165,  b: 180,  m: 195  },
-    { min: 1001, max: 1500,  w: 206,  b: 225,  m: 244  },
-    { min: 1501, max: 2000,  w: 220,  b: 245,  m: 295  },
-    { min: 2001, max: 2500,  w: 275,  b: 300,  m: 325  },
-    { min: 2501, max: 3000,  w: 330,  b: 360,  m: 390  },
-    { min: 3001, max: 3500,  w: 385,  b: 420,  m: 455  },
-    { min: 3501, max: 4000,  w: 440,  b: 480,  m: 520  },
-    { min: 4001, max: 99999, w: 495,  b: 540,  m: 585  },
-  ];
-  useEffect(() => {
-    if (!company || !sqft || displayScopeKey !== "deep_clean") { setUpsellRates(null); return; }
-    if (upsellFetchRef.current) clearTimeout(upsellFetchRef.current);
-    upsellFetchRef.current = setTimeout(() => {
-      const fallback = (key: "w" | "b" | "m"): CalcResult => {
-        const t = UPSELL_FALLBACK.find(r => sqft >= r.min && sqft <= r.max);
-        const price = t ? t[key] : 220;
-        console.warn(`[Upsell] Using fallback ${key}: $${price}`);
-        return { scope_id: 0, scope_name: "", sqft, frequency: "", tier_id: 0, base_hours: 0, hourly_rate: 0, base_price: price, minimum_applied: false, addons_total: 0, addon_breakdown: [], subtotal: price, discount_amount: 0, final_total: price };
-      };
-      const keyMap: Record<string, "w"|"b"|"m"> = { weekly: "w", biweekly: "b", monthly: "m" };
-      Promise.all(
-        UPSELL_CADENCES.map(c =>
-          pubFetch("/api/public/calculate", {
-            method: "POST",
-            body: JSON.stringify({ company_id: company.id, scope_id: c.scopeId, sqft, frequency: c.key, addon_ids: [] }),
-          }).catch(() => fallback(keyMap[c.key]))
-        )
-      ).then(results => {
-        const map: Record<string, CalcResult> = {};
-        UPSELL_CADENCES.forEach((c, i) => { map[c.key] = results[i]; });
-        setUpsellRates(map);
-      });
-    }, 400);
-    return () => { if (upsellFetchRef.current) clearTimeout(upsellFetchRef.current); };
-  }, [company, sqft, displayScopeKey]);
 
   // ── Step 0 validation ─────────────────────────────────────────────────────
   function validateStep0() {
@@ -525,7 +515,7 @@ export default function BookPage() {
             upsell_declined: upsellDeclined && !upsellAccepted,
             upsell_deferred: upsellDeclined && !upsellAccepted,
             upsell_cadence_selected: upsellAccepted ? upsellCadence : null,
-            upsell_locked_rate: upsellAccepted && upsellCalcResult ? upsellCalcResult.final_total : null,
+            upsell_locked_rate: upsellAccepted && upsellPriceResult ? upsellPriceResult.recurringRate : null,
             property_vacant: isMoveInOut,
             address, preferred_date: selectedDate,
             payment_method_id: paymentMethodId,
@@ -672,8 +662,8 @@ export default function BookPage() {
   const showSoftNudge       = isDeepCleanScope && upsellDeclined === true;
   const cleanlinessLabel: Record<number, string> = { 1: "Very Clean", 2: "Moderately Clean", 3: "Very Dirty" };
 
-  // Derived: resolved from pre-fetched rate map — synchronous, no async
-  const upsellCalcResult: CalcResult | null = (upsellRates && upsellCadence) ? (upsellRates[upsellCadence] ?? null) : null;
+  // Synchronous upsell price — instant, zero network dependency
+  const upsellPriceResult = calculateUpsellPrice(sqft, upsellCadence, offerSettings?.upsell_discount_percent ?? 15);
 
   const scopeNameLower = (selectedScope?.name ?? "").toLowerCase();
   const showCleanlinessQ = !isCommercial && !!scopeId && (
@@ -1324,19 +1314,19 @@ export default function BookPage() {
                             <div style={{ marginBottom: 14, padding: "12px 14px", background: "#F7F6F3", borderRadius: 8, minHeight: 56 }}>
                               {!sqft ? (
                                 <p style={{ margin: 0, fontSize: 12, color: "#6B6860" }}>Enter your home size above to see your rate.</p>
-                              ) : upsellCalcResult ? (
+                              ) : upsellPriceResult ? (
                                 <>
                                   <p style={{ margin: "0 0 3px", fontSize: 15, fontWeight: 600, color: "#1A1917" }}>
                                     Your first recurring cleaning:{" "}
-                                    <span style={{ textDecoration: "line-through", color: "#9E9B94", fontWeight: 400 }}>${upsellCalcResult.final_total.toFixed(2)}</span>
-                                    {" "}<strong style={{ color: brand }}>${(upsellCalcResult.final_total * (1 - (offerSettings?.upsell_discount_percent ?? 15) / 100)).toFixed(2)}</strong>
+                                    <span style={{ textDecoration: "line-through", color: "#9E9B94", fontWeight: 400 }}>${upsellPriceResult.recurringRate.toFixed(2)}</span>
+                                    {" "}<strong style={{ color: brand }}>${upsellPriceResult.firstVisitRate.toFixed(2)}</strong>
                                   </p>
                                   <p style={{ margin: 0, fontSize: 12, color: "#6B6860" }}>
-                                    Then ${upsellCalcResult.final_total.toFixed(2)}/visit{offerSettings?.rate_lock_enabled !== false ? ` — locked for ${offerSettings?.rate_lock_duration_months ?? 24} months.` : "."}
+                                    Then ${upsellPriceResult.recurringRate.toFixed(2)}/visit{offerSettings?.rate_lock_enabled !== false ? ` — locked for ${offerSettings?.rate_lock_duration_months ?? 24} months.` : "."}
                                   </p>
                                 </>
                               ) : (
-                                <p style={{ margin: 0, fontSize: 13, color: "#9E9B94" }}>Calculating your rate…</p>
+                                <p style={{ margin: 0, fontSize: 12, color: "#6B6860" }}>Contact us for a custom rate.</p>
                               )}
                             </div>
                           )}
@@ -1361,22 +1351,19 @@ export default function BookPage() {
                             <button
                               onClick={() => {
                                 if (!upsellCadence) { setUpsellCadenceError(true); return; }
-                                if (!upsellCalcResult) return;
+                                if (!upsellPriceResult) return;
                                 setUpsellAccepted(true); setUpsellDeclined(false); setFrequencyStr(upsellCadence);
                               }}
-                              disabled={!upsellCadence || !upsellCalcResult}
+                              disabled={!upsellCadence || !upsellPriceResult}
                               style={{
                                 padding: "12px 20px", background: brand, color: "#fff", border: "none", borderRadius: 8,
                                 fontSize: 14, fontWeight: 600, fontFamily: "'Plus Jakarta Sans', sans-serif",
-                                cursor: (!upsellCadence || !upsellCalcResult) ? "not-allowed" : "pointer",
-                                opacity: (!upsellCadence || !upsellCalcResult) ? 0.55 : 1,
+                                cursor: (!upsellCadence || !upsellPriceResult) ? "not-allowed" : "pointer",
+                                opacity: (!upsellCadence || !upsellPriceResult) ? 0.55 : 1,
                                 transition: "opacity 0.15s",
                               }}
                             >
-                              {upsellCadence && !upsellCalcResult
-                                ? (sqft ? "Calculating…" : "Enter your home size to continue")
-                                : "Yes — lock in my rate"
-                              }
+                              {!upsellCadence || upsellPriceResult ? "Yes — lock in my rate" : "Enter your home size to continue"}
                             </button>
                             <button
                               onClick={() => { setUpsellDeclined(true); setUpsellAccepted(false); }}
@@ -1392,11 +1379,11 @@ export default function BookPage() {
                         <>
                           <p style={{ margin: "0 0 4px", fontSize: 14, fontWeight: 700, color: "#1A1917" }}>Rate lock confirmed</p>
                           <p style={{ margin: "0 0 12px", fontSize: 13, color: "#6B6860", lineHeight: 1.5 }}>
-                            {offerSettings?.rate_lock_enabled !== false && <>Your recurring rate will be locked for {offerSettings?.rate_lock_duration_months ?? 24} months at ${upsellCalcResult?.final_total?.toFixed(2) ?? "--"}/visit. </>}
-                            First visit: <strong style={{ color: brand }}>${((upsellCalcResult?.final_total ?? 0) * (1 - (offerSettings?.upsell_discount_percent ?? 15) / 100)).toFixed(2)}</strong> ({offerSettings?.upsell_discount_percent ?? 15}% off applied).
+                            {offerSettings?.rate_lock_enabled !== false && <>Your recurring rate will be locked for {offerSettings?.rate_lock_duration_months ?? 24} months at ${upsellPriceResult?.recurringRate?.toFixed(2) ?? "--"}/visit. </>}
+                            First visit: <strong style={{ color: brand }}>${upsellPriceResult?.firstVisitRate?.toFixed(2) ?? "--"}</strong> ({offerSettings?.upsell_discount_percent ?? 15}% off applied).
                           </p>
                           <button
-                            onClick={() => { setUpsellAccepted(false); setUpsellDeclined(false); setUpsellCadence(""); setUpsellCalcResult(null); }}
+                            onClick={() => { setUpsellAccepted(false); setUpsellDeclined(false); setUpsellCadence(""); }}
                             style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: "#6B6860", textDecoration: "underline", cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif" }}
                           >
                             Change selection
