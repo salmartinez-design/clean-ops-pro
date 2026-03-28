@@ -242,7 +242,7 @@ export async function runReviewRequestCron(): Promise<void> {
 
     const rows = await db.execute(
       (await import("drizzle-orm")).sql`
-        SELECT j.id, j.company_id, j.client_id, j.updated_at, j.scheduled_date, j.service_type,
+        SELECT j.id, j.company_id, j.client_id, j.created_at, j.scheduled_date, j.service_type,
                c.first_name, c.last_name, c.email, c.phone,
                c.address, c.city, c.state, c.survey_last_sent,
                co.review_link
@@ -250,7 +250,7 @@ export async function runReviewRequestCron(): Promise<void> {
           JOIN clients c ON c.id = j.client_id
           JOIN companies co ON co.id = j.company_id
          WHERE j.status = 'complete'
-           AND DATE(j.updated_at) = ${fromStr}
+           AND DATE(j.created_at) = ${fromStr}
            AND (c.survey_last_sent IS NULL OR c.survey_last_sent < NOW() - INTERVAL '30 days')
       `
     );

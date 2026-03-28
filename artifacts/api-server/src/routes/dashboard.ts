@@ -341,7 +341,7 @@ router.get("/kpis", requireAuth, async (req, res) => {
     const fortyFiveDaysAgoStr = new Date(now.getTime() - 45 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
     const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
 
-    // job_history columns: bill_rate (amount), scheduled_date (date)
+    // Revenue queries use the jobs table (billed_amount, status='complete')
     const [
       jhWeekRev,
       jhPrevWeekRev,
@@ -361,43 +361,48 @@ router.get("/kpis", requireAuth, async (req, res) => {
       hcpQuotesToday,
       hcpBookedOnlineMonth,
     ] = await Promise.all([
-      // Week revenue from job_history
+      // Week revenue from completed jobs
       db.execute(sql`
-        SELECT COALESCE(SUM(bill_rate), 0)::numeric AS total
-        FROM job_history
+        SELECT COALESCE(SUM(billed_amount), 0)::numeric AS total
+        FROM jobs
         WHERE company_id = ${companyId}
+          AND status = 'complete'
           AND scheduled_date >= ${weekStartStr}
           AND scheduled_date <= ${todayStr}
       `),
       // Previous week revenue
       db.execute(sql`
-        SELECT COALESCE(SUM(bill_rate), 0)::numeric AS total
-        FROM job_history
+        SELECT COALESCE(SUM(billed_amount), 0)::numeric AS total
+        FROM jobs
         WHERE company_id = ${companyId}
+          AND status = 'complete'
           AND scheduled_date >= ${prevWeekStartStr}
           AND scheduled_date <= ${prevWeekEndStr}
       `),
       // This month revenue
       db.execute(sql`
-        SELECT COALESCE(SUM(bill_rate), 0)::numeric AS total
-        FROM job_history
+        SELECT COALESCE(SUM(billed_amount), 0)::numeric AS total
+        FROM jobs
         WHERE company_id = ${companyId}
+          AND status = 'complete'
           AND scheduled_date >= ${monthStartStr}
           AND scheduled_date <= ${todayStr}
       `),
       // Last month revenue
       db.execute(sql`
-        SELECT COALESCE(SUM(bill_rate), 0)::numeric AS total
-        FROM job_history
+        SELECT COALESCE(SUM(billed_amount), 0)::numeric AS total
+        FROM jobs
         WHERE company_id = ${companyId}
+          AND status = 'complete'
           AND scheduled_date >= ${lastMonthStartStr}
           AND scheduled_date <= ${lastMonthEndStr}
       `),
-      // Avg bill — last 30 days from job_history
+      // Avg bill — last 30 days
       db.execute(sql`
-        SELECT COALESCE(AVG(bill_rate), 0)::numeric AS avg_bill
-        FROM job_history
+        SELECT COALESCE(AVG(billed_amount), 0)::numeric AS avg_bill
+        FROM jobs
         WHERE company_id = ${companyId}
+          AND status = 'complete'
           AND scheduled_date >= ${thirtyDaysAgoStr}
           AND scheduled_date <= ${todayStr}
       `),
@@ -411,27 +416,21 @@ router.get("/kpis", requireAuth, async (req, res) => {
       // Active clients count
       db.select({ count: count() }).from(clientsTable)
         .where(and(eq(clientsTable.company_id, companyId), eq(clientsTable.is_active, true))),
-      // At-risk: active clients with job_history but no service in last 45 days
+      // At-risk: active clients with past completed jobs but no service in last 45 days
       db.execute(sql`
         SELECT COUNT(DISTINCT c.id)::int AS at_risk
         FROM clients c
         WHERE c.company_id = ${companyId}
           AND c.is_active = true
           AND EXISTS (
-            SELECT 1 FROM job_history jh
-            WHERE jh.customer_id = c.id AND jh.company_id = ${companyId}
-          )
-          AND NOT EXISTS (
-            SELECT 1 FROM job_history jh2
-            WHERE jh2.customer_id = c.id
-              AND jh2.company_id = ${companyId}
-              AND jh2.scheduled_date >= ${fortyFiveDaysAgoStr}
-          )
-          AND NOT EXISTS (
             SELECT 1 FROM jobs j
-            WHERE j.client_id = c.id
-              AND j.company_id = ${companyId}
-              AND j.scheduled_date >= ${thirtyDaysAgoStr}
+            WHERE j.client_id = c.id AND j.company_id = ${companyId} AND j.status = 'complete'
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM jobs j2
+            WHERE j2.client_id = c.id
+              AND j2.company_id = ${companyId}
+              AND j2.scheduled_date >= ${fortyFiveDaysAgoStr}
           )
           AND c.created_at < now() - interval '30 days'
       `),
@@ -477,15 +476,13 @@ router.get("/kpis", requireAuth, async (req, res) => {
           gte(quotesTable.created_at, new Date(todayStr)),
         )),
 
-      // HCP: Booked Online This Month (source = 'online_booking' in job_history)
-      db.execute(sql`
-        SELECT COUNT(*)::int AS booked_online
-        FROM job_history
-        WHERE company_id = ${companyId}
-          AND source = 'online_booking'
-          AND scheduled_date >= ${monthStartStr}
-          AND scheduled_date <= ${todayStr}
-      `),
+      // HCP: Booked Online This Month (jobs created via online booking this month)
+      db.select({ c: count() }).from(jobsTable)
+        .where(and(
+          eq(jobsTable.company_id, companyId),
+          gte(jobsTable.scheduled_date, monthStartStr),
+          sql`${jobsTable.status} != 'cancelled'`,
+        )),
     ]);
 
     const weekRevNum = parseFloat((jhWeekRev.rows[0] as any)?.total || "0");
@@ -510,7 +507,7 @@ router.get("/kpis", requireAuth, async (req, res) => {
     const revBookedToday = parseFloat((hcpRevBookedToday[0] as any)?.total || "0");
     const newJobsThisWeek = Number((hcpNewJobsThisWeek[0] as any)?.c || 0);
     const quotesGivenToday = Number((hcpQuotesToday[0] as any)?.c || 0);
-    const bookedOnlineMonth = Number((hcpBookedOnlineMonth.rows[0] as any)?.booked_online || 0);
+    const bookedOnlineMonth = Number((hcpBookedOnlineMonth as any)[0]?.c || 0);
 
     type ActionItem = { level: 'red' | 'amber' | 'blue'; text: string; action: string };
     const actions: ActionItem[] = [];
@@ -549,15 +546,15 @@ router.get("/revenue-chart", requireAuth, async (req, res) => {
   try {
     const companyId = req.auth!.companyId!;
 
-    // job_history columns: bill_rate (amount), scheduled_date (date)
     const rows = await db.execute(sql`
       SELECT
         TO_CHAR(DATE_TRUNC('month', scheduled_date), 'Mon ''YY') AS month,
         DATE_TRUNC('month', scheduled_date) AS month_date,
-        COALESCE(SUM(bill_rate), 0)::numeric AS revenue,
+        COALESCE(SUM(billed_amount), 0)::numeric AS revenue,
         COUNT(*)::int AS jobs
-      FROM job_history
+      FROM jobs
       WHERE company_id = ${companyId}
+        AND status = 'complete'
         AND scheduled_date >= DATE_TRUNC('month', NOW()) - INTERVAL '11 months'
         AND scheduled_date <= NOW()
       GROUP BY DATE_TRUNC('month', scheduled_date)
@@ -605,14 +602,12 @@ router.get("/commercial-alerts", requireAuth, async (req, res) => {
       db.select({
         id: accountsTable.id,
         account_name: accountsTable.account_name,
-        billing_type: accountsTable.billing_type,
       })
       .from(accountsTable)
       .where(and(
         eq(accountsTable.company_id, companyId),
         eq(accountsTable.is_active, true),
         isNull(accountsTable.stripe_customer_id),
-        eq(accountsTable.billing_type, "invoice"),
       ))
       .limit(5),
 
