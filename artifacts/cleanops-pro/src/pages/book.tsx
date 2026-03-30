@@ -1359,19 +1359,9 @@ export default function BookPage() {
                       {showVeryDirtyCard && (
                         <div style={{ marginTop: 12, background: "#FFF8F0", border: "1.5px solid #F59E0B", borderRadius: 10, padding: 16 }}>
                           <p style={{ margin: "0 0 4px", fontSize: 12, fontWeight: 700, color: "#92400E", textTransform: "uppercase", letterSpacing: "0.07em" }}>Custom Quote Required</p>
-                          <p style={{ margin: "0 0 12px", fontSize: 14, color: "#78350F", lineHeight: 1.5 }}>
-                            Heavily soiled homes require an in-person assessment before we can book online. Please contact our office and we'll get you scheduled right away.
+                          <p style={{ margin: 0, fontSize: 14, color: "#78350F", lineHeight: 1.5 }}>
+                            Heavily soiled homes require an in-person assessment before we can book online. Our office team will reach out to get you scheduled right away.
                           </p>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                            <a href="tel:+17737066000" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", color: "#92400E", fontWeight: 600, fontSize: 14 }}>
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.93 9.13a19.79 19.79 0 01-3.07-8.67A2 2 0 012.88 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L7.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
-                              (773) 706-6000
-                            </a>
-                            <a href="mailto:info@phes.io" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", color: "#92400E", fontWeight: 600, fontSize: 14 }}>
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,12 2,6"/></svg>
-                              info@phes.io
-                            </a>
-                          </div>
                         </div>
                       )}
                     </div>
