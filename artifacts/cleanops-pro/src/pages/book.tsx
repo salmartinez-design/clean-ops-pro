@@ -1595,23 +1595,34 @@ export default function BookPage() {
                 const showFridgeNudge = ovenSel && !fridgeSel;
 
                 const cardStyle = (sel: boolean) => ({
-                  border: `${sel ? 2 : 1}px solid ${sel ? brand : "#E5E2DC"}`,
-                  borderRadius: 8, background: "#FFFFFF",
-                  cursor: "pointer", overflow: "hidden", transition: "border-color 0.15s",
+                  border: `2px solid ${sel ? brand : "#E5E2DC"}`,
+                  borderRadius: 8,
+                  background: sel ? `${brand}0F` : "#FFFFFF",
+                  cursor: "pointer", overflow: "hidden",
+                  transition: "border-color 0.15s, background 0.15s",
                 });
                 const iconAreaStyle = (sel: boolean) => ({
-                  height: 120, background: sel ? `${brand}10` : "#F7F6F3",
+                  height: 120, background: sel ? `${brand}22` : "#F7F6F3",
                   borderRadius: "8px 8px 0 0", display: "flex",
                   alignItems: "center", justifyContent: "center",
                   position: "relative" as const, transition: "background 0.15s",
                 });
                 const checkStyle = (sel: boolean) => ({
-                  width: 18, height: 18, borderRadius: 4,
+                  width: 22, height: 22, borderRadius: 5,
                   border: `2px solid ${sel ? brand : "#C4C1BA"}`,
                   background: sel ? brand : "#fff",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   flexShrink: 0 as const,
+                  transition: "background 0.15s, border-color 0.15s",
                 });
+                const addedChip = (
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, color: "#fff",
+                    background: brand, borderRadius: 20,
+                    padding: "2px 8px", flexShrink: 0,
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  }}>Added</span>
+                );
                 const popularBadge = (
                   <span style={{
                     position: "absolute", top: 8, right: 8,
@@ -1680,11 +1691,9 @@ export default function BookPage() {
                             </div>
                             <div style={{ padding: 16 }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                <div style={checkStyle(ovenSel)}>{ovenSel && <CheckCircle2 size={12} color="#fff" />}</div>
+                                <div style={checkStyle(ovenSel)}>{ovenSel && <CheckCircle2 size={14} color="#fff" />}</div>
                                 <div style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: 14, color: "#1A1917" }}>Oven Cleaning</div>
-                                <div style={{ fontWeight: 600, fontSize: 13, color: "#1A1917", flexShrink: 0 }}>
-                                  {flatPriceNode(50, applianceActive)}
-                                </div>
+                                {ovenSel ? addedChip : <div style={{ fontWeight: 600, fontSize: 13, color: "#1A1917", flexShrink: 0 }}>{flatPriceNode(50, applianceActive)}</div>}
                               </div>
                               <p style={{ margin: "6px 0 0 28px", fontSize: 12, color: "#6B6860", lineHeight: 1.4 }}>
                                 Recommended by 9 out of 10 clients
@@ -1710,11 +1719,9 @@ export default function BookPage() {
                             </div>
                             <div style={{ padding: 16 }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                <div style={checkStyle(fridgeSel)}>{fridgeSel && <CheckCircle2 size={12} color="#fff" />}</div>
+                                <div style={checkStyle(fridgeSel)}>{fridgeSel && <CheckCircle2 size={14} color="#fff" />}</div>
                                 <div style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: 14, color: "#1A1917" }}>Refrigerator Cleaning</div>
-                                <div style={{ fontWeight: 600, fontSize: 13, color: "#1A1917", flexShrink: 0 }}>
-                                  {flatPriceNode(50, applianceActive)}
-                                </div>
+                                {fridgeSel ? addedChip : <div style={{ fontWeight: 600, fontSize: 13, color: "#1A1917", flexShrink: 0 }}>{flatPriceNode(50, applianceActive)}</div>}
                               </div>
                               <p style={{ margin: "6px 0 0 28px", fontSize: 12, color: "#6B6860", lineHeight: 1.4 }}>
                                 Recommended by 9 out of 10 clients
@@ -1741,9 +1748,9 @@ export default function BookPage() {
                             </div>
                             <div style={{ padding: 16 }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                <div style={checkStyle(cabSel)}>{cabSel && <CheckCircle2 size={12} color="#fff" />}</div>
+                                <div style={checkStyle(cabSel)}>{cabSel && <CheckCircle2 size={14} color="#fff" />}</div>
                                 <div style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: 14, color: "#1A1917" }}>Kitchen Cabinets</div>
-                                <div style={{ fontWeight: 600, fontSize: 13, color: "#1A1917", flexShrink: 0 }}>+$50.00</div>
+                                {cabSel ? addedChip : <span style={{ fontWeight: 600, fontSize: 13, color: "#1A1917", flexShrink: 0 }}>+$50.00</span>}
                               </div>
                               <p style={{ margin: "6px 0 0 28px", fontSize: 12, color: "#6B6860", lineHeight: 1.4 }}>
                                 Cabinets must be empty upon arrival
@@ -1767,11 +1774,9 @@ export default function BookPage() {
                             </div>
                             <div style={{ padding: 16 }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                <div style={checkStyle(winSel)}>{winSel && <CheckCircle2 size={12} color="#fff" />}</div>
+                                <div style={checkStyle(winSel)}>{winSel && <CheckCircle2 size={14} color="#fff" />}</div>
                                 <div style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: 14, color: "#1A1917" }}>Windows (inside panes only) — Tracks not included</div>
-                                {dynPriceNode && (
-                                  <div style={{ fontWeight: 600, fontSize: 13, color: "#1A1917", flexShrink: 0 }}>{dynPriceNode}</div>
-                                )}
+                                {winSel ? addedChip : dynPriceNode && <div style={{ fontWeight: 600, fontSize: 13, color: "#1A1917", flexShrink: 0 }}>{dynPriceNode}</div>}
                               </div>
                               <p style={{ margin: "6px 0 0 28px", fontSize: 12, color: "#6B6860", lineHeight: 1.4 }}>
                                 {dynSubLabel}
@@ -1796,11 +1801,9 @@ export default function BookPage() {
                             </div>
                             <div style={{ padding: 16 }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                <div style={checkStyle(basSel)}>{basSel && <CheckCircle2 size={12} color="#fff" />}</div>
+                                <div style={checkStyle(basSel)}>{basSel && <CheckCircle2 size={14} color="#fff" />}</div>
                                 <div style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: 14, color: "#1A1917" }}>Clean Basement</div>
-                                {dynPriceNode && (
-                                  <div style={{ fontWeight: 600, fontSize: 13, color: "#1A1917", flexShrink: 0 }}>{dynPriceNode}</div>
-                                )}
+                                {basSel ? addedChip : dynPriceNode && <div style={{ fontWeight: 600, fontSize: 13, color: "#1A1917", flexShrink: 0 }}>{dynPriceNode}</div>}
                               </div>
                               <p style={{ margin: "6px 0 0 28px", fontSize: 12, color: "#6B6860", lineHeight: 1.4 }}>
                                 {dynSubLabel}
