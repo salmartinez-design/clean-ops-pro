@@ -486,6 +486,9 @@ router.post("/book/confirm", rateLimit, async (req, res) => {
       property_vacant,
       address, preferred_date,
       payment_method_id, stripe_customer_id,
+      booking_location,
+      address_street, address_city, address_state, address_zip,
+      address_lat, address_lng, address_verified,
     } = req.body;
 
     if (!company_id || !first_name || !last_name || !phone || !email || !scope_id || !sqft || !frequency) {
@@ -598,6 +601,15 @@ router.post("/book/confirm", rateLimit, async (req, res) => {
     const upsellCadenceVal = upsell_cadence_selected || null;
     const propertyVacantVal = property_vacant === true || property_vacant === "true" ? true : false;
 
+    const bookLocVal = (booking_location === "oak_lawn" || booking_location === "schaumburg") ? booking_location : null;
+    const addrStreet = address_street || null;
+    const addrCity = address_city || null;
+    const addrState = address_state || null;
+    const addrZip = address_zip || zip || null;
+    const addrLat = address_lat ? parseFloat(String(address_lat)) : null;
+    const addrLng = address_lng ? parseFloat(String(address_lng)) : null;
+    const addrVerified = address_verified === true || address_verified === "true" ? true : false;
+
     const jobResult = await db.execute(
       drizzleSql`
         INSERT INTO jobs (
@@ -609,6 +621,9 @@ router.post("/book/confirm", rateLimit, async (req, res) => {
           overage_disclaimer_acknowledged, overage_rate,
           upsell_shown, upsell_accepted, upsell_declined, upsell_deferred, upsell_cadence_selected,
           property_vacant,
+          booking_location,
+          address_street, address_city, address_state, address_zip,
+          address_lat, address_lng, address_verified,
           notes, created_at
         ) VALUES (
           ${company_id}, ${clientId}, ${serviceTypeEnum}, 'scheduled',
@@ -620,6 +635,9 @@ router.post("/book/confirm", rateLimit, async (req, res) => {
           ${overageAck}, ${overageRateVal},
           ${upsellShownVal}, ${upsellAcceptedVal}, ${upsellDeclinedVal}, ${upsellDeferredVal}, ${upsellCadenceVal},
           ${propertyVacantVal},
+          ${bookLocVal},
+          ${addrStreet}, ${addrCity}, ${addrState}, ${addrZip},
+          ${addrLat}, ${addrLng}, ${addrVerified},
           ${jobNotes}, NOW()
         ) RETURNING id
       `
@@ -701,6 +719,9 @@ router.post("/book", rateLimit, async (req, res) => {
       scope_id, sqft, frequency, addon_ids, discount_code,
       bedrooms, bathrooms, half_baths, floors, people, pets, cleanliness,
       address, preferred_date,
+      booking_location,
+      address_street, address_city, address_state, address_zip,
+      address_lat, address_lng, address_verified,
     } = req.body;
 
     if (!company_id || !first_name || !last_name || !phone || !email || !scope_id || !sqft || !frequency) {
@@ -747,14 +768,27 @@ router.post("/book", rateLimit, async (req, res) => {
     const scopeName = (scopeRow.rows[0] as any)?.name || "Cleaning";
     const jobNotes = `Booked via online widget. Cleanliness: ${cleanliness || "N/A"}. People: ${people || "N/A"}. Floors: ${floors || "N/A"}. Home ID: ${homeId}.`;
 
+    const legBookLoc = (booking_location === "oak_lawn" || booking_location === "schaumburg") ? booking_location : null;
+    const legAddrStreet = address_street || null;
+    const legAddrCity = address_city || null;
+    const legAddrState = address_state || null;
+    const legAddrZip = address_zip || zip || null;
+    const legAddrLat = address_lat ? parseFloat(String(address_lat)) : null;
+    const legAddrLng = address_lng ? parseFloat(String(address_lng)) : null;
+    const legAddrVerified = address_verified === true || address_verified === "true" ? true : false;
     const jobResult = await db.execute(
       drizzleSql`
         INSERT INTO jobs (
           company_id, client_id, service_type, status,
-          scheduled_date, frequency, base_fee, estimated_hours, hourly_rate, notes, created_at
+          scheduled_date, frequency, base_fee, estimated_hours, hourly_rate,
+          booking_location, address_street, address_city, address_state, address_zip,
+          address_lat, address_lng, address_verified,
+          notes, created_at
         ) VALUES (
           ${company_id}, ${clientId}, ${scopeName}, 'unassigned',
           ${preferred_date || null}, ${frequency}, ${pricing.final_total}, ${pricing.base_hours}, ${pricing.hourly_rate},
+          ${legBookLoc}, ${legAddrStreet}, ${legAddrCity}, ${legAddrState}, ${legAddrZip},
+          ${legAddrLat}, ${legAddrLng}, ${legAddrVerified},
           ${jobNotes}, NOW()
         ) RETURNING id
       `
@@ -794,6 +828,9 @@ router.post("/book/walkthrough", rateLimit, async (req, res) => {
     const {
       company_id, first_name, last_name, phone, email, zip,
       referral_source, sms_consent, address, preferred_date,
+      booking_location,
+      address_street, address_city, address_state, address_zip,
+      address_lat, address_lng, address_verified,
     } = req.body;
 
     if (!company_id || !first_name || !last_name || !phone || !email) {
@@ -820,11 +857,25 @@ router.post("/book/walkthrough", rateLimit, async (req, res) => {
     }
 
     const jobNotes = `Commercial Walkthrough — booked via online widget. Address: ${address || "N/A"}.`;
+    const wtBookLoc = (booking_location === "oak_lawn" || booking_location === "schaumburg") ? booking_location : null;
+    const wtAddrStreet = address_street || null;
+    const wtAddrCity = address_city || null;
+    const wtAddrState = address_state || null;
+    const wtAddrZip = address_zip || zip || null;
+    const wtAddrLat = address_lat ? parseFloat(String(address_lat)) : null;
+    const wtAddrLng = address_lng ? parseFloat(String(address_lng)) : null;
+    const wtAddrVerified = address_verified === true || address_verified === "true" ? true : false;
     const jobResult = await db.execute(
       drizzleSql`
-        INSERT INTO jobs (company_id, client_id, service_type, status, scheduled_date, frequency, base_fee, estimated_hours, hourly_rate, notes, created_at)
-        VALUES (${company_id}, ${clientId}, 'office_cleaning', 'scheduled', ${preferred_date || null}, 'on_demand', 0, 0, 0, ${jobNotes}, NOW())
-        RETURNING id
+        INSERT INTO jobs (
+          company_id, client_id, service_type, status, scheduled_date, frequency, base_fee, estimated_hours, hourly_rate,
+          booking_location, address_street, address_city, address_state, address_zip, address_lat, address_lng, address_verified,
+          notes, created_at
+        ) VALUES (
+          ${company_id}, ${clientId}, 'office_cleaning', 'scheduled', ${preferred_date || null}, 'on_demand', 0, 0, 0,
+          ${wtBookLoc}, ${wtAddrStreet}, ${wtAddrCity}, ${wtAddrState}, ${wtAddrZip}, ${wtAddrLat}, ${wtAddrLng}, ${wtAddrVerified},
+          ${jobNotes}, NOW()
+        ) RETURNING id
       `
     );
     const jobId = (jobResult.rows[0] as any).id;
@@ -877,6 +928,9 @@ router.post("/book/commercial-confirm", rateLimit, async (req, res) => {
       company_id, first_name, last_name, phone, email, zip,
       referral_source, sms_consent, address, preferred_date,
       payment_method_id, stripe_customer_id,
+      booking_location,
+      address_street, address_city, address_state, address_zip,
+      address_lat, address_lng, address_verified,
     } = req.body;
 
     if (!company_id || !first_name || !last_name || !phone || !email) {
@@ -930,11 +984,25 @@ router.post("/book/commercial-confirm", rateLimit, async (req, res) => {
     }
 
     const jobNotes = `Commercial Single Visit — booked via online widget. Address: ${address || "N/A"}. $180 for up to 3 hours, $60/additional hour.`;
+    const cBookLoc = (booking_location === "oak_lawn" || booking_location === "schaumburg") ? booking_location : null;
+    const cAddrStreet = address_street || null;
+    const cAddrCity = address_city || null;
+    const cAddrState = address_state || null;
+    const cAddrZip = address_zip || zip || null;
+    const cAddrLat = address_lat ? parseFloat(String(address_lat)) : null;
+    const cAddrLng = address_lng ? parseFloat(String(address_lng)) : null;
+    const cAddrVerified = address_verified === true || address_verified === "true" ? true : false;
     const jobResult = await db.execute(
       drizzleSql`
-        INSERT INTO jobs (company_id, client_id, service_type, status, scheduled_date, frequency, base_fee, estimated_hours, hourly_rate, notes, created_at)
-        VALUES (${company_id}, ${clientId}, 'office_cleaning', 'scheduled', ${preferred_date || null}, 'on_demand', 180, 3, 60, ${jobNotes}, NOW())
-        RETURNING id
+        INSERT INTO jobs (
+          company_id, client_id, service_type, status, scheduled_date, frequency, base_fee, estimated_hours, hourly_rate,
+          booking_location, address_street, address_city, address_state, address_zip, address_lat, address_lng, address_verified,
+          notes, created_at
+        ) VALUES (
+          ${company_id}, ${clientId}, 'office_cleaning', 'scheduled', ${preferred_date || null}, 'on_demand', 180, 3, 60,
+          ${cBookLoc}, ${cAddrStreet}, ${cAddrCity}, ${cAddrState}, ${cAddrZip}, ${cAddrLat}, ${cAddrLng}, ${cAddrVerified},
+          ${jobNotes}, NOW()
+        ) RETURNING id
       `
     );
     const jobId = (jobResult.rows[0] as any).id;

@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Plus, X, Edit2, ChevronDown } from "lucide-react";
 
 const FF = "'Plus Jakarta Sans', sans-serif";
-const API = (window as any).__API_BASE__ || "";
+const API = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 // ─── ZONE COLORS ─────────────────────────────────────────────────────────────
 const ZONE_COLORS = [

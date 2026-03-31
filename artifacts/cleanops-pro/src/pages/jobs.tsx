@@ -67,7 +67,7 @@ function slotTxt(count: number) { if (count === 0) return "#15803D"; if (count <
 function slotLbl(count: number) { if (count === 0) return "Open"; if (count <= 2) return `${count} job${count === 1 ? "" : "s"}`; return `Full (${count})`; }
 
 async function patchJob(id: number, patch: object, token: string) {
-  const API = (window as any).__API_BASE__ || "";
+  const API = import.meta.env.BASE_URL.replace(/\/$/, "");
   const r = await fetch(`${API}/api/jobs/${id}`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(patch) });
   if (!r.ok) throw new Error("Failed");
 }
@@ -1181,7 +1181,7 @@ export default function JobsPage() {
 
   // Load zones for filter
   useEffect(() => {
-    const API = (window as any).__API_BASE__ || "";
+    const API = import.meta.env.BASE_URL.replace(/\/$/, "");
     fetch(`${API}/api/zones`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : [])
       .then(d => setZones(Array.isArray(d) ? d : []))
