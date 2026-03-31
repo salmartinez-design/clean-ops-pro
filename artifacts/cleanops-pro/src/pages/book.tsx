@@ -538,7 +538,13 @@ export default function BookPage() {
       });
       setFrequencies(filteredFreqs);
       setAddons(ads);
-      const defaultFreq = filteredFreqs.find((f: PricingFrequency) => f.frequency === "weekly") ?? filteredFreqs[0];
+      // One-time services (Deep Clean, Move In/Out) should default to "onetime"
+      // so the calculate engine uses the scope's full $70/hr rate, not the
+      // weekly rate_override ($56/hr) which is a recurring-visit rate.
+      const defaultFreq =
+        filteredFreqs.find((f: PricingFrequency) => f.frequency === "onetime") ??
+        filteredFreqs.find((f: PricingFrequency) => f.frequency === "weekly") ??
+        filteredFreqs[0];
       setFrequencyStr(defaultFreq?.frequency ?? "");
     }).catch(() => {});
   }, [scopeId]);
@@ -1063,7 +1069,14 @@ export default function BookPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <Row label="Service" value={calcResult.scope_name} />
               <Row label="Sq Ft" value={`${sqft.toLocaleString()} sqft`} />
-              <Row label="Frequency" value={calcResult.frequency} />
+              <Row label="Frequency" value={(() => {
+                const FREQ_LABEL: Record<string, string> = {
+                  onetime: "One Time", weekly: "Weekly",
+                  biweekly: "Every 2 Weeks", monthly: "Every 4 Weeks",
+                };
+                const raw = upsellCadence || calcResult.frequency;
+                return FREQ_LABEL[raw] ?? raw;
+              })()} />
               <Row label="Est. Hours" value={`${calcResult.base_hours.toFixed(1)}h`} />
               <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 8, marginTop: 4 }} />
               <Row label="Base Price" value={`$${calcResult.base_price.toFixed(2)}`} />
