@@ -418,6 +418,11 @@ export default function BookPage() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCleanedRef = useRef<HTMLDivElement>(null);
   const addressInputRef = useRef<HTMLInputElement>(null);
+  const [inputMounted, setInputMounted] = useState(false);
+  const addressRefCallback = useCallback((node: HTMLInputElement | null) => {
+    addressInputRef.current = node;
+    setInputMounted(!!node);
+  }, []);
 
   const checkZone = useCallback(async (zipCode: string) => {
     if (!zipCode || !slug) { setZoneStatus(null); return; }
@@ -451,9 +456,9 @@ export default function BookPage() {
     document.head.appendChild(s);
   }, []);
 
-  // ── Wire autocomplete after Maps is ready ─────────────────────────────────
+  // ── Wire autocomplete after Maps is ready AND input is in the DOM ──────────
   useEffect(() => {
-    if (!mapsReady || !addressInputRef.current) return;
+    if (!mapsReady || !inputMounted || !addressInputRef.current) return;
     const g = (window as any).google;
     if (!g?.maps?.places?.Autocomplete) return;
     const ac = new g.maps.places.Autocomplete(addressInputRef.current, {
@@ -485,7 +490,7 @@ export default function BookPage() {
       checkZone(data.zip);
     });
     return () => { g.maps.event.removeListener(listener); };
-  }, [mapsReady, checkZone]);
+  }, [mapsReady, inputMounted, checkZone]);
 
   // ── Load company ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1173,7 +1178,7 @@ export default function BookPage() {
               <FieldWrap label="Service Address" error={errors.address}>
                 <div style={{ position: "relative" }}>
                   <input
-                    ref={addressInputRef}
+                    ref={addressRefCallback}
                     type="text"
                     value={address}
                     onChange={e => {
