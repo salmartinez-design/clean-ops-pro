@@ -10,6 +10,12 @@ import { Router } from "express";
 import { requireAuth, requireRole } from "../lib/auth.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import {
+  processDueEnrollments,
+  enrollForQuoteSent,
+  enrollForJobComplete,
+  stopEnrollmentsForQuote,
+} from "../services/followUpService.js";
 
 const router = Router();
 
@@ -132,6 +138,55 @@ router.get("/message-log", requireAuth, requireRole("owner", "admin", "office"),
     return res.json({ rows: rows.rows, total: (total.rows[0] as any).cnt });
   } catch (err) {
     console.error("GET /follow-up/message-log:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ── POST /api/follow-up/process — manually trigger the cron (owner/admin only) ─
+router.post("/process", requireAuth, requireRole("owner", "admin"), async (_req, res) => {
+  try {
+    await processDueEnrollments();
+    return res.json({ ok: true, message: "processDueEnrollments ran" });
+  } catch (err) {
+    console.error("POST /follow-up/process:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ── POST /api/follow-up/enroll-quote — enroll a quote manually (owner/admin) ─
+router.post("/enroll-quote", requireAuth, requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const companyId = req.auth!.companyId;
+    const { quote_id, client_id, first_name, email, phone } = req.body;
+    if (!quote_id) return res.status(400).json({ error: "quote_id required" });
+    await enrollForQuoteSent(companyId, quote_id, client_id ?? null, first_name ?? "", email ?? null, phone ?? null);
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ── POST /api/follow-up/enroll-job — enroll a job completion manually ─────────
+router.post("/enroll-job", requireAuth, requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const companyId = req.auth!.companyId;
+    const { job_id, client_id } = req.body;
+    if (!job_id || !client_id) return res.status(400).json({ error: "job_id and client_id required" });
+    await enrollForJobComplete(companyId, job_id, client_id);
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ── POST /api/follow-up/stop-quote — stop enrollments for a quote ─────────────
+router.post("/stop-quote", requireAuth, requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const { quote_id, reason } = req.body;
+    if (!quote_id) return res.status(400).json({ error: "quote_id required" });
+    await stopEnrollmentsForQuote(quote_id, reason ?? "manual");
+    return res.json({ ok: true });
+  } catch (err) {
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });
