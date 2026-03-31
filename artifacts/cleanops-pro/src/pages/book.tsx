@@ -58,6 +58,8 @@ interface CalcResult {
   minimum_applied: boolean;
   addons_total: number;
   addon_breakdown: Array<{ id: number; name: string; amount: number }>;
+  bundle_discount: number;
+  bundle_breakdown: Array<{ name: string; discount: number }>;
   subtotal: number;
   discount_amount: number;
   discount_valid?: boolean;
@@ -570,8 +572,11 @@ export default function BookPage() {
   }, [scopeId, company]);
 
   // ── Live pricing calculation ──────────────────────────────────────────────
+  // effectiveFreq: use explicit selection, fall back to first loaded freq or "onetime"
+  // so calcResult stays populated even while the frequencies API is still in-flight
   const runCalc = useCallback(async () => {
-    if (!company || !scopeId || !sqft || !frequencyStr) { setCalcResult(null); return; }
+    if (!company || !scopeId || !sqft) { setCalcResult(null); return; }
+    const effectiveFreq = frequencyStr || frequencies[0]?.frequency || "onetime";
     setCalcLoading(true);
     try {
       const result = await pubFetch("/api/public/calculate", {
@@ -580,20 +585,20 @@ export default function BookPage() {
           company_id: company.id,
           scope_id: scopeId,
           sqft,
-          frequency: frequencyStr,
+          frequency: effectiveFreq,
           addon_ids: selectedAddonIds,
         }),
       });
       setCalcResult(result);
     } catch { /* silent */ }
     finally { setCalcLoading(false); }
-  }, [company, scopeId, sqft, frequencyStr, selectedAddonIds]);
+  }, [company, scopeId, sqft, frequencyStr, frequencies, selectedAddonIds]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(runCalc, 200);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [scopeId, sqft, frequencyStr, selectedAddonIds]);
+  }, [scopeId, sqft, frequencyStr, frequencies, selectedAddonIds]);
 
 
   // ── Step 0 validation ─────────────────────────────────────────────────────
@@ -1107,8 +1112,11 @@ export default function BookPage() {
       {calcResult.addon_breakdown.map(a => (
         <Row key={a.id} label={a.name} value={`+$${a.amount.toFixed(2)}`} />
       ))}
+      {(calcResult.bundle_discount || 0) > 0 && (
+        <Row label="Bundle Discount" value={`-$${(calcResult.bundle_discount).toFixed(2)}`} green />
+      )}
       {calcResult.discount_amount > 0 && (
-        <Row label="Bundle Discount" value={`-$${calcResult.discount_amount.toFixed(2)}`} green />
+        <Row label="Promo Discount" value={`-$${calcResult.discount_amount.toFixed(2)}`} green />
       )}
       {calcResult.minimum_applied && (
         <p style={{ fontSize: 11, color: "#F59E0B", margin: "2px 0 0" }}>Minimum applied</p>
@@ -1116,34 +1124,18 @@ export default function BookPage() {
     </>
   ) : null;
 
-  // ── Mobile inline price summary (hidden on desktop, shown on mobile steps 1–4) ─
-  const mobilePriceSummaryEl = step >= 1 && step <= 4 && calcResult ? (
-    <div className="bw-mobile-price" style={{ display: "none", marginTop: 14, border: "1px solid #E5E2DC", borderRadius: 10, overflow: "hidden", background: "#fff" }}>
-      <button
-        onClick={() => setMobilePriceExpanded(o => !o)}
-        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "14px 16px", background: "none", border: "none", cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif", textAlign: "left" as const }}
-      >
-        <div>
-          <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1A1917" }}>
-            {upsellAccepted ? "Deep Clean + Recurring" : calcResult.scope_name}
-          </p>
-          {sqft > 0 && <p style={{ margin: 0, fontSize: 12, color: "#6B6860" }}>{sqft.toLocaleString()} sqft</p>}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          <span style={{ fontSize: 18, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total).toFixed(2)}</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B6860" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-            style={{ transform: mobilePriceExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </div>
-      </button>
+  // ── Mobile sticky price bar (fixed at bottom, hidden on desktop via CSS) ────
+  // Rendered once at root level so it persists across all steps 1–4
+  const mobileStickyBar = step >= 1 && step <= 4 && calcResult ? (
+    <div className="bw-price-sticky" style={{ display: "none" }}>
+      {/* Expanded breakdown panel slides in above the bar */}
       {mobilePriceExpanded && (
-        <div style={{ padding: "0 16px 14px", borderTop: "1px solid #E5E2DC" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 12 }}>
+        <div style={{ padding: "16px 16px 0", borderBottom: "1px solid #E5E2DC", background: "#fff" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
             {priceBreakdownRows}
           </div>
           {upsellAccepted && upsellPriceResult && (
-            <div style={{ marginTop: 10, padding: "10px 12px", background: `${brand}0D`, borderRadius: 8, border: `1px solid ${brand}25`, display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ marginBottom: 10, padding: "10px 12px", background: `${brand}0D`, borderRadius: 8, border: `1px solid ${brand}25`, display: "flex", flexDirection: "column", gap: 4 }}>
               <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 700, color: brand, textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>
                 Recurring {upsellCadence.charAt(0).toUpperCase() + upsellCadence.slice(1)}
               </p>
@@ -1151,13 +1143,31 @@ export default function BookPage() {
               <Row label="Then per visit" value={`$${upsellPriceResult.recurringRate.toFixed(2)}`} />
             </div>
           )}
-          <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 10, marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 8, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
             <span style={{ fontSize: 13, color: "#6B6860" }}>Estimated Total</span>
-            <span style={{ fontSize: 16, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total).toFixed(2)}</span>
+            <span style={{ fontSize: 15, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total).toFixed(2)}</span>
           </div>
-          <p style={{ fontSize: 11, color: "#9E9B94", margin: "4px 0 0" }}>Final price confirmed at time of service.</p>
         </div>
       )}
+      {/* Compact bar — always visible */}
+      <button
+        onClick={() => setMobilePriceExpanded(o => !o)}
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "12px 16px", background: "#fff", border: "none", cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif", textAlign: "left" as const }}
+      >
+        <div>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1A1917" }}>
+            {upsellAccepted ? "Deep Clean + Recurring" : calcResult.scope_name}
+          </p>
+          {sqft > 0 && <p style={{ margin: 0, fontSize: 11, color: "#6B6860" }}>{sqft.toLocaleString()} sqft</p>}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <span style={{ fontSize: 17, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total).toFixed(2)}</span>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6B6860" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            style={{ transform: mobilePriceExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </div>
+      </button>
     </div>
   ) : null;
 
@@ -1279,14 +1289,14 @@ export default function BookPage() {
     <div className="bw-root" style={{ minHeight: "100vh", background: "#F7F6F3", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       <style dangerouslySetInnerHTML={{ __html: `
         .bw-policies-mobile { display: none; }
-        .bw-mobile-price { display: none; }
+        .bw-price-sticky { display: none; }
         @media (max-width: 767px) {
           .bw-topbar { padding: 12px 16px !important; }
           .bw-progress { padding: 10px 16px !important; }
           .bw-progress-inner { gap: 2px !important; }
           .bw-step-label { display: none !important; }
           .bw-step-label.active { display: inline !important; }
-          .bw-body { flex-direction: column !important; padding: 16px !important; gap: 0 !important; }
+          .bw-body { flex-direction: column !important; padding: 16px !important; gap: 0 !important; padding-bottom: 80px !important; }
           .bw-sidebar { display: none !important; }
           .bw-form { width: 100% !important; }
           .bw-grid2 { grid-template-columns: 1fr !important; }
@@ -1298,7 +1308,18 @@ export default function BookPage() {
           .bw-nav-end button { width: 100% !important; min-height: 52px !important; font-size: 15px !important; }
           .bw-nav-end { justify-content: stretch !important; }
           .bw-policies-mobile { display: block !important; }
-          .bw-mobile-price { display: block !important; }
+          .bw-price-sticky {
+            display: block !important;
+            position: fixed !important;
+            bottom: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            z-index: 200 !important;
+            background: #fff !important;
+            border-top: 1px solid #E5E2DC !important;
+            box-shadow: 0 -2px 12px rgba(0,0,0,0.08) !important;
+            padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+          }
           .bw-cadence-row { flex-direction: column !important; }
           .bw-cadence-pill { width: 100% !important; box-sizing: border-box !important; }
           .bw-cleanliness-row { flex-direction: column !important; }
@@ -2042,7 +2063,6 @@ export default function BookPage() {
                 </div>
               )}
 
-              {mobilePriceSummaryEl}
               <div className="bw-nav" style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>
                 <button style={s.btn(false)} onClick={() => setStep(0)}>Back</button>
                 <button
@@ -2411,7 +2431,6 @@ export default function BookPage() {
                 </div>
               )}
 
-              {mobilePriceSummaryEl}
               <div className="bw-nav" style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
                 <button style={s.btn(false)} onClick={() => setStep(1)}>Back</button>
                 <button
@@ -2463,7 +2482,6 @@ export default function BookPage() {
                 </div>
               )}
 
-              {mobilePriceSummaryEl}
               <div className="bw-nav" style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
                 <button style={s.btn(false)} onClick={() => isCommercial ? setStep(1) : setStep(2)}>Back</button>
                 <button
@@ -2538,7 +2556,6 @@ export default function BookPage() {
                 </div>
               )}
 
-              {mobilePriceSummaryEl}
               <div className="bw-nav" style={{ display: "flex", justifyContent: "space-between" }}>
                 <button style={s.btn(false)} onClick={() => setStep(3)}>Back</button>
                 <button
@@ -2630,6 +2647,7 @@ export default function BookPage() {
 
         {rightPanel}
       </div>
+      {mobileStickyBar}
     </div>
   );
 }
