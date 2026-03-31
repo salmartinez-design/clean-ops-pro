@@ -371,6 +371,7 @@ export default function BookPage() {
     zip: string; lat: number; lng: number; verified: boolean;
   } | null>(null);
   const [zoneStatus, setZoneStatus] = useState<"in_zone" | "out_of_zone" | null>(null);
+  const [bookingLocation, setBookingLocation] = useState<"oak_lawn" | "schaumburg" | null>(null);
   const [mapsReady, setMapsReady] = useState(false);
 
   // Step 3: Date
@@ -425,14 +426,21 @@ export default function BookPage() {
   }, []);
 
   const checkZone = useCallback(async (zipCode: string) => {
-    if (!zipCode || !slug) { setZoneStatus(null); return; }
+    if (!zipCode || !slug) { setZoneStatus(null); setBookingLocation(null); return; }
     try {
       const base = (import.meta as any).env?.BASE_URL ?? "/";
       const res = await fetch(`${base}api/public/service-zones/check?zip=${encodeURIComponent(zipCode)}&companySlug=${encodeURIComponent(slug)}`);
       const data = await res.json();
-      setZoneStatus(data.inZone ? "in_zone" : "out_of_zone");
+      if (data.inZone) {
+        setZoneStatus("in_zone");
+        setBookingLocation(data.location ?? null);
+      } else {
+        setZoneStatus("out_of_zone");
+        setBookingLocation(null);
+      }
     } catch {
       setZoneStatus(null);
+      setBookingLocation(null);
     }
   }, [slug]);
 
@@ -676,6 +684,7 @@ export default function BookPage() {
             address_lat: addressComponents?.lat ?? null,
             address_lng: addressComponents?.lng ?? null,
             address_verified: addressComponents?.verified ?? false,
+            booking_location: bookingLocation,
             preferred_date: selectedDate,
             payment_method_id: paymentMethodId,
             stripe_customer_id: stripeCustomerId,
@@ -710,6 +719,7 @@ export default function BookPage() {
             address_lat: addressComponents?.lat ?? null,
             address_lng: addressComponents?.lng ?? null,
             address_verified: addressComponents?.verified ?? false,
+            booking_location: bookingLocation,
             preferred_date: selectedDate,
             payment_method_id: paymentMethodId,
             stripe_customer_id: stripeCustomerId,
@@ -738,6 +748,7 @@ export default function BookPage() {
           address_lat: addressComponents?.lat ?? null,
           address_lng: addressComponents?.lng ?? null,
           address_verified: addressComponents?.verified ?? false,
+          booking_location: bookingLocation,
           preferred_date: selectedDate,
         }),
       });
@@ -772,6 +783,7 @@ export default function BookPage() {
           address_lat: addressComponents?.lat ?? null,
           address_lng: addressComponents?.lng ?? null,
           address_verified: addressComponents?.verified ?? false,
+          booking_location: bookingLocation,
           preferred_date: selectedDate,
         }),
       });

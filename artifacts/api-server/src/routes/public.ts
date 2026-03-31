@@ -191,14 +191,19 @@ router.get("/service-zones/check", rateLimit, async (req, res) => {
     if (!company) return res.json({ inZone: false, zoneName: null });
 
     const zoneRows = await db.execute(drSql`
-      SELECT id, name FROM service_zones
+      SELECT id, name, location, color FROM service_zones
       WHERE company_id = ${company.id}
         AND is_active = true
         AND ${zip} = ANY(zip_codes)
       LIMIT 1
     `);
     const zone = (zoneRows as any).rows?.[0];
-    return res.json({ inZone: !!zone, zoneName: zone?.name ?? null });
+    return res.json({
+      inZone: !!zone,
+      zoneName: zone?.name ?? null,
+      location: zone?.location ?? null,
+      color: zone?.color ?? null,
+    });
   } catch (err) {
     console.error("GET /public/service-zones/check:", err);
     return res.status(500).json({ error: "Internal Server Error" });

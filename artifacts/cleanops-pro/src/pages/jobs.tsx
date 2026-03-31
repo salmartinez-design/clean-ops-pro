@@ -45,7 +45,7 @@ const STATUS: Record<string, { bg: string; border: string; text: string; dot: st
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 interface ClockEntry { id: number; clock_in_at: string | null; clock_out_at: string | null; distance_from_job_ft: number | null; is_flagged: boolean; }
-interface DispatchJob { id: number; client_id: number; client_name: string; client_phone?: string | null; address: string | null; assigned_user_id: number | null; assigned_user_name?: string; service_type: string; status: string; scheduled_date: string; scheduled_time: string | null; frequency: string; amount: number; duration_minutes: number; notes: string | null; before_photo_count: number; after_photo_count: number; clock_entry: ClockEntry | null; zone_id?: number | null; zone_color?: string | null; zone_name?: string | null; account_id?: number | null; account_name?: string | null; billing_method?: string | null; hourly_rate?: number | null; estimated_hours?: number | null; billed_hours?: number | null; billed_amount?: number | null; charge_failed_at?: string | null; charge_succeeded_at?: string | null; property_access_notes?: string | null; }
+interface DispatchJob { id: number; client_id: number; client_name: string; client_phone?: string | null; address: string | null; assigned_user_id: number | null; assigned_user_name?: string; service_type: string; status: string; scheduled_date: string; scheduled_time: string | null; frequency: string; amount: number; duration_minutes: number; notes: string | null; before_photo_count: number; after_photo_count: number; clock_entry: ClockEntry | null; zone_id?: number | null; zone_color?: string | null; zone_name?: string | null; account_id?: number | null; account_name?: string | null; billing_method?: string | null; hourly_rate?: number | null; estimated_hours?: number | null; billed_hours?: number | null; billed_amount?: number | null; charge_failed_at?: string | null; charge_succeeded_at?: string | null; property_access_notes?: string | null; booking_location?: string | null; }
 interface Employee { id: number; name: string; role: string; jobs: DispatchJob[]; zone?: { zone_id: number; zone_color: string; zone_name: string } | null; time_off?: 'pto' | 'sick' | 'absent' | null; commission_rate?: number | null; }
 interface DispatchData { employees: Employee[]; unassigned_jobs: DispatchJob[]; }
 
@@ -1086,12 +1086,29 @@ function UnassignedGanttRow({ jobs, onChipClick, nowLine }: { jobs: DispatchJob[
 }
 
 // ─── DESKTOP: UNASSIGNED PANEL ────────────────────────────────────────────────
+function LocationPill({ loc }: { loc?: string | null }) {
+  if (!loc) return null;
+  const isSchaumburg = loc === "schaumburg";
+  return (
+    <span style={{
+      display: "inline-block", padding: "1px 5px", borderRadius: 6, fontSize: 9, fontWeight: 700,
+      fontFamily: FF, letterSpacing: "0.03em", lineHeight: 1.5,
+      backgroundColor: isSchaumburg ? "#2D6A4F" : "#5B9BD5", color: "#FFFFFF",
+    }}>
+      {isSchaumburg ? "SCH" : "OL"}
+    </span>
+  );
+}
+
 function UnassignedChip({ job, onClick }: { job: DispatchJob; onClick: () => void }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: `unassigned-${job.id}`, data: { job, type: "unassigned", originalLeft: 0 } });
   return (
     <div ref={setNodeRef} {...listeners} {...attributes} onClick={onClick}
       style={{ backgroundColor: "#FEF9EE", borderLeft: "3px solid #F59E0B", borderRadius: 8, padding: "10px 12px", marginBottom: 6, cursor: "grab", opacity: isDragging ? 0.4 : 1, transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", userSelect: "none" }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: "#1A1917", marginBottom: 2 }}>{job.client_name}</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "#1A1917" }}>{job.client_name}</div>
+        <LocationPill loc={job.booking_location} />
+      </div>
       <div style={{ fontSize: 10, color: "var(--brand)", textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.04em" }}>{fmtSvc(job.service_type)}</div>
       <div style={{ fontSize: 11, color: "#9E9B94", marginTop: 2 }}>{Math.floor(job.duration_minutes / 60)}h{job.duration_minutes % 60 > 0 ? ` ${job.duration_minutes % 60}m` : ""}</div>
     </div>
@@ -1117,6 +1134,7 @@ export default function JobsPage() {
   const [selectedZoneFilter, setSelectedZoneFilter] = useState<number | null>(null);
   const [zoneDropdownOpen, setZoneDropdownOpen] = useState(false);
   const zoneDropdownRef = useRef<HTMLDivElement>(null);
+  const [selectedLocationFilter, setSelectedLocationFilter] = useState<"all" | "oak_lawn" | "schaumburg">("all");
   const [calendarOpen, setCalendarOpen] = useState(false);
   const timelineRef = useRef<HTMLDivElement>(null);
 
@@ -1238,15 +1256,21 @@ export default function JobsPage() {
   }
   function chipLeft(job: DispatchJob) { return ((timeToMins(job.scheduled_time) - DAY_START) / 30) * SLOT_W; }
 
-  // Zone-filtered dispatch data
+  // Zone + location filtered dispatch data
   const filteredData = data ? {
     employees: data.employees.map(e => ({
       ...e,
-      jobs: selectedZoneFilter !== null ? e.jobs.filter(j => j.zone_id === selectedZoneFilter) : e.jobs,
+      jobs: e.jobs.filter(j => {
+        if (selectedZoneFilter !== null && j.zone_id !== selectedZoneFilter) return false;
+        if (selectedLocationFilter !== "all" && j.booking_location !== selectedLocationFilter) return false;
+        return true;
+      }),
     })),
-    unassigned_jobs: selectedZoneFilter !== null
-      ? data.unassigned_jobs.filter(j => j.zone_id === selectedZoneFilter)
-      : data.unassigned_jobs,
+    unassigned_jobs: data.unassigned_jobs.filter(j => {
+      if (selectedZoneFilter !== null && j.zone_id !== selectedZoneFilter) return false;
+      if (selectedLocationFilter !== "all" && j.booking_location !== selectedLocationFilter) return false;
+      return true;
+    }),
   } : null;
 
   const allJobs = filteredData ? [
@@ -1329,9 +1353,21 @@ export default function JobsPage() {
             })}
           </div>
 
-          {/* Zone filter — mobile dropdown */}
-          {zones.length > 0 && (
-            <div style={{ backgroundColor: "#FFFFFF", borderBottom: "1px solid #EEECE7", padding: "6px 14px", display: "flex", alignItems: "center" }}>
+          {/* Location + Zone filter — mobile */}
+          <div style={{ backgroundColor: "#FFFFFF", borderBottom: "1px solid #EEECE7", padding: "6px 14px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            {/* Location segmented control */}
+            <div style={{ display: "flex", border: "1.5px solid #E5E2DC", borderRadius: 7, overflow: "hidden", flexShrink: 0 }}>
+              {([["all", "All"], ["oak_lawn", "OL"], ["schaumburg", "SCH"]] as const).map(([val, label]) => (
+                <button key={val} onClick={() => setSelectedLocationFilter(val)} style={{
+                  padding: "4px 9px", border: "none", cursor: "pointer", fontFamily: FF, fontSize: 11, fontWeight: 700,
+                  backgroundColor: selectedLocationFilter === val ? (val === "schaumburg" ? "#2D6A4F" : val === "oak_lawn" ? "#5B9BD5" : "var(--brand)") : "#FAFAF9",
+                  color: selectedLocationFilter === val ? "#FFFFFF" : "#6B7280",
+                }}>{label}</button>
+              ))}
+            </div>
+
+            {/* Zone dropdown */}
+            {zones.length > 0 && (
               <div ref={zoneDropdownRef} style={{ position: "relative" }}>
                 <button onClick={() => setZoneDropdownOpen(v => !v)} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, padding: "5px 10px", borderRadius: 6, border: "1.5px solid #E5E2DC", backgroundColor: "#FAFAF9", color: "#6B7280", cursor: "pointer", fontFamily: FF }}>
                   {selectedZoneFilter !== null ? (
@@ -1354,8 +1390,8 @@ export default function JobsPage() {
                   </div>
                 )}
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Job list */}
           <div style={{ padding: "12px 14px" }}>
@@ -1441,6 +1477,17 @@ export default function JobsPage() {
               ].map(s => (
                 <span key={s.label} style={{ fontSize: 11, fontWeight: 700, color: s.color, backgroundColor: s.bg, padding: "3px 8px", borderRadius: 20, whiteSpace: "nowrap" }}>{s.label}</span>
               ))}
+
+              {/* Location filter — segmented */}
+              <div style={{ display: "flex", alignItems: "center", gap: 2, border: "1.5px solid #E5E2DC", borderRadius: 7, overflow: "hidden", flexShrink: 0 }}>
+                {([["all", "All"] , ["oak_lawn", "Oak Lawn"], ["schaumburg", "Schaumburg"]] as const).map(([val, label]) => (
+                  <button key={val} onClick={() => setSelectedLocationFilter(val)} style={{
+                    padding: "4px 9px", border: "none", cursor: "pointer", fontFamily: FF, fontSize: 11, fontWeight: 700,
+                    backgroundColor: selectedLocationFilter === val ? (val === "schaumburg" ? "#2D6A4F" : val === "oak_lawn" ? "#5B9BD5" : "var(--brand)") : "#FAFAF9",
+                    color: selectedLocationFilter === val ? "#FFFFFF" : "#6B7280", transition: "all 0.15s",
+                  }}>{label}</button>
+                ))}
+              </div>
 
               {/* Zone filter — dropdown */}
               {zones.length > 0 && (

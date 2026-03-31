@@ -72,6 +72,16 @@ export const jobsTable = pgTable("jobs", {
   upsell_cadence_selected: text("upsell_cadence_selected"),
   property_vacant: boolean("property_vacant").default(false),
   first_recurring_discounted: boolean("first_recurring_discounted").default(false),
+  // ── Address (from booking widget) ───────────────────────────────────────────
+  address_street: text("address_street"),
+  address_city: text("address_city"),
+  address_state: text("address_state"),
+  address_zip: text("address_zip"),
+  address_verified: boolean("address_verified").default(false),
+  address_lat: numeric("address_lat", { precision: 10, scale: 7 }),
+  address_lng: numeric("address_lng", { precision: 10, scale: 7 }),
+  // ── Location routing ────────────────────────────────────────────────────────
+  booking_location: text("booking_location"),
 });
 
 export const insertJobSchema = createInsertSchema(jobsTable).omit({ id: true, created_at: true });

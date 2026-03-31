@@ -27,9 +27,26 @@ interface Zone {
   zip_codes: string[];
   is_active: boolean;
   sort_order: number;
+  location: string;
   employee_count: number;
   jobs_this_month: number;
   employees: { id: number; name: string }[];
+}
+
+type LocationFilter = "all" | "oak_lawn" | "schaumburg";
+
+function LocationBadge({ loc }: { loc: string }) {
+  const isSchaumburg = loc === "schaumburg";
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center",
+      padding: "2px 8px", borderRadius: 10, fontSize: 10, fontFamily: FF, fontWeight: 600,
+      backgroundColor: isSchaumburg ? "#2D6A4F" : "#5B9BD5",
+      color: "#FFFFFF", whiteSpace: "nowrap", letterSpacing: "0.03em",
+    }}>
+      {isSchaumburg ? "Schaumburg" : "Oak Lawn"}
+    </span>
+  );
 }
 
 interface Employee { id: number; name: string; role: string; }
@@ -171,6 +188,7 @@ function ZoneDrawer({ zone, employees, open, onClose, onSave }: {
   const [color, setColor] = useState("#5B9BD5");
   const [zips, setZips] = useState<string[]>([]);
   const [empIds, setEmpIds] = useState<number[]>([]);
+  const [location, setLocation] = useState<"oak_lawn" | "schaumburg">("oak_lawn");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -179,11 +197,13 @@ function ZoneDrawer({ zone, employees, open, onClose, onSave }: {
       setColor(zone.color);
       setZips(zone.zip_codes || []);
       setEmpIds(zone.employees.map(e => e.id));
+      setLocation((zone.location as any) || "oak_lawn");
     } else {
       setName("");
       setColor("#5B9BD5");
       setZips([]);
       setEmpIds([]);
+      setLocation("oak_lawn");
     }
   }, [zone, open]);
 
@@ -191,11 +211,19 @@ function ZoneDrawer({ zone, employees, open, onClose, onSave }: {
     if (!name.trim()) { toast({ title: "Zone name is required", variant: "destructive" }); return; }
     setSaving(true);
     try {
-      const body = { name: name.trim(), color, zip_codes: zips, employee_ids: empIds };
+      const body = { name: name.trim(), color, zip_codes: zips, employee_ids: empIds, location };
       const url = zone ? `${API}/api/zones/${zone.id}` : `${API}/api/zones`;
       const method = zone ? "PATCH" : "POST";
       const r = await fetch(url, { method, headers: { ...getAuthHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (!r.ok) throw new Error(await r.text());
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        if (err.error === "zip_conflict" && err.conflicts?.length) {
+          const first = err.conflicts[0];
+          toast({ title: "Zip code conflict", description: `${first.zip} is already in "${first.existingZone}"`, variant: "destructive" });
+          return;
+        }
+        throw new Error(err.error || "Save failed");
+      }
       toast({ title: zone ? "Zone updated" : "Zone created" });
       onSave();
       onClose();
@@ -236,6 +264,27 @@ function ZoneDrawer({ zone, employees, open, onClose, onSave }: {
             placeholder="e.g. Southwest Zone"
             style={{ padding: "10px 12px", border: "1px solid #E5E2DC", borderRadius: 8, fontFamily: FF, fontSize: 13, color: "#1A1917", outline: "none", backgroundColor: "#FAFAF9" }}
           />
+        </div>
+
+        {/* Location */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={{ fontFamily: FF, fontWeight: 500, fontSize: 13, color: "#1A1917" }}>Location</label>
+          <div style={{ display: "flex", borderRadius: 8, border: "1px solid #E5E2DC", overflow: "hidden" }}>
+            {([["oak_lawn", "Oak Lawn"], ["schaumburg", "Schaumburg"]] as const).map(([val, label]) => (
+              <button
+                key={val}
+                onClick={() => setLocation(val)}
+                style={{
+                  flex: 1, padding: "9px 0", border: "none", cursor: "pointer", fontFamily: FF, fontSize: 13, fontWeight: 500,
+                  backgroundColor: location === val ? (val === "schaumburg" ? "#2D6A4F" : "#5B9BD5") : "#FAFAF9",
+                  color: location === val ? "#FFFFFF" : "#6B7280",
+                  transition: "all 0.15s",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Zone Color */}
@@ -410,6 +459,9 @@ function DesktopZones({ zones, employees, stats, loading, onRefresh }: {
   const { toast } = useToast();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editZone, setEditZone] = useState<Zone | null>(null);
+  const [locationFilter, setLocationFilter] = useState<LocationFilter>("all");
+
+  const filteredZones = locationFilter === "all" ? zones : zones.filter(z => z.location === locationFilter);
 
   const openAdd = () => { setEditZone(null); setDrawerOpen(true); };
   const openEdit = (z: Zone) => { setEditZone(z); setDrawerOpen(true); };
@@ -437,7 +489,7 @@ function DesktopZones({ zones, employees, stats, loading, onRefresh }: {
   return (
     <>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
         <div>
           <h1 style={{ fontFamily: FF, fontWeight: 700, fontSize: 36, color: "#1A1917", margin: 0, lineHeight: 1.1 }}>Service Zones</h1>
           <p style={{ fontFamily: FF, fontWeight: 400, fontSize: 13, color: "#6B7280", margin: "6px 0 0" }}>
@@ -453,13 +505,31 @@ function DesktopZones({ zones, employees, stats, loading, onRefresh }: {
         </button>
       </div>
 
+      {/* Location Filter Tabs */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "1px solid #E5E2DC", paddingBottom: 0 }}>
+        {([["all", "All Zones"], ["oak_lawn", "Oak Lawn"], ["schaumburg", "Schaumburg"]] as const).map(([val, label]) => (
+          <button
+            key={val}
+            onClick={() => setLocationFilter(val)}
+            style={{
+              padding: "8px 16px", border: "none", cursor: "pointer", fontFamily: FF, fontSize: 13, fontWeight: locationFilter === val ? 500 : 400,
+              color: locationFilter === val ? "var(--brand)" : "#6B7280", backgroundColor: "transparent",
+              borderBottom: `2px solid ${locationFilter === val ? "var(--brand)" : "transparent"}`, marginBottom: -1,
+              transition: "color 0.15s",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* Zones Table */}
       <div style={{ backgroundColor: "#FFFFFF", borderRadius: 12, border: "1px solid #E5E2DC", overflow: "hidden" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ borderBottom: "1px solid #E5E2DC", backgroundColor: "#FAFAF9" }}>
-              {["", "Zone Name", "Zip Codes", "Employees", "Jobs This Month", "Active", ""].map((h, i) => (
-                <th key={i} style={{ padding: i === 0 ? "12px 16px" : "12px 16px", textAlign: "left", fontFamily: FF, fontSize: 11, fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              {["", "Zone Name", "Location", "Zip Codes", "Employees", "Jobs This Month", "Active", ""].map((h, i) => (
+                <th key={i} style={{ padding: "12px 16px", textAlign: "left", fontFamily: FF, fontSize: 11, fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.06em" }}>
                   {h}
                 </th>
               ))}
@@ -467,17 +537,20 @@ function DesktopZones({ zones, employees, stats, loading, onRefresh }: {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} style={{ padding: 40, textAlign: "center", fontFamily: FF, fontSize: 13, color: "#9E9B94" }}>Loading zones...</td></tr>
-            ) : zones.length === 0 ? (
-              <tr><td colSpan={7} style={{ padding: 40, textAlign: "center", fontFamily: FF, fontSize: 13, color: "#9E9B94" }}>No zones yet. Click "+ Add Zone" to create your first zone.</td></tr>
+              <tr><td colSpan={8} style={{ padding: 40, textAlign: "center", fontFamily: FF, fontSize: 13, color: "#9E9B94" }}>Loading zones...</td></tr>
+            ) : filteredZones.length === 0 ? (
+              <tr><td colSpan={8} style={{ padding: 40, textAlign: "center", fontFamily: FF, fontSize: 13, color: "#9E9B94" }}>No zones{locationFilter !== "all" ? " for this location" : ""}. Click "+ Add Zone" to create one.</td></tr>
             ) : (
-              zones.map((z, i) => (
-                <tr key={z.id} style={{ borderBottom: i < zones.length - 1 ? "1px solid #F0EEE9" : "none", opacity: z.is_active ? 1 : 0.55 }}>
+              filteredZones.map((z, i) => (
+                <tr key={z.id} style={{ borderBottom: i < filteredZones.length - 1 ? "1px solid #F0EEE9" : "none", opacity: z.is_active ? 1 : 0.55 }}>
                   <td style={{ padding: "14px 16px", width: 40 }}>
                     <div style={{ width: 18, height: 18, borderRadius: "50%", backgroundColor: z.color, flexShrink: 0 }} />
                   </td>
                   <td style={{ padding: "14px 16px", fontFamily: FF, fontSize: 14, fontWeight: 500, color: "#1A1917" }}>
                     {z.name}
+                  </td>
+                  <td style={{ padding: "14px 16px" }}>
+                    <LocationBadge loc={z.location} />
                   </td>
                   <td style={{ padding: "14px 16px" }}>
                     <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>

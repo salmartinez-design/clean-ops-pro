@@ -9,5 +9,6 @@ export const serviceZonesTable = pgTable("service_zones", {
   zip_codes: text("zip_codes").array().notNull().default([]),
   is_active: boolean("is_active").notNull().default(true),
   sort_order: integer("sort_order").notNull().default(0),
+  location: text("location").notNull().default("oak_lawn"),
   created_at: timestamp("created_at").notNull().defaultNow(),
 });

@@ -168,20 +168,60 @@ router.get("/public", async (req, res) => {
   }
 });
 
+// ─── Helper: validate no zip conflicts ───────────────────────────────────────
+async function validateNoZipConflicts(
+  companyId: number,
+  zips: string[],
+  excludeZoneId?: number
+): Promise<{ zip: string; existingZone: string; existingLocation: string }[]> {
+  const query = excludeZoneId
+    ? `SELECT id, name, location, zip_codes FROM service_zones WHERE company_id = $1 AND id != $2`
+    : `SELECT id, name, location, zip_codes FROM service_zones WHERE company_id = $1`;
+  const params: any[] = excludeZoneId ? [companyId, excludeZoneId] : [companyId];
+  const { sql: drSql } = await import("drizzle-orm");
+  const rows = await db.execute(drSql.raw(
+    excludeZoneId
+      ? `SELECT id, name, location, zip_codes FROM service_zones WHERE company_id = ${companyId} AND id != ${excludeZoneId}`
+      : `SELECT id, name, location, zip_codes FROM service_zones WHERE company_id = ${companyId}`
+  ));
+  const conflicts: { zip: string; existingZone: string; existingLocation: string }[] = [];
+  for (const zone of (rows as any).rows ?? []) {
+    const existingZips: string[] = Array.isArray(zone.zip_codes) ? zone.zip_codes : [];
+    for (const z of zips) {
+      if (existingZips.includes(z)) {
+        conflicts.push({ zip: z, existingZone: zone.name, existingLocation: zone.location });
+      }
+    }
+  }
+  return conflicts;
+}
+
 // ─── POST /api/zones — create ─────────────────────────────────────────────────
 router.post("/", requireAuth, requireRole("owner", "admin"), async (req, res) => {
   try {
     const companyId = req.auth!.companyId;
-    const { name, color, zip_codes, employee_ids, sort_order } = req.body;
+    const { name, color, zip_codes, employee_ids, sort_order, location } = req.body;
 
     if (!name) return res.status(400).json({ error: "name required" });
+    if (location && !["oak_lawn", "schaumburg"].includes(location)) {
+      return res.status(400).json({ error: "location must be oak_lawn or schaumburg" });
+    }
+
+    const zips = Array.isArray(zip_codes) ? zip_codes : [];
+    if (zips.length > 0) {
+      const conflicts = await validateNoZipConflicts(companyId, zips);
+      if (conflicts.length > 0) {
+        return res.status(400).json({ error: "zip_conflict", conflicts });
+      }
+    }
 
     const [zone] = await db.insert(serviceZonesTable).values({
       company_id: companyId,
       name,
       color: color ?? "#5B9BD5",
-      zip_codes: Array.isArray(zip_codes) ? zip_codes : [],
+      zip_codes: zips,
       sort_order: sort_order ?? 0,
+      location: location ?? "oak_lawn",
     }).returning();
 
     // Assign employees
@@ -203,12 +243,23 @@ router.patch("/:id", requireAuth, requireRole("owner", "admin"), async (req, res
   try {
     const companyId = req.auth!.companyId;
     const id = parseInt(req.params.id);
-    const { name, color, zip_codes, employee_ids, is_active, sort_order } = req.body;
+    const { name, color, zip_codes, employee_ids, is_active, sort_order, location } = req.body;
 
     const existing = await db.select().from(serviceZonesTable).where(
       and(eq(serviceZonesTable.id, id), eq(serviceZonesTable.company_id, companyId))
     );
     if (!existing.length) return res.status(404).json({ error: "Not found" });
+
+    if (location && !["oak_lawn", "schaumburg"].includes(location)) {
+      return res.status(400).json({ error: "location must be oak_lawn or schaumburg" });
+    }
+
+    if (zip_codes !== undefined && Array.isArray(zip_codes) && zip_codes.length > 0) {
+      const conflicts = await validateNoZipConflicts(companyId, zip_codes, id);
+      if (conflicts.length > 0) {
+        return res.status(400).json({ error: "zip_conflict", conflicts });
+      }
+    }
 
     const patch: Record<string, any> = {};
     if (name !== undefined) patch.name = name;
@@ -216,6 +267,7 @@ router.patch("/:id", requireAuth, requireRole("owner", "admin"), async (req, res
     if (zip_codes !== undefined) patch.zip_codes = zip_codes;
     if (is_active !== undefined) patch.is_active = is_active;
     if (sort_order !== undefined) patch.sort_order = sort_order;
+    if (location !== undefined) patch.location = location;
 
     if (Object.keys(patch).length > 0) {
       await db.update(serviceZonesTable).set(patch).where(
@@ -258,6 +310,92 @@ router.delete("/:id", requireAuth, requireRole("owner", "admin"), async (req, re
     return res.json({ success: true });
   } catch (err) {
     console.error("[zones DELETE]", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ─── POST /api/zones/:id/zips — add a zip to zone ────────────────────────────
+router.post("/:id/zips", requireAuth, requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const companyId = req.auth!.companyId;
+    const id = parseInt(req.params.id);
+    const { zip } = req.body;
+    if (!zip) return res.status(400).json({ error: "zip required" });
+    const clean = zip.trim().replace(/\D/g, "").slice(0, 5);
+    if (clean.length !== 5) return res.status(400).json({ error: "zip must be 5 digits" });
+
+    const existing = await db.select().from(serviceZonesTable).where(
+      and(eq(serviceZonesTable.id, id), eq(serviceZonesTable.company_id, companyId))
+    );
+    if (!existing.length) return res.status(404).json({ error: "Not found" });
+
+    const conflicts = await validateNoZipConflicts(companyId, [clean], id);
+    if (conflicts.length > 0) {
+      return res.status(400).json({ error: "zip_conflict", conflicts });
+    }
+
+    const current = existing[0].zip_codes ?? [];
+    if (current.includes(clean)) return res.status(400).json({ error: "zip already in zone" });
+
+    const { sql: drSql } = await import("drizzle-orm");
+    await db.execute(drSql`UPDATE service_zones SET zip_codes = array_append(zip_codes, ${clean}) WHERE id = ${id}`);
+    const [updated] = await db.select().from(serviceZonesTable).where(eq(serviceZonesTable.id, id));
+    return res.json(updated);
+  } catch (err) {
+    console.error("[zones/:id/zips POST]", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ─── DELETE /api/zones/:id/zips/:zip — remove a zip from zone ────────────────
+router.delete("/:id/zips/:zip", requireAuth, requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const companyId = req.auth!.companyId;
+    const id = parseInt(req.params.id);
+    const zip = req.params.zip;
+
+    const existing = await db.select().from(serviceZonesTable).where(
+      and(eq(serviceZonesTable.id, id), eq(serviceZonesTable.company_id, companyId))
+    );
+    if (!existing.length) return res.status(404).json({ error: "Not found" });
+
+    const { sql: drSql } = await import("drizzle-orm");
+    await db.execute(drSql`UPDATE service_zones SET zip_codes = array_remove(zip_codes, ${zip}) WHERE id = ${id}`);
+    const [updated] = await db.select().from(serviceZonesTable).where(eq(serviceZonesTable.id, id));
+    return res.json(updated);
+  } catch (err) {
+    console.error("[zones/:id/zips DELETE]", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ─── PUT /api/zones/:id/zips — replace all zips ───────────────────────────────
+router.put("/:id/zips", requireAuth, requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const companyId = req.auth!.companyId;
+    const id = parseInt(req.params.id);
+    const { zip_codes } = req.body;
+    if (!Array.isArray(zip_codes)) return res.status(400).json({ error: "zip_codes array required" });
+
+    const existing = await db.select().from(serviceZonesTable).where(
+      and(eq(serviceZonesTable.id, id), eq(serviceZonesTable.company_id, companyId))
+    );
+    if (!existing.length) return res.status(404).json({ error: "Not found" });
+
+    if (zip_codes.length > 0) {
+      const conflicts = await validateNoZipConflicts(companyId, zip_codes, id);
+      if (conflicts.length > 0) {
+        return res.status(400).json({ error: "zip_conflict", conflicts });
+      }
+    }
+
+    await db.update(serviceZonesTable).set({ zip_codes }).where(
+      and(eq(serviceZonesTable.id, id), eq(serviceZonesTable.company_id, companyId))
+    );
+    const [updated] = await db.select().from(serviceZonesTable).where(eq(serviceZonesTable.id, id));
+    return res.json(updated);
+  } catch (err) {
+    console.error("[zones/:id/zips PUT]", err);
     return res.status(500).json({ error: "Server error" });
   }
 });

@@ -9,13 +9,14 @@ import { HRPoliciesTab } from "./company/hr-policies";
 import { DocumentsTab } from "./company/documents";
 import { PricingTab } from "./company/pricing";
 
-type Tab = 'general' | 'branding' | 'integrations' | 'payroll' | 'notifications' | 'clock-inout' | 'invoicing' | 'hr-policies' | 'documents' | 'pricing' | 'online-booking';
+type Tab = 'general' | 'branding' | 'integrations' | 'payroll' | 'notifications' | 'clock-inout' | 'invoicing' | 'hr-policies' | 'documents' | 'pricing' | 'online-booking' | 'service-zones';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'general', label: 'General' },
   { id: 'branding', label: 'Branding' },
   { id: 'pricing', label: 'Pricing & Scopes' },
   { id: 'online-booking', label: 'Online Booking' },
+  { id: 'service-zones', label: 'Service Zones' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'clock-inout', label: 'Clock In/Out' },
   { id: 'invoicing', label: 'Invoicing' },
@@ -73,6 +74,7 @@ export default function CompanyPage() {
         {activeTab === 'payroll' && <PayrollOptionsTab />}
         {activeTab === 'pricing' && <PricingTab />}
         {activeTab === 'online-booking' && <OnlineBookingTab />}
+        {activeTab === 'service-zones' && <ServiceZonesTab />}
         {activeTab === 'hr-policies' && <HRPoliciesTab />}
         {activeTab === 'documents' && <DocumentsTab />}
       </div>
@@ -1600,6 +1602,300 @@ function OnlineBookingTab() {
       >
         {saving ? 'Saving…' : 'Save Booking Settings'}
       </button>
+    </div>
+  );
+}
+
+// ─── SERVICE ZONES TAB ────────────────────────────────────────────────────────
+const SZ_COLORS = ["#FF69B4","#5B9BD5","#2D6A4F","#7F77DD","#F97316","#E53E3E","#0D9488","#EAB308","#43F411","#FFB200","#C96969"];
+
+function SzLocationBadge({ loc }: { loc: string }) {
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", padding: "2px 8px",
+      borderRadius: 10, fontSize: 10, fontFamily: FF, fontWeight: 600, letterSpacing: "0.03em",
+      backgroundColor: loc === "schaumburg" ? "#2D6A4F" : "#5B9BD5", color: "#FFFFFF",
+    }}>
+      {loc === "schaumburg" ? "Schaumburg" : "Oak Lawn"}
+    </span>
+  );
+}
+
+interface SzZone {
+  id: number; name: string; color: string; zip_codes: string[];
+  is_active: boolean; location: string; employee_count: number; jobs_this_month: number;
+}
+
+function ServiceZonesTab() {
+  const SZ_API = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const { toast } = useToast();
+  const [zones, setZones] = useState<SzZone[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [locFilter, setLocFilter] = useState<"all" | "oak_lawn" | "schaumburg">("all");
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+  const [addZipInputs, setAddZipInputs] = useState<Record<number, string>>({});
+  const [addZipErrors, setAddZipErrors] = useState<Record<number, string>>({});
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editZone, setEditZone] = useState<SzZone | null>(null);
+  const [mName, setMName] = useState("");
+  const [mLoc, setMLoc] = useState<"oak_lawn" | "schaumburg">("oak_lawn");
+  const [mColor, setMColor] = useState("#5B9BD5");
+  const [mZips, setMZips] = useState<string[]>([]);
+  const [mSaving, setMSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${SZ_API}/api/zones`, { headers: getAuthHeaders() });
+      if (r.ok) setZones(await r.json());
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = locFilter === "all" ? zones : zones.filter(z => z.location === locFilter);
+
+  const toggleExpand = (id: number) => setExpanded(p => ({ ...p, [id]: !p[id] }));
+
+  const removeZip = async (zoneId: number, zip: string) => {
+    try {
+      const r = await fetch(`${SZ_API}/api/zones/${zoneId}/zips/${zip}`, { method: "DELETE", headers: getAuthHeaders() });
+      if (!r.ok) throw new Error();
+      setZones(prev => prev.map(z => z.id === zoneId ? { ...z, zip_codes: z.zip_codes.filter(x => x !== zip) } : z));
+    } catch { toast({ title: "Failed to remove zip", variant: "destructive" }); }
+  };
+
+  const addZip = async (zoneId: number) => {
+    const raw = addZipInputs[zoneId] || "";
+    const clean = raw.trim().replace(/\D/g, "").slice(0, 5);
+    if (clean.length !== 5) {
+      setAddZipErrors(p => ({ ...p, [zoneId]: "Enter a 5-digit zip" }));
+      return;
+    }
+    try {
+      const r = await fetch(`${SZ_API}/api/zones/${zoneId}/zips`, {
+        method: "POST", headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ zip: clean }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        if (data.error === "zip_conflict" && data.conflicts?.length) {
+          setAddZipErrors(p => ({ ...p, [zoneId]: `${clean} is already in "${data.conflicts[0].existingZone}"` }));
+        } else {
+          setAddZipErrors(p => ({ ...p, [zoneId]: data.error || "Error" }));
+        }
+        return;
+      }
+      setZones(prev => prev.map(z => z.id === zoneId ? { ...z, zip_codes: data.zip_codes } : z));
+      setAddZipInputs(p => ({ ...p, [zoneId]: "" }));
+      setAddZipErrors(p => ({ ...p, [zoneId]: "" }));
+    } catch { toast({ title: "Failed to add zip", variant: "destructive" }); }
+  };
+
+  const deleteZone = async (z: SzZone) => {
+    if (!confirm(`Delete "${z.name}"? This cannot be undone.`)) return;
+    try {
+      await fetch(`${SZ_API}/api/zones/${z.id}`, { method: "DELETE", headers: getAuthHeaders() });
+      toast({ title: "Zone deleted" });
+      load();
+    } catch { toast({ title: "Failed to delete", variant: "destructive" }); }
+  };
+
+  const openAdd = () => {
+    setEditZone(null); setMName(""); setMLoc("oak_lawn"); setMColor("#5B9BD5"); setMZips([]);
+    setModalOpen(true);
+  };
+  const openEdit = (z: SzZone) => {
+    setEditZone(z); setMName(z.name); setMLoc(z.location as any); setMColor(z.color); setMZips(z.zip_codes || []);
+    setModalOpen(true);
+  };
+
+  const saveModal = async () => {
+    if (!mName.trim()) { toast({ title: "Zone name required", variant: "destructive" }); return; }
+    setMSaving(true);
+    try {
+      const url = editZone ? `${SZ_API}/api/zones/${editZone.id}` : `${SZ_API}/api/zones`;
+      const method = editZone ? "PATCH" : "POST";
+      const r = await fetch(url, {
+        method, headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ name: mName.trim(), color: mColor, zip_codes: mZips, location: mLoc }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        if (data.error === "zip_conflict" && data.conflicts?.length) {
+          toast({ title: "Zip conflict", description: `${data.conflicts[0].zip} is already in "${data.conflicts[0].existingZone}"`, variant: "destructive" });
+        } else {
+          throw new Error(data.error || "Save failed");
+        }
+        return;
+      }
+      toast({ title: editZone ? "Zone updated" : "Zone created" });
+      setModalOpen(false);
+      load();
+    } catch (e: any) {
+      toast({ title: "Failed to save", description: e.message, variant: "destructive" });
+    } finally { setMSaving(false); }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          <h2 style={{ fontFamily: FF, fontWeight: 700, fontSize: 22, color: "#1A1917", margin: 0 }}>Service Zones</h2>
+          <p style={{ fontFamily: FF, fontSize: 13, color: "#6B7280", margin: "4px 0 0" }}>Manage zip code coverage for each location. No zip can exist in two zones.</p>
+        </div>
+        <button
+          onClick={openAdd}
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", backgroundColor: "var(--brand)", color: "#FFFFFF", border: "none", borderRadius: 8, fontFamily: FF, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+        >
+          + Add Zone
+        </button>
+      </div>
+
+      {/* Location Filter Tabs */}
+      <div style={{ display: "flex", gap: 4, borderBottom: "1px solid #E5E2DC" }}>
+        {([["all", "All Zones"], ["oak_lawn", "Oak Lawn"], ["schaumburg", "Schaumburg"]] as const).map(([val, label]) => (
+          <button key={val} onClick={() => setLocFilter(val)} style={{
+            padding: "8px 16px", border: "none", cursor: "pointer", fontFamily: FF, fontSize: 13, fontWeight: locFilter === val ? 500 : 400,
+            color: locFilter === val ? "var(--brand)" : "#6B7280", backgroundColor: "transparent",
+            borderBottom: `2px solid ${locFilter === val ? "var(--brand)" : "transparent"}`, marginBottom: -1, transition: "color 0.15s",
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {/* Zone Cards */}
+      {loading ? (
+        <p style={{ fontFamily: FF, fontSize: 13, color: "#9E9B94", textAlign: "center", padding: 32 }}>Loading zones...</p>
+      ) : filtered.length === 0 ? (
+        <p style={{ fontFamily: FF, fontSize: 13, color: "#9E9B94", textAlign: "center", padding: 32 }}>No zones{locFilter !== "all" ? " for this location" : ""}. Click "+ Add Zone" to create one.</p>
+      ) : filtered.map(z => (
+        <div key={z.id} style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 10, overflow: "hidden" }}>
+          {/* Card Header */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", cursor: "pointer" }} onClick={() => toggleExpand(z.id)}>
+            <div style={{ width: 16, height: 16, borderRadius: "50%", backgroundColor: z.color, flexShrink: 0 }} />
+            <span style={{ fontFamily: FF, fontWeight: 600, fontSize: 14, color: "#1A1917", flex: 1 }}>{z.name}</span>
+            <SzLocationBadge loc={z.location} />
+            <span style={{ fontFamily: FF, fontSize: 12, color: "#6B7860", marginLeft: 8 }}>
+              {(z.zip_codes || []).length} zip{(z.zip_codes || []).length !== 1 ? "s" : ""}
+            </span>
+            <button onClick={e => { e.stopPropagation(); openEdit(z); }} style={{ padding: "4px 10px", background: "transparent", border: "1px solid #E5E2DC", borderRadius: 6, fontFamily: FF, fontSize: 12, color: "#6B7280", cursor: "pointer" }}>Edit</button>
+            <button onClick={e => { e.stopPropagation(); deleteZone(z); }} style={{ padding: "4px 10px", background: "transparent", border: "1px solid #E5E2DC", borderRadius: 6, fontFamily: FF, fontSize: 12, color: "#EF4444", cursor: "pointer" }}>Delete</button>
+            <span style={{ color: "#9E9B94", fontSize: 14, marginLeft: 4, userSelect: "none" }}>{expanded[z.id] ? "▲" : "▼"}</span>
+          </div>
+
+          {/* Expanded: zip chips + add zip */}
+          {expanded[z.id] && (
+            <div style={{ borderTop: "1px solid #F0EEE9", padding: "12px 16px", display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+              {(z.zip_codes || []).map(zip => (
+                <span key={zip} style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", backgroundColor: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: 6, fontFamily: FF, fontSize: 12, color: "#1A1917" }}>
+                  {zip}
+                  <button onClick={() => removeZip(z.id, zip)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "#9E9B94", display: "flex", lineHeight: 1 }}>×</button>
+                </span>
+              ))}
+              {/* Add zip inline */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <input
+                    value={addZipInputs[z.id] || ""}
+                    onChange={e => { setAddZipInputs(p => ({ ...p, [z.id]: e.target.value })); setAddZipErrors(p => ({ ...p, [z.id]: "" })); }}
+                    onKeyDown={e => { if (e.key === "Enter") addZip(z.id); }}
+                    placeholder="+ Add zip"
+                    maxLength={5}
+                    style={{ width: 70, padding: "3px 7px", border: "1px dashed #C0BDB8", borderRadius: 6, fontFamily: FF, fontSize: 12, color: "#1A1917", outline: "none" }}
+                  />
+                  <button onClick={() => addZip(z.id)} style={{ padding: "3px 8px", background: "var(--brand)", color: "#FFFFFF", border: "none", borderRadius: 6, fontFamily: FF, fontSize: 12, cursor: "pointer" }}>Add</button>
+                </div>
+                {addZipErrors[z.id] && <p style={{ fontFamily: FF, fontSize: 11, color: "#EF4444", margin: 0 }}>{addZipErrors[z.id]}</p>}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* Add/Edit Zone Modal */}
+      {modalOpen && (
+        <>
+          <div onClick={() => setModalOpen(false)} style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", zIndex: 200 }} />
+          <div style={{
+            position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
+            backgroundColor: "#FFFFFF", borderRadius: 12, padding: 28, zIndex: 201,
+            width: 460, maxHeight: "90vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 20,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <h3 style={{ fontFamily: FF, fontWeight: 700, fontSize: 18, color: "#1A1917", margin: 0 }}>{editZone ? "Edit Zone" : "Add Zone"}</h3>
+              <button onClick={() => setModalOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#9E9B94", fontSize: 20, lineHeight: 1 }}>×</button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontFamily: FF, fontWeight: 500, fontSize: 13, color: "#1A1917" }}>Zone Name</label>
+              <input value={mName} onChange={e => setMName(e.target.value)} placeholder="e.g. Southwest Zone"
+                style={{ padding: "10px 12px", border: "1px solid #E5E2DC", borderRadius: 8, fontFamily: FF, fontSize: 13, color: "#1A1917", outline: "none" }} />
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontFamily: FF, fontWeight: 500, fontSize: 13, color: "#1A1917" }}>Location</label>
+              <div style={{ display: "flex", borderRadius: 8, border: "1px solid #E5E2DC", overflow: "hidden" }}>
+                {([["oak_lawn", "Oak Lawn"], ["schaumburg", "Schaumburg"]] as const).map(([val, label]) => (
+                  <button key={val} onClick={() => setMLoc(val)} style={{
+                    flex: 1, padding: "9px 0", border: "none", cursor: "pointer", fontFamily: FF, fontSize: 13, fontWeight: 500,
+                    backgroundColor: mLoc === val ? (val === "schaumburg" ? "#2D6A4F" : "#5B9BD5") : "#FAFAF9",
+                    color: mLoc === val ? "#FFFFFF" : "#6B7280", transition: "all 0.15s",
+                  }}>{label}</button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <label style={{ fontFamily: FF, fontWeight: 500, fontSize: 13, color: "#1A1917" }}>Color</label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {SZ_COLORS.map(c => (
+                  <button key={c} onClick={() => setMColor(c)} style={{
+                    width: 28, height: 28, borderRadius: "50%", backgroundColor: c, border: "none", cursor: "pointer",
+                    outline: mColor === c ? `3px solid ${c}` : "none", outlineOffset: 2,
+                    boxShadow: mColor === c ? "0 0 0 2px #FFFFFF inset" : "none",
+                  }} />
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontFamily: FF, fontWeight: 500, fontSize: 13, color: "#1A1917" }}>Zip Codes</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "8px 10px", border: "1px solid #E5E2DC", borderRadius: 8, minHeight: 44 }}>
+                {mZips.map(z => (
+                  <span key={z} style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 8px", backgroundColor: "#F0EEE9", borderRadius: 12, fontFamily: FF, fontSize: 12, color: "#1A1917" }}>
+                    {z}
+                    <button onClick={() => setMZips(p => p.filter(x => x !== z))} style={{ background: "none", border: "none", cursor: "pointer", color: "#9E9B94", padding: 0, lineHeight: 1 }}>×</button>
+                  </span>
+                ))}
+                <input
+                  placeholder="Type zip, press Enter"
+                  style={{ border: "none", outline: "none", fontFamily: FF, fontSize: 13, color: "#1A1917", minWidth: 140, flex: 1, background: "transparent" }}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" || e.key === ",") {
+                      e.preventDefault();
+                      const val = (e.currentTarget.value || "").trim().replace(/\D/g, "").slice(0, 5);
+                      if (val.length === 5 && !mZips.includes(val)) setMZips(p => [...p, val]);
+                      e.currentTarget.value = "";
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={saveModal} disabled={mSaving} style={{
+                flex: 1, padding: "10px 0", backgroundColor: "var(--brand)", color: "#FFFFFF", border: "none",
+                borderRadius: 8, fontFamily: FF, fontSize: 14, fontWeight: 600, cursor: mSaving ? "not-allowed" : "pointer", opacity: mSaving ? 0.7 : 1,
+              }}>{mSaving ? "Saving..." : "Save Zone"}</button>
+              <button onClick={() => setModalOpen(false)} style={{
+                padding: "10px 18px", backgroundColor: "transparent", color: "#6B7280", border: "1px solid #E5E2DC",
+                borderRadius: 8, fontFamily: FF, fontSize: 14, cursor: "pointer",
+              }}>Cancel</button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
