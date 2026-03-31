@@ -359,6 +359,11 @@ export default function BookPage() {
   const [vdSubmitting, setVdSubmitting] = useState(false);
   const [vdSubmitted, setVdSubmitted] = useState(false);
 
+  // House rules accordion state
+  const [mobilePoliciesOpen, setMobilePoliciesOpen] = useState(false);
+  const [sidebarOpenCats, setSidebarOpenCats] = useState<Set<number>>(new Set());
+  const [mobileOpenCats, setMobileOpenCats] = useState<Set<number>>(new Set());
+
   // Upsell state (Deep Clean recurring upsell)
   const [upsellCadence, setUpsellCadence] = useState("");
   const [upsellAccepted, setUpsellAccepted] = useState(false);
@@ -983,6 +988,111 @@ export default function BookPage() {
 
   const stepLabels = ["Contact", "Scope", "Frequency", "Date", "Payment", "Confirmed"];
 
+  // ── House rules data ──────────────────────────────────────────────────────
+  const POLICIES = [
+    {
+      title: "Cancellation & Rescheduling",
+      items: [
+        "48-hour notice required for all cancellations and rescheduling. Sundays do not count toward this window.",
+        "Monday appointments: notify us by Friday before 6:00 PM CT.",
+        "Tuesday appointments: notify us by Saturday before 12:00 PM CT.",
+        "Cancellations within 48 hours or no-shows result in a 100% charge of the service fee.",
+        "Clients are allowed one reschedule per appointment. Any additional reschedule within the 48-hour window is treated as a late cancellation.",
+        "Lockouts: our team will wait a maximum of 20 minutes. If we cannot gain access, the appointment is forfeited and billed in full.",
+      ],
+    },
+    {
+      title: "Site Requirements",
+      items: [
+        "Running water, electricity, and sufficient lighting must be available. If utilities are inactive, we reserve the right to cancel and the full fee applies.",
+        "Please have personal items, toys, and clothes cleared away. We cannot clean sinks or countertops full of dishes. Highly cluttered surfaces may be skipped at our discretion.",
+        "Please disclose if your home has recently undergone construction or renovation — this requires specific post-construction pricing.",
+        "Maintenance clients: please provide a toilet brush for our team to use inside your toilets.",
+        "Move In/Out clients: property must be empty of furniture and people. We will work around any items left behind, which may result in subpar cleaning — no refunds will be issued for these conditions.",
+      ],
+    },
+    {
+      title: "Billing & Pricing",
+      items: [
+        "Our estimates are based on your home details. If the home's condition or size differs significantly from what was provided, we will contact you with an updated estimate before proceeding.",
+        "Hourly service: we bill upon the start of the job. Minimum 3 hours for standard cleaning, 4 hours for deep or move in/out cleaning.",
+        "Extended service rates apply if additional time is needed beyond the estimate. Rates vary by service frequency — contact our office for details.",
+        "No refunds. As a labor-based service, we do not offer refunds. Our 24-hour re-clean guarantee is our sole remedy for quality disputes.",
+      ],
+    },
+    {
+      title: "Safety & Exclusions",
+      items: [
+        "We do not clean human or animal waste, blood, vomit, urine, or insect infestations per OSHA guidelines.",
+        "Our cleaners are authorized to adjust AC/Heat to a safe working temperature while on-site.",
+        "Damage liability is limited to the total cost of the cleaning service. We are not responsible for improperly secured items or items of extreme sentimental value.",
+        "We do not offer bed-making, laundry, dishwashing, wall spot-cleaning, or moving of heavy furniture.",
+      ],
+    },
+    {
+      title: "The 24-Hour Guarantee",
+      items: [
+        "If we miss a spot, contact us within 24 hours. We will return to re-clean the area at no cost.",
+      ],
+    },
+    {
+      title: "Home Access",
+      items: [
+        "Be home: wait for our arrival during the scheduled window.",
+        "Keys or codes: provide a spare key or electronic entry code.",
+        "Secure lockbox: we can provide a master lockbox for $50.00, must be returned upon termination of service or a $75.00 fee applies.",
+      ],
+    },
+    {
+      title: "Non-Solicitation",
+      items: [
+        "By using our services, you agree not to solicit, hire, or contract any Phes staff member privately. Any breach results in immediate termination of your service agreement.",
+      ],
+    },
+  ];
+
+  const toggleCat = (idx: number, openSet: Set<number>, setOpenSet: (s: Set<number>) => void) => {
+    const next = new Set(openSet);
+    if (next.has(idx)) next.delete(idx); else next.add(idx);
+    setOpenSet(next);
+  };
+
+  const PolicyAccordion = ({ openCats, setOpenCats }: { openCats: Set<number>; setOpenCats: (s: Set<number>) => void }) => (
+    <div style={{ display: "flex", flexDirection: "column" }}>
+      {POLICIES.map((cat, idx) => {
+        const isOpen = openCats.has(idx);
+        return (
+          <div key={idx} style={{ borderBottom: "1px solid #E5E2DC" }}>
+            <button
+              onClick={() => toggleCat(idx, openCats, setOpenCats)}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                width: "100%", padding: "12px 14px", background: "#FFFFFF",
+                border: "none", borderLeft: isOpen ? `2px solid ${brand}` : "2px solid transparent",
+                cursor: "pointer", textAlign: "left", gap: 8,
+              }}
+            >
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", lineHeight: 1.3 }}>{cat.title}</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6B6860" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                style={{ flexShrink: 0, transform: isOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s ease" }}>
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            {isOpen && (
+              <div style={{ padding: "4px 14px 14px 14px", background: "#FFFFFF" }}>
+                <ul style={{ margin: 0, paddingLeft: 16, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {cat.items.map((item, i) => (
+                    <li key={i} style={{ fontSize: 13, color: "#6B6860", lineHeight: 1.7 }}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
   // ── Right panel ───────────────────────────────────────────────────────────
   const sectionLabel: React.CSSProperties = {
     margin: "0 0 12px", fontWeight: 700, fontSize: 11, textTransform: "uppercase",
@@ -1050,21 +1160,18 @@ export default function BookPage() {
           </div>
         </div>
 
-        {/* Section 4 — Important Policies */}
-        <div style={s.card}>
-          <p style={sectionLabel}>Important Policies</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 14 }}>
-            {["48-hour cancellation notice required", "24-hour satisfaction guarantee", "Licensed, bonded & insured"].map(policy => (
-              <div key={policy} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, color: "#6B6860" }}>
-                <CheckCircle2 size={14} color={brand} style={{ marginTop: 1, flexShrink: 0 }} />
-                <span>{policy}</span>
-              </div>
-            ))}
+        {/* Section 4 — Policies & House Rules accordion */}
+        <div style={{ background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 12, overflow: "hidden" }}>
+          <div style={{ padding: "16px 14px 12px", borderBottom: "1px solid #E5E2DC" }}>
+            <p style={sectionLabel}>Policies & House Rules</p>
           </div>
-          <a href="https://phes.io/terms" target="_blank" rel="noreferrer"
-            style={{ display: "block", textAlign: "center", fontSize: 12, fontWeight: 600, color: brand, textDecoration: "none", padding: "9px 14px", border: `1px solid ${brand}`, borderRadius: 8 }}>
-            View Full Terms & Conditions
-          </a>
+          <PolicyAccordion openCats={sidebarOpenCats} setOpenCats={setSidebarOpenCats} />
+          <div style={{ padding: "12px 14px" }}>
+            <a href="https://phes.io/terms" target="_blank" rel="noreferrer"
+              style={{ display: "block", textAlign: "center", fontSize: 12, fontWeight: 600, color: brand, textDecoration: "none", padding: "9px 14px", border: `1px solid ${brand}`, borderRadius: 8 }}>
+              View Full Terms & Conditions
+            </a>
+          </div>
         </div>
 
         {/* Estimate summary (appears once pricing is selected) */}
@@ -1110,6 +1217,7 @@ export default function BookPage() {
   return (
     <div className="bw-root" style={{ minHeight: "100vh", background: "#F7F6F3", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       <style dangerouslySetInnerHTML={{ __html: `
+        .bw-policies-mobile { display: none; }
         @media (max-width: 767px) {
           .bw-topbar { padding: 12px 16px !important; }
           .bw-progress { padding: 10px 16px !important; }
@@ -1126,6 +1234,7 @@ export default function BookPage() {
           .bw-nav button { width: 100% !important; min-height: 52px !important; font-size: 15px !important; }
           .bw-nav-end button { width: 100% !important; min-height: 52px !important; font-size: 15px !important; }
           .bw-nav-end { justify-content: stretch !important; }
+          .bw-policies-mobile { display: block !important; }
         }
         @media (max-width: 400px) {
           .bw-step-label { display: none !important; }
@@ -1268,6 +1377,39 @@ export default function BookPage() {
                   </span>
                 </label>
                 {errors.terms && <div style={s.err}><AlertCircle size={12} />{errors.terms}</div>}
+              </div>
+
+              {/* Mobile-only Policies & House Rules accordion */}
+              <div className="bw-policies-mobile" style={{ marginBottom: 20 }}>
+                <button
+                  onClick={() => setMobilePoliciesOpen(o => !o)}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    width: "100%", background: "#FFFFFF", border: "1px solid #E5E2DC",
+                    borderRadius: mobilePoliciesOpen ? "8px 8px 0 0" : 8,
+                    padding: "12px 14px", cursor: "pointer", textAlign: "left",
+                  }}
+                >
+                  <div>
+                    <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "#1A1917" }}>Policies & House Rules</p>
+                    {!mobilePoliciesOpen && <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6B6860" }}>Tap to review before booking</p>}
+                  </div>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6B6860" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                    style={{ flexShrink: 0, transform: mobilePoliciesOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s ease" }}>
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+                {mobilePoliciesOpen && (
+                  <div style={{ border: "1px solid #E5E2DC", borderTop: "none", borderRadius: "0 0 8px 8px", maxHeight: 400, overflowY: "auto", background: "#FFFFFF" }}>
+                    <PolicyAccordion openCats={mobileOpenCats} setOpenCats={setMobileOpenCats} />
+                    <div style={{ padding: "10px 14px", borderTop: "1px solid #E5E2DC", textAlign: "right" }}>
+                      <button onClick={() => setMobilePoliciesOpen(false)}
+                        style={{ background: "none", border: "none", fontSize: 13, color: brand, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="bw-nav-end" style={{ display: "flex", justifyContent: "flex-end" }}>
