@@ -363,6 +363,7 @@ export default function BookPage() {
   const [mobilePoliciesOpen, setMobilePoliciesOpen] = useState(false);
   const [sidebarOpenCats, setSidebarOpenCats] = useState<Set<number>>(new Set());
   const [mobileOpenCats, setMobileOpenCats] = useState<Set<number>>(new Set());
+  const [mobilePriceExpanded, setMobilePriceExpanded] = useState(false);
 
   // Upsell state (Deep Clean recurring upsell)
   const [upsellCadence, setUpsellCadence] = useState("");
@@ -1093,6 +1094,73 @@ export default function BookPage() {
     </div>
   );
 
+  // ── Shared price breakdown content (used in sidebar + mobile) ────────────
+  const priceBreakdownRows = calcResult ? (
+    <>
+      <div style={{ marginBottom: 6 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1917" }}>
+          {upsellAccepted ? "Deep Clean (First Visit)" : calcResult.scope_name}
+        </span>
+        {sqft > 0 && <span style={{ fontSize: 12, color: "#9E9B94", marginLeft: 6 }}>{sqft.toLocaleString()} sqft</span>}
+      </div>
+      <Row label="Base Price" value={`$${calcResult.base_price.toFixed(2)}`} />
+      {calcResult.addon_breakdown.map(a => (
+        <Row key={a.id} label={a.name} value={`+$${a.amount.toFixed(2)}`} />
+      ))}
+      {calcResult.discount_amount > 0 && (
+        <Row label="Bundle Discount" value={`-$${calcResult.discount_amount.toFixed(2)}`} green />
+      )}
+      {calcResult.minimum_applied && (
+        <p style={{ fontSize: 11, color: "#F59E0B", margin: "2px 0 0" }}>Minimum applied</p>
+      )}
+    </>
+  ) : null;
+
+  // ── Mobile inline price summary (hidden on desktop, shown on mobile steps 1–4) ─
+  const mobilePriceSummaryEl = step >= 1 && step <= 4 && calcResult ? (
+    <div className="bw-mobile-price" style={{ display: "none", marginTop: 14, border: "1px solid #E5E2DC", borderRadius: 10, overflow: "hidden", background: "#fff" }}>
+      <button
+        onClick={() => setMobilePriceExpanded(o => !o)}
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "14px 16px", background: "none", border: "none", cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif", textAlign: "left" as const }}
+      >
+        <div>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1A1917" }}>
+            {upsellAccepted ? "Deep Clean + Recurring" : calcResult.scope_name}
+          </p>
+          {sqft > 0 && <p style={{ margin: 0, fontSize: 12, color: "#6B6860" }}>{sqft.toLocaleString()} sqft</p>}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <span style={{ fontSize: 18, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total).toFixed(2)}</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B6860" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            style={{ transform: mobilePriceExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </div>
+      </button>
+      {mobilePriceExpanded && (
+        <div style={{ padding: "0 16px 14px", borderTop: "1px solid #E5E2DC" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 12 }}>
+            {priceBreakdownRows}
+          </div>
+          {upsellAccepted && upsellPriceResult && (
+            <div style={{ marginTop: 10, padding: "10px 12px", background: `${brand}0D`, borderRadius: 8, border: `1px solid ${brand}25`, display: "flex", flexDirection: "column", gap: 4 }}>
+              <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 700, color: brand, textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>
+                Recurring {upsellCadence.charAt(0).toUpperCase() + upsellCadence.slice(1)}
+              </p>
+              <Row label="1st recurring visit" value={`$${upsellPriceResult.firstVisitRate.toFixed(2)}`} />
+              <Row label="Then per visit" value={`$${upsellPriceResult.recurringRate.toFixed(2)}`} />
+            </div>
+          )}
+          <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 10, marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+            <span style={{ fontSize: 13, color: "#6B6860" }}>Estimated Total</span>
+            <span style={{ fontSize: 16, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total).toFixed(2)}</span>
+          </div>
+          <p style={{ fontSize: 11, color: "#9E9B94", margin: "4px 0 0" }}>Final price confirmed at time of service.</p>
+        </div>
+      )}
+    </div>
+  ) : null;
+
   // ── Right panel ───────────────────────────────────────────────────────────
   const sectionLabel: React.CSSProperties = {
     margin: "0 0 12px", fontWeight: 700, fontSize: 11, textTransform: "uppercase",
@@ -1102,7 +1170,7 @@ export default function BookPage() {
     <div className="bw-sidebar" style={{ width: 300, flexShrink: 0 }}>
       <div style={{ position: "sticky", top: 24, display: "flex", flexDirection: "column", gap: 14 }}>
 
-        {/* Section 1 — Contact Information */}
+        {/* Section 1 — Contact Information + Business Hours merged */}
         <div style={s.card}>
           <p style={sectionLabel}>Contact Information</p>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1118,10 +1186,56 @@ export default function BookPage() {
                 <a href={`mailto:${company.email}`} style={{ color: "#1A1917", textDecoration: "none" }}>{company.email}</a>
               </div>
             )}
+            {(company.business_hours ?? "").trim() && (
+              <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 10, marginTop: 2, display: "flex", flexDirection: "column", gap: 5 }}>
+                {(company.business_hours ?? "").split("\n").filter(Boolean).map(line => {
+                  const colonIdx = line.indexOf(": ");
+                  const day = colonIdx >= 0 ? line.slice(0, colonIdx) : line;
+                  const time = colonIdx >= 0 ? line.slice(colonIdx + 2) : "";
+                  return (
+                    <div key={line} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 13 }}>
+                      <span style={{ color: "#6B6860" }}>{day}</span>
+                      <span style={{ color: time === "Closed" ? "#9E9B94" : "#1A1917", fontWeight: 500 }}>{time || day}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Section 2 — Office Locations */}
+        {/* Section 2 — Price Summary (Steps 1+, when pricing available) */}
+        {step >= 1 && calcResult && (
+          <div style={s.card}>
+            <p style={sectionLabel}>Price Summary</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {priceBreakdownRows}
+            </div>
+            {upsellAccepted && upsellPriceResult ? (
+              <>
+                <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 12, marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                  <span style={{ fontSize: 13, color: "#6B6860" }}>First Visit Total</span>
+                  <span style={{ fontSize: 18, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total).toFixed(2)}</span>
+                </div>
+                <div style={{ marginTop: 10, padding: "10px 12px", background: `${brand}0D`, borderRadius: 8, border: `1px solid ${brand}25`, display: "flex", flexDirection: "column", gap: 4 }}>
+                  <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 700, color: brand, textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>
+                    Recurring {upsellCadence.charAt(0).toUpperCase() + upsellCadence.slice(1)}
+                  </p>
+                  <Row label="1st recurring visit" value={`$${upsellPriceResult.firstVisitRate.toFixed(2)}`} />
+                  <Row label="Then per visit" value={`$${upsellPriceResult.recurringRate.toFixed(2)}`} />
+                </div>
+              </>
+            ) : (
+              <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 12, marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <span style={{ fontSize: 13, color: "#6B6860" }}>Estimated Total</span>
+                <span style={{ fontSize: 24, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total).toFixed(2)}</span>
+              </div>
+            )}
+            <p style={{ fontSize: 11, color: "#9E9B94", margin: "6px 0 0" }}>Final price confirmed at time of service.</p>
+          </div>
+        )}
+
+        {/* Section 3 — Office Locations */}
         <div style={s.card}>
           <p style={sectionLabel}>Office Locations</p>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -1142,28 +1256,10 @@ export default function BookPage() {
           </div>
         </div>
 
-        {/* Section 3 — Business Hours */}
-        <div style={s.card}>
-          <p style={sectionLabel}>Business Hours</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            {(company.business_hours ?? "").split("\n").filter(Boolean).map(line => {
-              const colonIdx = line.indexOf(": ");
-              const day = colonIdx >= 0 ? line.slice(0, colonIdx) : line;
-              const time = colonIdx >= 0 ? line.slice(colonIdx + 2) : "";
-              return (
-                <div key={line} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 13 }}>
-                  <span style={{ color: "#6B6860" }}>{day}</span>
-                  <span style={{ color: time === "Closed" ? "#9E9B94" : "#1A1917", fontWeight: 500 }}>{time || day}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Section 4 — Policies & House Rules accordion */}
+        {/* Section 4 — Before You Book accordion */}
         <div style={{ background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 12, overflow: "hidden" }}>
           <div style={{ padding: "16px 14px 12px", borderBottom: "1px solid #E5E2DC" }}>
-            <p style={sectionLabel}>Policies & House Rules</p>
+            <p style={sectionLabel}>Before You Book</p>
           </div>
           <PolicyAccordion openCats={sidebarOpenCats} setOpenCats={setSidebarOpenCats} />
           <div style={{ padding: "12px 14px" }}>
@@ -1174,41 +1270,6 @@ export default function BookPage() {
           </div>
         </div>
 
-        {/* Estimate summary (appears once pricing is selected) */}
-        {calcResult && (
-          <div style={s.card}>
-            <p style={{ margin: "0 0 12px", fontWeight: 700, fontSize: 14, color: "#1A1917", borderBottom: "1px solid #E5E2DC", paddingBottom: 10 }}>Estimate Summary</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <Row label="Service" value={calcResult.scope_name} />
-              <Row label="Sq Ft" value={`${sqft.toLocaleString()} sqft`} />
-              <Row label="Frequency" value={(() => {
-                const FREQ_LABEL: Record<string, string> = {
-                  onetime: "One Time", weekly: "Weekly",
-                  biweekly: "Every 2 Weeks", monthly: "Every 4 Weeks",
-                };
-                const raw = upsellCadence || calcResult.frequency;
-                return FREQ_LABEL[raw] ?? raw;
-              })()} />
-              <Row label="Est. Hours" value={`${calcResult.base_hours.toFixed(1)}h`} />
-              <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 8, marginTop: 4 }} />
-              <Row label="Base Price" value={`$${calcResult.base_price.toFixed(2)}`} />
-              {calcResult.addon_breakdown.map(a => (
-                <Row key={a.id} label={a.name} value={`+$${a.amount.toFixed(2)}`} />
-              ))}
-              {calcResult.discount_amount > 0 && (
-                <Row label="Bundle Discount" value={`-$${calcResult.discount_amount.toFixed(2)}`} green />
-              )}
-              {calcResult.minimum_applied && (
-                <p style={{ fontSize: 11, color: "#F59E0B", margin: 0 }}>Minimum bill rate applied</p>
-              )}
-            </div>
-            <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 12, marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-              <span style={{ fontSize: 13, color: "#6B6860" }}>Estimated Total</span>
-              <span style={{ fontSize: 24, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total * conditionMultiplier).toFixed(2)}</span>
-            </div>
-            <p style={{ fontSize: 11, color: "#9E9B94", margin: "6px 0 0" }}>Final price confirmed at time of service.</p>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -1218,23 +1279,31 @@ export default function BookPage() {
     <div className="bw-root" style={{ minHeight: "100vh", background: "#F7F6F3", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       <style dangerouslySetInnerHTML={{ __html: `
         .bw-policies-mobile { display: none; }
+        .bw-mobile-price { display: none; }
         @media (max-width: 767px) {
           .bw-topbar { padding: 12px 16px !important; }
           .bw-progress { padding: 10px 16px !important; }
           .bw-progress-inner { gap: 2px !important; }
           .bw-step-label { display: none !important; }
           .bw-step-label.active { display: inline !important; }
-          .bw-body { flex-direction: column !important; padding: 16px !important; }
+          .bw-body { flex-direction: column !important; padding: 16px !important; gap: 0 !important; }
           .bw-sidebar { display: none !important; }
           .bw-form { width: 100% !important; }
           .bw-grid2 { grid-template-columns: 1fr !important; }
+          .bw-scope-grid { grid-template-columns: 1fr !important; }
           .bw-consent { font-size: 13px !important; line-height: 1.6 !important; }
           .bw-root input:not([type="checkbox"]):not([type="radio"]), .bw-root select, .bw-root textarea { min-height: 48px !important; font-size: 16px !important; }
-          .bw-nav { flex-direction: column !important; gap: 8px !important; }
+          .bw-nav { flex-direction: column-reverse !important; gap: 8px !important; }
           .bw-nav button { width: 100% !important; min-height: 52px !important; font-size: 15px !important; }
           .bw-nav-end button { width: 100% !important; min-height: 52px !important; font-size: 15px !important; }
           .bw-nav-end { justify-content: stretch !important; }
           .bw-policies-mobile { display: block !important; }
+          .bw-mobile-price { display: block !important; }
+          .bw-cadence-row { flex-direction: column !important; }
+          .bw-cadence-pill { width: 100% !important; box-sizing: border-box !important; }
+          .bw-cleanliness-row { flex-direction: column !important; }
+          .bw-cleanliness-pill { width: 100% !important; box-sizing: border-box !important; }
+          .bw-root * { max-width: 100%; box-sizing: border-box; }
         }
         @media (max-width: 400px) {
           .bw-step-label { display: none !important; }
@@ -1391,7 +1460,7 @@ export default function BookPage() {
                   }}
                 >
                   <div>
-                    <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "#1A1917" }}>Policies & House Rules</p>
+                    <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "#1A1917" }}>Before You Book</p>
                     {!mobilePoliciesOpen && <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6B6860" }}>Tap to review before booking</p>}
                   </div>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6B6860" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
@@ -1457,7 +1526,7 @@ export default function BookPage() {
                   return (
                     <div key={group} style={{ marginBottom: 20 }}>
                       <p style={{ fontSize: 11, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>{group}</p>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <div className="bw-scope-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                         {rendered.map(({ def, dbScope }) => {
                           const sel = displayScopeKey === def.key;
                           return (
@@ -1495,7 +1564,7 @@ export default function BookPage() {
                     <p style={{ fontSize: 13, color: "#6B6860", margin: "0 0 14px" }}>
                       This helps us send the right team prepared for your home.
                     </p>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 0 }}>
+                    <div className="bw-grid2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 0 }}>
                       {LAST_CLEANED_OPTS.map(opt => {
                         const sel = lastCleanedResponse === opt.value;
                         return (
@@ -1650,7 +1719,7 @@ export default function BookPage() {
                     />
                   </FieldWrap>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                  <div className="bw-grid2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
                     {([
                       ["Bedrooms", bedrooms, setBedrooms],
                       ["Full Bathrooms", bathrooms, setBathrooms],
@@ -1671,13 +1740,14 @@ export default function BookPage() {
                       <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#6B6860", marginBottom: 8 }}>
                         How would you rate the current cleanliness of your home?
                       </label>
-                      <div style={{ display: "flex", gap: 8 }}>
+                      <div className="bw-cleanliness-row" style={{ display: "flex", gap: 8 }}>
                         {([
                           [1, "1 — Very Clean"],
                           [2, "2 — Moderately Clean"],
                           [3, "3 — Very Dirty"],
                         ] as [number, string][]).map(([v, label]) => (
                           <button
+                            className="bw-cleanliness-pill"
                             key={v}
                             onClick={() => setCleanliness(v)}
                             style={{
@@ -1712,7 +1782,7 @@ export default function BookPage() {
                                 Call (773) 706-6000
                               </a>
                               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                                <div className="bw-grid2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                                   <div>
                                     <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#6B6860", marginBottom: 4 }}>Name</label>
                                     <input
@@ -1802,13 +1872,14 @@ export default function BookPage() {
 
                           <div style={{ marginBottom: 14 }}>
                             <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 600, color: "#1A1917" }}>How often would you like us to come back?</p>
-                            <div style={{ display: "flex", gap: 8 }}>
+                            <div className="bw-cadence-row" style={{ display: "flex", gap: 8 }}>
                               {[
                                 { value: "weekly", label: "Weekly" },
                                 { value: "biweekly", label: "Every 2 Weeks" },
                                 { value: "monthly", label: "Every 4 Weeks" },
                               ].map(opt => (
                                 <button
+                                  className="bw-cadence-pill"
                                   key={opt.value}
                                   onClick={() => { setUpsellCadence(opt.value); setUpsellCadenceError(false); }}
                                   style={{
@@ -1971,7 +2042,8 @@ export default function BookPage() {
                 </div>
               )}
 
-              <div className="bw-nav" style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
+              {mobilePriceSummaryEl}
+              <div className="bw-nav" style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>
                 <button style={s.btn(false)} onClick={() => setStep(0)}>Back</button>
                 <button
                   style={{ ...s.btn(), opacity: (() => {
@@ -2339,6 +2411,7 @@ export default function BookPage() {
                 </div>
               )}
 
+              {mobilePriceSummaryEl}
               <div className="bw-nav" style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
                 <button style={s.btn(false)} onClick={() => setStep(1)}>Back</button>
                 <button
@@ -2390,6 +2463,7 @@ export default function BookPage() {
                 </div>
               )}
 
+              {mobilePriceSummaryEl}
               <div className="bw-nav" style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
                 <button style={s.btn(false)} onClick={() => isCommercial ? setStep(1) : setStep(2)}>Back</button>
                 <button
@@ -2460,6 +2534,7 @@ export default function BookPage() {
                 </div>
               )}
 
+              {mobilePriceSummaryEl}
               <div className="bw-nav" style={{ display: "flex", justifyContent: "space-between" }}>
                 <button style={s.btn(false)} onClick={() => setStep(3)}>Back</button>
                 <button
