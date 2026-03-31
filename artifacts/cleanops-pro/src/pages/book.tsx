@@ -433,6 +433,7 @@ export default function BookPage() {
 
   // ── Load Google Maps Places ───────────────────────────────────────────────
   useEffect(() => {
+    const key = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY ?? "";
     if ((window as any).google?.maps?.places) { setMapsReady(true); return; }
     const scriptId = "gmap-places-script";
     if (document.getElementById(scriptId)) {
@@ -440,11 +441,10 @@ export default function BookPage() {
       if (existing) { existing.addEventListener("load", () => setMapsReady(true)); }
       return;
     }
-    const key = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY ?? "";
     if (!key) return;
     const s = document.createElement("script");
     s.id = scriptId;
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places&loading=async`;
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`;
     s.async = true;
     s.defer = true;
     s.onload = () => setMapsReady(true);
