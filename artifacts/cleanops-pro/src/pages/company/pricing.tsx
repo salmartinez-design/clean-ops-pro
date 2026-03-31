@@ -127,11 +127,18 @@ export function PricingTab() {
   const [showNewScope, setShowNewScope] = useState(false);
   const [newScope, setNewScope] = useState({ name: "", scope_group: "Residential", hourly_rate: "", minimum_bill: "" });
   const [recurringExpanded, setRecurringExpanded] = useState(false);
-  const [activeRecurringScope, setActiveRecurringScope] = useState<number>(4);
+  const [activeRecurringScope, setActiveRecurringScope] = useState<number>(0);
   const [recurringSubTab, setRecurringSubTab] = useState<"tiers" | "frequencies" | "addons">("tiers");
-  const RECURRING_IDS = [4, 9, 10];
 
   const { data: scopes = [] } = useQuery<Scope[]>({ queryKey: ["pricing-scopes"], queryFn: () => apiFetch("/api/pricing/scopes") });
+  const RECURRING_IDS = scopes.filter(s => s.scope_group === 'Recurring Cleaning').map(s => s.id);
+
+  useEffect(() => {
+    if (RECURRING_IDS.length > 0 && !RECURRING_IDS.includes(activeRecurringScope)) {
+      setActiveRecurringScope(RECURRING_IDS[0]);
+    }
+  }, [RECURRING_IDS.join(",")]);
+
   const { data: discounts = [] } = useQuery<Discount[]>({ queryKey: ["pricing-discounts"], queryFn: () => apiFetch("/api/pricing/discounts") });
   const { data: fees = [] } = useQuery<FeeRule[]>({ queryKey: ["pricing-fees"], queryFn: () => apiFetch("/api/pricing/fees") });
 
@@ -233,14 +240,18 @@ export function PricingTab() {
             </div>
           ))}
 
-          {/* Recurring Cleaning — combined accordion for scopes 4, 9, 10 */}
-          {scopes.some(s => RECURRING_IDS.includes(s.id)) && (() => {
-            const recurringScopes = [
-              { id: 4, label: "Weekly" },
-              { id: 9, label: "Every 2 Weeks" },
-              { id: 10, label: "Every 4 Weeks" },
-            ].filter(r => scopes.find(s => s.id === r.id));
-            const recScope = scopes.find(s => s.id === activeRecurringScope) ?? scopes.find(s => RECURRING_IDS.includes(s.id));
+          {/* Recurring Cleaning — combined accordion, grouped by scope_group='Recurring Cleaning' */}
+          {scopes.some(s => RECURRING_IDS.includes(s.id) && s.is_active) && (() => {
+            const recurringScopes = scopes
+              .filter(s => RECURRING_IDS.includes(s.id) && s.is_active)
+              .sort((a, b) => a.id - b.id)
+              .map(s => ({
+                id: s.id,
+                label: s.name.replace(/^Recurring Cleaning\s*[-–]\s*/i, "").trim() || s.name,
+                hourly_rate: s.hourly_rate,
+                minimum_bill: s.minimum_bill,
+              }));
+            const recScope = scopes.find(s => s.id === activeRecurringScope) ?? scopes.find(s => RECURRING_IDS.includes(s.id) && s.is_active);
             return (
               <div style={{ border: "1px solid #E5E2DC", borderRadius: 10, background: "#fff", overflow: "hidden" }}>
                 <div

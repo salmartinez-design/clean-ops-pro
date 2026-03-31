@@ -41,31 +41,31 @@ export default function CompanyPage() {
         </div>
 
         {/* Tabs */}
-        <style>{`.co-tabs::-webkit-scrollbar{display:none}`}</style>
-        <div className="co-tabs" style={{ display: 'flex', gap: '2px', borderBottom: '1px solid #E5E2DC', paddingBottom: '0', overflowX: 'auto', WebkitOverflowScrolling: 'touch' as any, scrollbarWidth: 'none' as any, flexShrink: 0 }}>
-          {TABS.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              style={{
-                padding: '10px 20px',
-                fontSize: '13px',
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
-                fontWeight: activeTab === tab.id ? 500 : 400,
-                cursor: 'pointer',
-                border: 'none',
-                backgroundColor: 'transparent',
-                color: activeTab === tab.id ? 'var(--brand)' : '#6B7280',
-                borderBottom: `2px solid ${activeTab === tab.id ? 'var(--brand)' : 'transparent'}`,
-                marginBottom: '-1px',
-                transition: 'color 0.15s',
-                whiteSpace: 'nowrap',
-                flexShrink: 0,
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div style={{ borderBottom: '1px solid #E5E2DC', flexShrink: 0 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0' }}>
+            {TABS.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                style={{
+                  padding: '9px 16px',
+                  fontSize: '13px',
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: activeTab === tab.id ? 600 : 400,
+                  cursor: 'pointer',
+                  border: 'none',
+                  backgroundColor: 'transparent',
+                  color: activeTab === tab.id ? 'var(--brand)' : '#6B7280',
+                  borderBottom: `2px solid ${activeTab === tab.id ? 'var(--brand)' : 'transparent'}`,
+                  marginBottom: '-1px',
+                  transition: 'color 0.15s',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {activeTab === 'branding' && <BrandingTab />}

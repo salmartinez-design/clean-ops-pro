@@ -179,8 +179,88 @@ async function runBookingSchemaGuard(): Promise<void> {
   console.log("[schema-guard] Booking schema guard complete.");
 }
 
+// ── Scope + Zone cleanup (idempotent) ────────────────────────────────────────
+async function runScopeZoneFix(): Promise<void> {
+  // 1. Deactivate legacy combined "Deep Clean or Move In/Out" scope (production only)
+  await db.execute(sql`
+    UPDATE pricing_scopes
+    SET is_active = false
+    WHERE company_id = ${PHES}
+      AND name = 'Deep Clean or Move In/Out'
+  `);
+
+  // 2. Deactivate old standalone "Recurring Cleaning" (Residential group, no sub-frequencies)
+  //    The recurring sub-frequencies have scope_group='Recurring Cleaning', keep those.
+  await db.execute(sql`
+    UPDATE pricing_scopes
+    SET is_active = false
+    WHERE company_id = ${PHES}
+      AND name = 'Recurring Cleaning'
+      AND scope_group != 'Recurring Cleaning'
+  `);
+
+  // 3. Ensure service_zones has location column (idempotent)
+  await db.execute(sql`ALTER TABLE service_zones ADD COLUMN IF NOT EXISTS location TEXT DEFAULT 'oak_lawn'`);
+  await db.execute(sql`ALTER TABLE service_zones ADD COLUMN IF NOT EXISTS color TEXT DEFAULT '#6B6860'`);
+
+  // 4. Add 60805 (Evergreen Park) to the Southwest Zone or Company Zone if missing
+  //    First try a named match; if 60805 still not in any zone, add to first oak_lawn zone.
+  await db.execute(sql`
+    UPDATE service_zones
+    SET zip_codes = array_append(zip_codes, '60805')
+    WHERE id = (
+      SELECT id FROM service_zones
+      WHERE company_id = ${PHES}
+        AND (name ILIKE '%southwest%' OR name ILIKE '%company zone%' OR name ILIKE '%oak lawn%')
+        AND NOT ('60805' = ANY(zip_codes))
+      ORDER BY id LIMIT 1
+    )
+  `);
+  // Fallback: add to first oak_lawn zone if 60805 is still not in any zone
+  await db.execute(sql`
+    UPDATE service_zones
+    SET zip_codes = array_append(zip_codes, '60805')
+    WHERE id = (
+      SELECT id FROM service_zones
+      WHERE company_id = ${PHES}
+        AND location = 'oak_lawn'
+        AND is_active = true
+        AND NOT ('60805' = ANY(zip_codes))
+      ORDER BY id LIMIT 1
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM service_zones
+      WHERE company_id = ${PHES} AND '60805' = ANY(zip_codes)
+    )
+  `);
+
+  // 5. Create Schaumburg zone with key zips if none exist for this company
+  await db.execute(sql`
+    INSERT INTO service_zones (company_id, name, location, zip_codes, color, is_active)
+    SELECT ${PHES}, 'Schaumburg / Palatine / Arlington Heights', 'schaumburg',
+           ARRAY['60173','60194','60195','60196','60107','60169','60159','60168',
+                 '60004','60005','60006','60007','60008','60067','60070','60074',
+                 '60090','60192','60193','60010','60011'],
+           '#C96969', true
+    WHERE NOT EXISTS (
+      SELECT 1 FROM service_zones
+      WHERE company_id = ${PHES}
+        AND location = 'schaumburg'
+        AND '60173' = ANY(zip_codes)
+    )
+  `);
+
+  console.log("[scope-zone-fix] Completed.");
+}
+
 export async function runPhesDataMigration(): Promise<void> {
   await runBookingSchemaGuard();
+
+  try {
+    await runScopeZoneFix();
+  } catch (err: any) {
+    console.warn("[phes-migration] scope-zone-fix — non-fatal:", err?.message ?? err);
+  }
 
   // ── Seed booking_settings for PHES (company_id=1) ──────────────────────────
   try {
