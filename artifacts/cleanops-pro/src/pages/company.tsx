@@ -8,13 +8,15 @@ import { Upload, X, ImageIcon, CheckCircle, AlertCircle, RefreshCw, Link, Unlink
 import { HRPoliciesTab } from "./company/hr-policies";
 import { DocumentsTab } from "./company/documents";
 import { PricingTab } from "./company/pricing";
+import { AddonsTab } from "./company/addons-tab";
 
-type Tab = 'general' | 'branding' | 'integrations' | 'payroll' | 'notifications' | 'clock-inout' | 'invoicing' | 'hr-policies' | 'documents' | 'pricing' | 'online-booking' | 'service-zones' | 'follow-up';
+type Tab = 'general' | 'branding' | 'integrations' | 'payroll' | 'notifications' | 'clock-inout' | 'invoicing' | 'hr-policies' | 'documents' | 'pricing' | 'addons' | 'online-booking' | 'service-zones' | 'follow-up';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'general', label: 'General' },
   { id: 'branding', label: 'Branding' },
   { id: 'pricing', label: 'Pricing & Scopes' },
+  { id: 'addons', label: 'Add-ons' },
   { id: 'online-booking', label: 'Online Booking' },
   { id: 'service-zones', label: 'Service Zones' },
   { id: 'follow-up', label: 'Follow-Up Sequences' },
@@ -74,6 +76,7 @@ export default function CompanyPage() {
         {activeTab === 'integrations' && <IntegrationsTab />}
         {activeTab === 'payroll' && <PayrollOptionsTab />}
         {activeTab === 'pricing' && <PricingTab />}
+        {activeTab === 'addons' && <AddonsTab />}
         {activeTab === 'online-booking' && <OnlineBookingTab />}
         {activeTab === 'service-zones' && <ServiceZonesTab />}
         {activeTab === 'follow-up' && <FollowUpSequencesTab />}

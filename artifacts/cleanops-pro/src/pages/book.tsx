@@ -327,10 +327,10 @@ export default function BookPage() {
   // Step 1: Scope + Home Details
   const [scopeId, setScopeId] = useState<number | null>(null);
   const [sqft, setSqft] = useState(0);
-  const [bedrooms, setBedrooms] = useState(0);
-  const [bathrooms, setBathrooms] = useState(0);
+  const [bedrooms, setBedrooms] = useState(2);
+  const [bathrooms, setBathrooms] = useState(1);
   const [halfBaths, setHalfBaths] = useState(0);
-  const [floors, setFloors] = useState(0);
+  const [floors, setFloors] = useState(1);
   const [people, setPeople] = useState(0);
   const [pets, setPets] = useState(0);
   const [cleanliness, setCleanliness] = useState(0);
@@ -538,17 +538,11 @@ export default function BookPage() {
     setLastCleanedResponse("");
     setLastCleanedOverride(false);
     setOverageAcknowledged(false);
-    // Scope 11 (Recurring Cleaning) has no addons defined — fetch from One-Time Standard (3)
-    // so we have pricing data; frontend scope filter then enforces visibility rules
-    const addonScopeId = scopeId === 11 ? 3 : scopeId;
     Promise.all([
       pubFetch(`/api/public/frequencies/${scopeId}`),
-      pubFetch(`/api/public/addons/${addonScopeId}`),
+      pubFetch(`/api/public/addons/${scopeId}`),
     ]).then(([freqs, ads]) => {
-      const filteredFreqs = (freqs as PricingFrequency[]).filter(f => {
-        if (scopeId === 11) return !f.frequency.toLowerCase().includes("onetime") && !f.frequency.toLowerCase().includes("one_time") && f.frequency !== "onetime";
-        return true;
-      });
+      const filteredFreqs = freqs as PricingFrequency[];
       setFrequencies(filteredFreqs);
       setAddons(ads);
       // One-time services (Deep Clean, Move In/Out) should default to "onetime"
@@ -916,10 +910,10 @@ export default function BookPage() {
   // ── Scope-based add-on visibility rules ──────────────────────────────────
   const ALLOWED_ADDON_IDS: Record<string, number[]> = {
     deep_clean:        [8, 10, 12, 16, 19],
-    move_in_out:       [8, 10, 12, 16],
-    one_time_standard: [8, 10, 12],
-    recurring:         [8, 10, 12],
-    commercial:        [22],
+    move_in_out:       [8, 10, 12, 16, 19],
+    one_time_standard: [8, 10, 12, 16, 19],
+    recurring:         [8, 10, 12, 16, 19],
+    commercial:        [],
   };
   const scopeKeyForAddons = isDeepCleanScope ? "deep_clean"
     : isMoveInOut ? "move_in_out"
@@ -1102,21 +1096,18 @@ export default function BookPage() {
   // ── Shared price breakdown content (used in sidebar + mobile) ────────────
   const priceBreakdownRows = calcResult ? (
     <>
-      <div style={{ marginBottom: 6 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1917" }}>
-          {upsellAccepted ? "Deep Clean (First Visit)" : calcResult.scope_name}
-        </span>
-        {sqft > 0 && <span style={{ fontSize: 12, color: "#9E9B94", marginLeft: 6 }}>{sqft.toLocaleString()} sqft</span>}
-      </div>
-      <Row label="Base Price" value={`$${calcResult.base_price.toFixed(2)}`} />
-      {calcResult.addon_breakdown.map(a => (
-        <Row key={a.id} label={a.name} value={`+$${a.amount.toFixed(2)}`} />
+      <Row
+        label={`${upsellAccepted ? "Deep Clean (First Visit)" : calcResult.scope_name}${sqft > 0 ? ` · ${sqft.toLocaleString()} sqft` : ""}`}
+        value={`$${calcResult.base_price.toFixed(2)}`}
+      />
+      {calcResult.addon_breakdown.filter(a => a.amount !== 0).map(a => (
+        <Row key={a.id} label={a.name} value={`+$${Math.abs(a.amount).toFixed(2)}`} />
       ))}
       {(calcResult.bundle_discount || 0) > 0 && (
-        <Row label="Bundle Discount" value={`-$${(calcResult.bundle_discount).toFixed(2)}`} green />
+        <Row label="Appliance Bundle Discount" value={`-$${(calcResult.bundle_discount).toFixed(2)}`} green />
       )}
       {calcResult.discount_amount > 0 && (
-        <Row label="Promo Discount" value={`-$${calcResult.discount_amount.toFixed(2)}`} green />
+        <Row label="Discount code applied" value={`-$${calcResult.discount_amount.toFixed(2)}`} green />
       )}
       {calcResult.minimum_applied && (
         <p style={{ fontSize: 11, color: "#F59E0B", margin: "2px 0 0" }}>Minimum applied</p>
@@ -1135,16 +1126,12 @@ export default function BookPage() {
             {priceBreakdownRows}
           </div>
           {upsellAccepted && upsellPriceResult && (
-            <div style={{ marginBottom: 10, padding: "10px 12px", background: `${brand}0D`, borderRadius: 8, border: `1px solid ${brand}25`, display: "flex", flexDirection: "column", gap: 4 }}>
-              <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 700, color: brand, textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>
-                Recurring {upsellCadence.charAt(0).toUpperCase() + upsellCadence.slice(1)}
-              </p>
-              <Row label="1st recurring visit" value={`$${upsellPriceResult.firstVisitRate.toFixed(2)}`} />
-              <Row label="Then per visit" value={`$${upsellPriceResult.recurringRate.toFixed(2)}`} />
+            <div style={{ marginBottom: 10, padding: "10px 12px", background: `${brand}0D`, borderRadius: 8, border: `1px solid ${brand}25` }}>
+              <Row label={`Recurring ${upsellCadence.charAt(0).toUpperCase() + upsellCadence.slice(1)} from visit 2`} value={`$${upsellPriceResult.recurringRate.toFixed(2)}`} />
             </div>
           )}
           <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 8, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <span style={{ fontSize: 13, color: "#6B6860" }}>Estimated Total</span>
+            <span style={{ fontSize: 13, color: "#6B6860" }}>{upsellAccepted ? "First Visit Total" : "Total"}</span>
             <span style={{ fontSize: 15, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total).toFixed(2)}</span>
           </div>
         </div>
@@ -1227,21 +1214,16 @@ export default function BookPage() {
                   <span style={{ fontSize: 13, color: "#6B6860" }}>First Visit Total</span>
                   <span style={{ fontSize: 18, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total).toFixed(2)}</span>
                 </div>
-                <div style={{ marginTop: 10, padding: "10px 12px", background: `${brand}0D`, borderRadius: 8, border: `1px solid ${brand}25`, display: "flex", flexDirection: "column", gap: 4 }}>
-                  <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 700, color: brand, textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>
-                    Recurring {upsellCadence.charAt(0).toUpperCase() + upsellCadence.slice(1)}
-                  </p>
-                  <Row label="1st recurring visit" value={`$${upsellPriceResult.firstVisitRate.toFixed(2)}`} />
-                  <Row label="Then per visit" value={`$${upsellPriceResult.recurringRate.toFixed(2)}`} />
+                <div style={{ marginTop: 10, padding: "10px 12px", background: `${brand}0D`, borderRadius: 8, border: `1px solid ${brand}25` }}>
+                  <Row label={`Recurring ${upsellCadence.charAt(0).toUpperCase() + upsellCadence.slice(1)} from visit 2`} value={`$${upsellPriceResult.recurringRate.toFixed(2)}`} />
                 </div>
               </>
             ) : (
               <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 12, marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                <span style={{ fontSize: 13, color: "#6B6860" }}>Estimated Total</span>
+                <span style={{ fontSize: 13, color: "#6B6860" }}>Total</span>
                 <span style={{ fontSize: 24, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total).toFixed(2)}</span>
               </div>
             )}
-            <p style={{ fontSize: 11, color: "#9E9B94", margin: "6px 0 0" }}>Final price confirmed at time of service.</p>
           </div>
         )}
 
@@ -1740,21 +1722,26 @@ export default function BookPage() {
                     />
                   </FieldWrap>
 
-                  <div className="bw-grid2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                  <div className="bw-grid2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 8 }}>
                     {([
-                      ["Bedrooms", bedrooms, setBedrooms],
-                      ["Full Bathrooms", bathrooms, setBathrooms],
-                      ["Half Bathrooms", halfBaths, setHalfBaths],
-                      ["Floors", floors, setFloors],
-                      ["People in Household", people, setPeople],
-                      ["Pets", pets, setPets],
-                    ] as [string, number, (v: number) => void][]).map(([label, val, setter]) => (
+                      ["Bedrooms", bedrooms, setBedrooms, 1],
+                      ["Full Bathrooms", bathrooms, setBathrooms, 1],
+                      ["Half Bathrooms", halfBaths, setHalfBaths, 0],
+                      ["Floors", floors, setFloors, 1],
+                      ["People in Household", people, setPeople, 0],
+                      ["Pets", pets, setPets, 0],
+                    ] as [string, number, (v: number) => void, number][]).map(([label, val, setter, minVal]) => (
                       <div key={label}>
                         <span style={s.label}>{label}</span>
-                        <Stepper value={val} onChange={setter} />
+                        <Stepper value={val} onChange={setter} min={minVal} />
                       </div>
                     ))}
                   </div>
+                  {(bedrooms < 1 || bathrooms < 1) && (
+                    <p style={{ fontSize: 12, color: "#D97706", margin: "0 0 14px", fontWeight: 500 }}>
+                      Please enter the number of bedrooms and bathrooms to continue.
+                    </p>
+                  )}
 
                   {showCleanlinessQ && (
                     <div style={{ marginBottom: 16 }}>
@@ -2080,6 +2067,7 @@ export default function BookPage() {
                   disabled={(() => {
                     if (isCommercial) return !commercialOption;
                     if (!scopeId || !sqft) return true;
+                    if (!isCommercial && (bedrooms < 1 || bathrooms < 1)) return true;
                     if (isMoveInOut && !moveInAck) return true;
                     if (isMoveInOut && showCleanlinessQ && cleanliness === 0) return true;
                     if (showVeryDirtyCard) return true;
@@ -2546,7 +2534,7 @@ export default function BookPage() {
                   <Row label="Frequency" value={frequencyStr} />
                   {selectedDate && <Row label="First Date" value={new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} />}
                   {address && <Row label="Address" value={address} />}
-                  {calcResult && <Row label="Estimated Total" value={`$${(calcResult.final_total * conditionMultiplier).toFixed(2)}`} bold />}
+                  {calcResult && <Row label="Total" value={`$${(calcResult.final_total * conditionMultiplier).toFixed(2)}`} bold />}
                 </div>
               </div>
 
@@ -2615,7 +2603,7 @@ export default function BookPage() {
                   {!isCommercial && <Row label="Frequency" value={frequencyStr} />}
                   {isCommercial && commercialOption === "single" && <Row label="Rate" value="$180 for up to 3 hrs · $60/additional hr" />}
                   {selectedDate && <Row label="First Cleaning" value={new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })} bold />}
-                  {bookResult.pricing?.final_total !== undefined && <Row label="Estimated Total" value={`$${bookResult.pricing.final_total.toFixed(2)}`} bold />}
+                  {bookResult.pricing?.final_total !== undefined && <Row label="Total" value={`$${bookResult.pricing.final_total.toFixed(2)}`} bold />}
                 </div>
               </div>
 

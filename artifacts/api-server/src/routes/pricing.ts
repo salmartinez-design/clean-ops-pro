@@ -10,7 +10,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import { requireAuth } from "../lib/auth.js";
+import { requireAuth, requireRole } from "../lib/auth.js";
 
 const router = Router();
 
@@ -207,26 +207,25 @@ router.get("/addons", requireAuth, async (req, res) => {
     const companyId = req.auth!.companyId;
     const scopeId = req.query.scope_id ? parseInt(req.query.scope_id as string) : null;
     const officeOnly = req.query.office === "true";
+    const showAll = req.query.all === "true";
 
     let rows;
     if (scopeId) {
-      const result = await db.execute(sql`
-        SELECT * FROM pricing_addons
-         WHERE company_id = ${companyId}
-           AND is_active = true
-           AND (scope_ids::jsonb @> ${JSON.stringify([scopeId])}::jsonb
-                OR scope_id = ${scopeId})
-         ORDER BY sort_order, id
-      `);
-      rows = (result as any).rows ?? [];
+      if (showAll) {
+        const result = await db.execute(sql`SELECT * FROM pricing_addons WHERE company_id = ${companyId} AND (scope_ids::jsonb @> ${JSON.stringify([scopeId])}::jsonb OR scope_id = ${scopeId}) ORDER BY sort_order, id`);
+        rows = (result as any).rows ?? [];
+      } else {
+        const result = await db.execute(sql`SELECT * FROM pricing_addons WHERE company_id = ${companyId} AND is_active = true AND (scope_ids::jsonb @> ${JSON.stringify([scopeId])}::jsonb OR scope_id = ${scopeId}) ORDER BY sort_order, id`);
+        rows = (result as any).rows ?? [];
+      }
     } else {
-      const result = await db.execute(sql`
-        SELECT * FROM pricing_addons
-         WHERE company_id = ${companyId}
-           AND is_active = true
-         ORDER BY sort_order, id
-      `);
-      rows = (result as any).rows ?? [];
+      if (showAll) {
+        const result = await db.execute(sql`SELECT * FROM pricing_addons WHERE company_id = ${companyId} ORDER BY sort_order, id`);
+        rows = (result as any).rows ?? [];
+      } else {
+        const result = await db.execute(sql`SELECT * FROM pricing_addons WHERE company_id = ${companyId} AND is_active = true ORDER BY sort_order, id`);
+        rows = (result as any).rows ?? [];
+      }
     }
 
     if (officeOnly) {
@@ -660,6 +659,40 @@ router.put("/offer-settings", requireAuth, async (req, res) => {
     return res.json(updated.rows[0]);
   } catch (err) {
     console.error("PUT offer-settings:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ── Fee Rules ─────────────────────────────────────────────────────────────────
+
+router.get("/fee-rules", requireAuth, async (req, res) => {
+  try {
+    const companyId = req.auth!.companyId;
+    const result = await db.execute(sql`SELECT * FROM pricing_fee_rules WHERE company_id = ${companyId} ORDER BY id`);
+    return res.json((result as any).rows ?? []);
+  } catch (err) {
+    console.error("GET /pricing/fee-rules:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.patch("/fee-rules/:id", requireAuth, requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const companyId = req.auth!.companyId;
+    const id = parseInt(req.params.id);
+    const { charge_percent, tech_split_percent, is_active, window_hours } = req.body;
+    await db.execute(sql`
+      UPDATE pricing_fee_rules
+         SET charge_percent      = COALESCE(${charge_percent ?? null}, charge_percent),
+             tech_split_percent  = COALESCE(${tech_split_percent ?? null}, tech_split_percent),
+             is_active           = COALESCE(${is_active ?? null}, is_active),
+             window_hours        = COALESCE(${window_hours ?? null}, window_hours)
+       WHERE id = ${id} AND company_id = ${companyId}
+    `);
+    const updated = await db.execute(sql`SELECT * FROM pricing_fee_rules WHERE id = ${id} AND company_id = ${companyId}`);
+    return res.json(((updated as any).rows ?? [])[0]);
+  } catch (err) {
+    console.error("PATCH /pricing/fee-rules/:id:", err);
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });
