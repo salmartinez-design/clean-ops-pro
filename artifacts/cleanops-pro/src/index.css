@@ -208,6 +208,30 @@
 }
 
 /* ============================================================
+   GOOGLE PLACES AUTOCOMPLETE DROPDOWN
+   ============================================================ */
+.pac-container {
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  border: 1px solid #E5E2DC !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08) !important;
+  margin-top: 4px !important;
+  z-index: 9999 !important;
+}
+.pac-item {
+  padding: 10px 16px !important;
+  font-size: 14px !important;
+  color: #1A1917 !important;
+  cursor: pointer !important;
+  border-top: 1px solid #F2F0EC !important;
+}
+.pac-item:first-child { border-top: none !important; }
+.pac-item:hover, .pac-item-selected { background: #F7F6F3 !important; }
+.pac-matched { color: #5B9BD5 !important; font-weight: 600 !important; }
+.pac-icon { display: none !important; }
+.pac-item-query { font-size: 14px !important; color: #1A1917 !important; }
+
+/* ============================================================
    FREQUENCY COLORS FOR JOB CARDS
    ============================================================ */
 .freq-weekly     { border-left-color: var(--brand) !important; }

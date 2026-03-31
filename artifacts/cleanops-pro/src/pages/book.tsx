@@ -365,6 +365,13 @@ export default function BookPage() {
   const [frequencyStr, setFrequencyStr] = useState("");
   const [selectedAddonIds, setSelectedAddonIds] = useState<number[]>([]);
   const [address, setAddressField] = useState("");
+  const [addressVerified, setAddressVerified] = useState(false);
+  const [addressComponents, setAddressComponents] = useState<{
+    formatted: string; street: string; city: string; state: string;
+    zip: string; lat: number; lng: number; verified: boolean;
+  } | null>(null);
+  const [zoneStatus, setZoneStatus] = useState<"in_zone" | "out_of_zone" | null>(null);
+  const [mapsReady, setMapsReady] = useState(false);
 
   // Step 3: Date
   const [selectedDate, setSelectedDate] = useState("");
@@ -410,6 +417,75 @@ export default function BookPage() {
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCleanedRef = useRef<HTMLDivElement>(null);
+  const addressInputRef = useRef<HTMLInputElement>(null);
+
+  const checkZone = useCallback(async (zipCode: string) => {
+    if (!zipCode || !slug) { setZoneStatus(null); return; }
+    try {
+      const base = (import.meta as any).env?.BASE_URL ?? "/";
+      const res = await fetch(`${base}api/public/service-zones/check?zip=${encodeURIComponent(zipCode)}&companySlug=${encodeURIComponent(slug)}`);
+      const data = await res.json();
+      setZoneStatus(data.inZone ? "in_zone" : "out_of_zone");
+    } catch {
+      setZoneStatus(null);
+    }
+  }, [slug]);
+
+  // ── Load Google Maps Places ───────────────────────────────────────────────
+  useEffect(() => {
+    if ((window as any).google?.maps?.places) { setMapsReady(true); return; }
+    const scriptId = "gmap-places-script";
+    if (document.getElementById(scriptId)) {
+      const existing = document.getElementById(scriptId) as HTMLScriptElement;
+      if (existing) { existing.addEventListener("load", () => setMapsReady(true)); }
+      return;
+    }
+    const key = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY ?? "";
+    if (!key) return;
+    const s = document.createElement("script");
+    s.id = scriptId;
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`;
+    s.async = true;
+    s.defer = true;
+    s.onload = () => setMapsReady(true);
+    document.head.appendChild(s);
+  }, []);
+
+  // ── Wire autocomplete after Maps is ready ─────────────────────────────────
+  useEffect(() => {
+    if (!mapsReady || !addressInputRef.current) return;
+    const g = (window as any).google;
+    if (!g?.maps?.places?.Autocomplete) return;
+    const ac = new g.maps.places.Autocomplete(addressInputRef.current, {
+      componentRestrictions: { country: "us" },
+      fields: ["address_components", "formatted_address", "geometry"],
+      types: ["address"],
+    });
+    const listener = ac.addListener("place_changed", () => {
+      const place = ac.getPlace();
+      if (!place?.address_components) return;
+      const get = (type: string) =>
+        place.address_components.find((c: any) => c.types.includes(type))?.long_name ?? "";
+      const shortGet = (type: string) =>
+        place.address_components.find((c: any) => c.types.includes(type))?.short_name ?? "";
+      const data = {
+        formatted: place.formatted_address ?? "",
+        street: `${get("street_number")} ${get("route")}`.trim(),
+        city: get("locality"),
+        state: shortGet("administrative_area_level_1"),
+        zip: get("postal_code"),
+        lat: place.geometry?.location?.lat?.() ?? 0,
+        lng: place.geometry?.location?.lng?.() ?? 0,
+        verified: true,
+      };
+      setAddressField(data.formatted);
+      setAddressComponents(data);
+      if (data.zip) setZip(data.zip);
+      setAddressVerified(true);
+      checkZone(data.zip);
+    });
+    return () => { g.maps.event.removeListener(listener); };
+  }, [mapsReady, checkZone]);
 
   // ── Load company ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -587,7 +663,15 @@ export default function BookPage() {
             company_id: company.id,
             first_name: firstName, last_name: lastName, phone, email, zip,
             referral_source: referral || null, sms_consent: smsConsent,
-            address, preferred_date: selectedDate,
+            address: addressComponents?.formatted ?? address,
+            address_street: addressComponents?.street ?? null,
+            address_city: addressComponents?.city ?? null,
+            address_state: addressComponents?.state ?? null,
+            address_zip: addressComponents?.zip ?? zip ?? null,
+            address_lat: addressComponents?.lat ?? null,
+            address_lng: addressComponents?.lng ?? null,
+            address_verified: addressComponents?.verified ?? false,
+            preferred_date: selectedDate,
             payment_method_id: paymentMethodId,
             stripe_customer_id: stripeCustomerId,
           } : {
@@ -613,7 +697,15 @@ export default function BookPage() {
             upsell_locked_rate: upsellAccepted && upsellPriceResult ? upsellPriceResult.recurringRate : null,
             property_vacant: isMoveInOut,
             move_in_notes: isMoveInOut && moveInNotes.trim() ? moveInNotes.trim() : null,
-            address, preferred_date: selectedDate,
+            address: addressComponents?.formatted ?? address,
+            address_street: addressComponents?.street ?? null,
+            address_city: addressComponents?.city ?? null,
+            address_state: addressComponents?.state ?? null,
+            address_zip: addressComponents?.zip ?? zip ?? null,
+            address_lat: addressComponents?.lat ?? null,
+            address_lng: addressComponents?.lng ?? null,
+            address_verified: addressComponents?.verified ?? false,
+            preferred_date: selectedDate,
             payment_method_id: paymentMethodId,
             stripe_customer_id: stripeCustomerId,
           }),
@@ -633,7 +725,15 @@ export default function BookPage() {
           scope_id: scopeId, sqft, frequency: frequencyStr,
           addon_ids: selectedAddonIds,
           bedrooms, bathrooms, half_baths: halfBaths, floors, people, pets, cleanliness,
-          address, preferred_date: selectedDate,
+          address: addressComponents?.formatted ?? address,
+          address_street: addressComponents?.street ?? null,
+          address_city: addressComponents?.city ?? null,
+          address_state: addressComponents?.state ?? null,
+          address_zip: addressComponents?.zip ?? zip ?? null,
+          address_lat: addressComponents?.lat ?? null,
+          address_lng: addressComponents?.lng ?? null,
+          address_verified: addressComponents?.verified ?? false,
+          preferred_date: selectedDate,
         }),
       });
       setBookResult(result);
@@ -659,7 +759,15 @@ export default function BookPage() {
           company_id: company.id,
           first_name: firstName, last_name: lastName, phone, email, zip,
           referral_source: referral || null, sms_consent: smsConsent,
-          address, preferred_date: selectedDate,
+          address: addressComponents?.formatted ?? address,
+          address_street: addressComponents?.street ?? null,
+          address_city: addressComponents?.city ?? null,
+          address_state: addressComponents?.state ?? null,
+          address_zip: addressComponents?.zip ?? zip ?? null,
+          address_lat: addressComponents?.lat ?? null,
+          address_lng: addressComponents?.lng ?? null,
+          address_verified: addressComponents?.verified ?? false,
+          preferred_date: selectedDate,
         }),
       });
       setBookResult(result);
@@ -1063,7 +1171,43 @@ export default function BookPage() {
               </div>
 
               <FieldWrap label="Service Address" error={errors.address}>
-                <input style={s.input} value={address} onChange={e => setAddressField(e.target.value)} placeholder="Enter your service address" />
+                <div style={{ position: "relative" }}>
+                  <input
+                    ref={addressInputRef}
+                    type="text"
+                    value={address}
+                    onChange={e => {
+                      setAddressField(e.target.value);
+                      setAddressVerified(false);
+                      setAddressComponents(null);
+                      setZoneStatus(null);
+                    }}
+                    placeholder="Start typing your address..."
+                    style={{
+                      ...s.input,
+                      border: `1.5px solid ${errors.address ? "#EF4444" : addressVerified ? "#2D6A4F" : "#E5E2DC"}`,
+                      paddingRight: addressVerified ? 40 : undefined,
+                    }}
+                    autoComplete="new-address"
+                  />
+                  {addressVerified && (
+                    <span style={{
+                      position: "absolute", right: 14, top: "50%",
+                      transform: "translateY(-50%)", color: "#2D6A4F",
+                      fontSize: 16, fontWeight: 700, pointerEvents: "none",
+                    }}>✓</span>
+                  )}
+                </div>
+                {zoneStatus === "in_zone" && (
+                  <p style={{ margin: "6px 0 0", fontSize: 13, color: "#2D6A4F", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                    We service this area.
+                  </p>
+                )}
+                {zoneStatus === "out_of_zone" && (
+                  <p style={{ margin: "6px 0 0", fontSize: 13, color: "#6B6860", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                    We don't currently service this area. Call (773) 706-6000 to confirm.
+                  </p>
+                )}
               </FieldWrap>
 
               <div style={{ marginBottom: 16 }}>

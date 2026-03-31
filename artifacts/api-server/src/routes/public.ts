@@ -176,6 +176,35 @@ router.get("/booking-settings/:slug", rateLimit, async (req, res) => {
   }
 });
 
+// ── GET /api/public/service-zones/check?zip=&companySlug= ───────────────────
+router.get("/service-zones/check", rateLimit, async (req, res) => {
+  try {
+    const { zip, companySlug } = req.query as { zip?: string; companySlug?: string };
+    if (!zip || !companySlug) return res.status(400).json({ error: "zip and companySlug required" });
+
+    const { sql: drSql } = await import("drizzle-orm");
+
+    const companyRows = await db.execute(drSql`
+      SELECT id FROM companies WHERE slug = ${companySlug} LIMIT 1
+    `);
+    const company = (companyRows as any).rows?.[0];
+    if (!company) return res.json({ inZone: false, zoneName: null });
+
+    const zoneRows = await db.execute(drSql`
+      SELECT id, name FROM service_zones
+      WHERE company_id = ${company.id}
+        AND is_active = true
+        AND ${zip} = ANY(zip_codes)
+      LIMIT 1
+    `);
+    const zone = (zoneRows as any).rows?.[0];
+    return res.json({ inZone: !!zone, zoneName: zone?.name ?? null });
+  } catch (err) {
+    console.error("GET /public/service-zones/check:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 // ── GET /api/public/bundles/:companyId ──────────────────────────────────────
 router.get("/bundles/:companyId", rateLimit, async (req, res) => {
   try {
