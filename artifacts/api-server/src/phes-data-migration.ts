@@ -253,6 +253,73 @@ async function runScopeZoneFix(): Promise<void> {
   console.log("[scope-zone-fix] Completed.");
 }
 
+// ── Addon visibility + price fix (2026-03-31) ─────────────────────────────────
+// Idempotent: hides admin-only and discount add-ons from the online widget,
+// and ensures correct prices for the 5 customer-facing add-ons.
+async function runAddonFix(): Promise<void> {
+  // Hide baseboards (all variants)
+  await db.execute(sql`
+    UPDATE pricing_addons SET show_online = false
+    WHERE company_id = ${PHES} AND name ILIKE '%baseboard%'
+  `);
+  // Hide loyalty, promo, discount, adjustment, second-appointment, commercial, parking
+  await db.execute(sql`
+    UPDATE pricing_addons SET show_online = false
+    WHERE company_id = ${PHES} AND (
+      name ILIKE '%loyalty%' OR
+      name ILIKE '%promo%' OR
+      name ILIKE '%discount%' OR
+      name ILIKE '%adjustment%' OR
+      name ILIKE '%second appointment%' OR
+      name ILIKE '%commercial adjust%' OR
+      name ILIKE '%parking%'
+    )
+  `);
+  // Hide all hourly time-add variants from online widget
+  await db.execute(sql`
+    UPDATE pricing_addons SET show_online = false
+    WHERE company_id = ${PHES} AND (name ILIKE '%hourly%' OR name ILIKE '%time add%' OR price_type = 'time_only')
+  `);
+  // Correct prices for the 5 customer-facing add-ons
+  await db.execute(sql`
+    UPDATE pricing_addons SET price_value = 50, price_type = 'flat'
+    WHERE company_id = ${PHES} AND name ILIKE '%oven%' AND name NOT ILIKE '%hourly%'
+  `);
+  await db.execute(sql`
+    UPDATE pricing_addons SET price_value = 50, price_type = 'flat'
+    WHERE company_id = ${PHES} AND name ILIKE '%refrigerator%' AND name NOT ILIKE '%hourly%'
+  `);
+  await db.execute(sql`
+    UPDATE pricing_addons SET price_value = 50, price_type = 'flat'
+    WHERE company_id = ${PHES} AND name ILIKE '%cabinet%' AND name NOT ILIKE '%hourly%'
+  `);
+  await db.execute(sql`
+    UPDATE pricing_addons SET price_value = 15, price_type = 'percentage'
+    WHERE company_id = ${PHES} AND name ILIKE '%window%' AND name NOT ILIKE '%hourly%'
+  `);
+  await db.execute(sql`
+    UPDATE pricing_addons SET price_value = 15, price_type = 'percentage'
+    WHERE company_id = ${PHES} AND name ILIKE '%basement%' AND name NOT ILIKE '%hourly%'
+  `);
+  // Map addons from old scope 1 ("Deep Clean or Move In/Out") to new scopes 11 (Deep Clean) + 12 (Move In/Out)
+  // scope_ids is stored as JSON text like "[1,2,3]" — append new IDs idempotently
+  await db.execute(sql`
+    UPDATE pricing_addons
+    SET scope_ids = (scope_ids::jsonb || '[11]'::jsonb)::text
+    WHERE company_id = ${PHES}
+      AND scope_ids::jsonb @> '[1]'::jsonb
+      AND NOT (scope_ids::jsonb @> '[11]'::jsonb)
+  `);
+  await db.execute(sql`
+    UPDATE pricing_addons
+    SET scope_ids = (scope_ids::jsonb || '[12]'::jsonb)::text
+    WHERE company_id = ${PHES}
+      AND scope_ids::jsonb @> '[1]'::jsonb
+      AND NOT (scope_ids::jsonb @> '[12]'::jsonb)
+  `);
+  console.log("[addon-fix] Completed.");
+}
+
 export async function runPhesDataMigration(): Promise<void> {
   await runBookingSchemaGuard();
 
@@ -260,6 +327,12 @@ export async function runPhesDataMigration(): Promise<void> {
     await runScopeZoneFix();
   } catch (err: any) {
     console.warn("[phes-migration] scope-zone-fix — non-fatal:", err?.message ?? err);
+  }
+
+  try {
+    await runAddonFix();
+  } catch (err: any) {
+    console.warn("[phes-migration] addon-fix — non-fatal:", err?.message ?? err);
   }
 
   // ── Seed booking_settings for PHES (company_id=1) ──────────────────────────

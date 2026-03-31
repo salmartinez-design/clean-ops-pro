@@ -1089,7 +1089,7 @@ export default function BookPage() {
         value={`$${calcResult.base_price.toFixed(2)}`}
       />
       {calcResult.addon_breakdown.filter(a => a.amount !== 0).map(a => (
-        <Row key={a.id} label={a.name} value={`+$${Math.abs(a.amount).toFixed(2)}`} />
+        <Row key={a.id} label={a.name.split(" — ")[0].trim()} value={`+$${Math.abs(a.amount).toFixed(2)}`} />
       ))}
       {(calcResult.bundle_discount || 0) > 0 && (
         <Row label="Appliance Bundle Discount" value={`-$${(calcResult.bundle_discount).toFixed(2)}`} green />
@@ -2645,9 +2645,9 @@ function FieldWrap({ label, error, children }: { label: string; error?: string; 
 
 function Row({ label, value, green, bold }: { label: string; value: string; green?: boolean; bold?: boolean }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-      <span style={{ fontSize: 13, color: "#6B6860", flexShrink: 0 }}>{label}</span>
-      <span style={{ fontSize: 13, fontWeight: bold ? 700 : 400, color: green ? "#10B981" : "#1A1917", textAlign: "right" }}>{value}</span>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
+      <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: "#6B6860", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+      <span style={{ flexShrink: 0, fontSize: 13, fontWeight: bold ? 700 : 400, color: green ? "#10B981" : "#1A1917", whiteSpace: "nowrap", paddingLeft: 4 }}>{value}</span>
     </div>
   );
 }

@@ -306,7 +306,11 @@ export async function runCalculate(params: {
   const freqFactor = freqs.find(f => f.frequency === frequency);
   const scope_hourly = parseFloat(String(scope.hourly_rate));
   let hourly_rate: number;
-  if (freqFactor?.rate_override != null && freqFactor.rate_override !== "") {
+  // One-time bookings always use the base hourly rate — never a recurring multiplier or override.
+  const isOneTime = ["onetime", "one_time", "on_demand"].includes((frequency || "").toLowerCase());
+  if (isOneTime) {
+    hourly_rate = scope_hourly;
+  } else if (freqFactor?.rate_override != null && freqFactor.rate_override !== "") {
     hourly_rate = parseFloat(String(freqFactor.rate_override));
   } else {
     const mult = freqFactor ? parseFloat(String(freqFactor.multiplier)) : 1.0;
