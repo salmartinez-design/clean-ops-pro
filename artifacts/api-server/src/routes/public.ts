@@ -779,6 +779,27 @@ router.post("/book/confirm", rateLimit, async (req, res) => {
       `
     );
 
+    // ── Create lead record (booking_widget source) ────────────────────────────
+    try {
+      const scopeLabel = scopeName;
+      await db.execute(drizzleSql`
+        INSERT INTO leads (
+          company_id, first_name, last_name, phone, email, address, zip,
+          scope, source, status, job_id, booked_at, created_at, updated_at
+        ) VALUES (
+          ${company_id}, ${first_name}, ${last_name}, ${phone}, ${email},
+          ${address || null}, ${zip || null},
+          ${scopeLabel}, 'booking_widget', 'booked', ${jobId}, NOW(), NOW(), NOW()
+        )
+      `);
+      // Remove any abandoned booking for this email
+      await db.execute(drizzleSql`
+        DELETE FROM abandoned_bookings WHERE company_id = ${company_id} AND email = ${email}
+      `);
+    } catch (leadErr) {
+      console.error("[confirm] Failed to create lead record:", leadErr);
+    }
+
     // ── Confirmation emails ───────────────────────────────────────────────────
     const resendKey = process.env.RESEND_API_KEY;
     if (resendKey) {
@@ -1187,8 +1208,48 @@ router.post("/book/commercial-confirm", rateLimit, async (req, res) => {
   }
 });
 
+// ── POST /api/public/book/abandon-track ──────────────────────────────────────
+// Called from the booking widget when a user completes Step 1 but hasn't paid yet.
+// Upserts an abandoned_bookings record so office can follow up if they leave.
+router.post("/book/abandon-track", rateLimit, async (req, res) => {
+  try {
+    const { company_id, first_name, last_name, email, phone, address, zip, scope, step_abandoned = 2 } = req.body;
+    if (!company_id) return res.status(400).json({ error: "company_id required" });
+    const { sql: drizzleSql } = await import("drizzle-orm");
+    if (email) {
+      const existing = await db.execute(
+        drizzleSql`SELECT id FROM abandoned_bookings WHERE company_id = ${company_id} AND email = ${email} LIMIT 1`
+      );
+      if (existing.rows.length > 0) {
+        await db.execute(drizzleSql`
+          UPDATE abandoned_bookings SET
+            first_name = COALESCE(${first_name || null}, first_name),
+            last_name  = COALESCE(${last_name || null}, last_name),
+            phone      = COALESCE(${phone || null}, phone),
+            address    = COALESCE(${address || null}, address),
+            zip        = COALESCE(${zip || null}, zip),
+            scope      = COALESCE(${scope || null}, scope),
+            step_abandoned = ${step_abandoned},
+            updated_at = NOW()
+          WHERE company_id = ${company_id} AND email = ${email}
+        `);
+        return res.json({ ok: true, action: "updated" });
+      }
+    }
+    await db.execute(drizzleSql`
+      INSERT INTO abandoned_bookings (company_id, first_name, last_name, email, phone, address, zip, scope, step_abandoned, created_at, updated_at)
+      VALUES (${company_id}, ${first_name || null}, ${last_name || null}, ${email || null}, ${phone || null},
+              ${address || null}, ${zip || null}, ${scope || null}, ${step_abandoned}, NOW(), NOW())
+    `);
+    return res.json({ ok: true, action: "created" });
+  } catch (err: any) {
+    console.error("POST /public/book/abandon-track:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 // ── POST /api/public/leads ────────────────────────────────────────────────────
-// Stores a callback request lead and sends an alert email to info@phes.io
+// Stores a very-dirty callback request lead and sends alert to info@phes.io
 router.post("/leads", rateLimit, async (req, res) => {
   try {
     const { company_id, first_name, last_name, phone, email, sqft, address, message, condition_flag } = req.body;
@@ -1196,11 +1257,43 @@ router.post("/leads", rateLimit, async (req, res) => {
       return res.status(400).json({ error: "company_id, first_name, and phone are required" });
     }
     const { sql: drizzleSql } = await import("drizzle-orm");
-    await db.execute(drizzleSql`
-      INSERT INTO leads (company_id, first_name, last_name, phone, email, sqft, address, message, condition_flag, created_at)
+    const insertResult = await db.execute(drizzleSql`
+      INSERT INTO leads (company_id, first_name, last_name, phone, email, sqft, address, message, condition_flag,
+                         source, status, created_at, updated_at)
       VALUES (${company_id}, ${first_name || null}, ${last_name || null}, ${phone || null}, ${email || null},
-              ${sqft || null}, ${address || null}, ${message || null}, ${condition_flag || null}, NOW())
+              ${sqft || null}, ${address || null}, ${message || null}, ${condition_flag || null},
+              'very_dirty', 'needs_contacted', NOW(), NOW())
+      RETURNING id
     `);
+    const leadId = (insertResult.rows[0] as any)?.id;
+
+    // Office SMS alert
+    try {
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const authToken  = process.env.TWILIO_AUTH_TOKEN;
+      const from       = process.env.TWILIO_FROM_NUMBER;
+      const officeNum  = "+17737869902";
+      if (accountSid && authToken && from) {
+        const smsRes = await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: "Basic " + Buffer.from(`${accountSid}:${authToken}`).toString("base64"),
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+              To: officeNum,
+              From: from,
+              Body: `Very Dirty Lead — ${first_name} ${last_name || ""} — ${phone}. Needs manual callback. Lead #${leadId || "N/A"}.`,
+            }).toString(),
+          }
+        );
+        if (!smsRes.ok) console.error("[very-dirty] Twilio SMS failed:", await smsRes.text());
+      }
+    } catch (smsErr) {
+      console.error("[very-dirty] SMS error:", smsErr);
+    }
 
     const resendKey = process.env.RESEND_API_KEY;
     if (resendKey) {

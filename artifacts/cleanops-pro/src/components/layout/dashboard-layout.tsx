@@ -41,6 +41,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/cleancyclopedia':              'Cleancyclopedia',
   '/loyalty':                      'Loyalty',
   '/company':                      'Company Settings',
+  '/leads':                        'Lead Pipeline',
   '/reports':                      'Reports',
   '/reports/insights':             'Core KPIs',
   '/reports/revenue':              'Revenue Summary',

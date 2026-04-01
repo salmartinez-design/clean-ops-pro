@@ -3,6 +3,7 @@ import {
   Briefcase, Users, UserCheck, FileText, DollarSign,
   BarChart2, TrendingUp, FileText as FileTextIcon,
   BookOpen, Settings, AlertTriangle, HeartPulse, Building2,
+  UserPlus,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useAuthStore } from "@/lib/auth";
@@ -32,6 +33,7 @@ const NAV_SECTIONS = [
   {
     label: "Grow",
     items: [
+      { title: "Leads",     url: "/leads",             icon: UserPlus,   roles: ["owner", "admin", "office"] },
       { title: "Reports",   url: "/reports",           icon: BarChart2,  roles: ["owner", "admin", "office"] },
       { title: "Core KPIs", url: "/reports/insights",  icon: TrendingUp, roles: ["owner", "admin", "office"] },
     ],

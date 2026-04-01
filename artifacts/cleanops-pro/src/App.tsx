@@ -76,6 +76,7 @@ import AccountDetailPage from "@/pages/account-detail";
 import OnboardPage from "@/pages/onboard";
 import SignDocPage from "@/pages/sign-doc";
 import BookPage from "@/pages/book";
+import LeadsPage from "@/pages/leads";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -147,6 +148,7 @@ function Router() {
       <Route path="/reports/message-log" component={MessageLogPage} />
       <Route path="/accounts/:id" component={AccountDetailPage} />
       <Route path="/accounts" component={AccountsPage} />
+      <Route path="/leads" component={LeadsPage} />
       <Route path="/quotes/new" component={QuoteBuilderPage} />
       <Route path="/quotes/:id/edit" component={QuoteBuilderPage} />
       <Route path="/quotes/:id" component={QuoteDetailPage} />
