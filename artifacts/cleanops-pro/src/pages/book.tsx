@@ -1122,7 +1122,7 @@ export default function BookPage() {
           )}
           <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 8, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
             <span style={{ fontSize: 13, color: "#6B6860" }}>{upsellAccepted ? "First Visit Total" : "Total"}</span>
-            <span style={{ fontSize: 15, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total).toFixed(2)}</span>
+            <span style={{ fontSize: 15, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total - bundleSavings).toFixed(2)}</span>
           </div>
         </div>
       )}
@@ -1138,7 +1138,7 @@ export default function BookPage() {
           {sqft > 0 && <p style={{ margin: 0, fontSize: 11, color: "#6B6860" }}>{sqft.toLocaleString()} sqft</p>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          <span style={{ fontSize: 17, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total).toFixed(2)}</span>
+          <span style={{ fontSize: 17, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total - bundleSavings).toFixed(2)}</span>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6B6860" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
             style={{ transform: mobilePriceExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
             <polyline points="6 9 12 15 18 9" />
@@ -1202,7 +1202,7 @@ export default function BookPage() {
               <>
                 <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 12, marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <span style={{ fontSize: 13, color: "#6B6860" }}>First Visit Total</span>
-                  <span style={{ fontSize: 18, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total).toFixed(2)}</span>
+                  <span style={{ fontSize: 18, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total - bundleSavings).toFixed(2)}</span>
                 </div>
                 <div style={{ marginTop: 10, padding: "10px 12px", background: `${brand}0D`, borderRadius: 8, border: `1px solid ${brand}25` }}>
                   <Row label={`Recurring ${upsellCadence.charAt(0).toUpperCase() + upsellCadence.slice(1)} from visit 2`} value={`$${upsellPriceResult.recurringRate.toFixed(2)}`} />
@@ -1211,7 +1211,7 @@ export default function BookPage() {
             ) : (
               <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 12, marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                 <span style={{ fontSize: 13, color: "#6B6860" }}>Total</span>
-                <span style={{ fontSize: 24, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total).toFixed(2)}</span>
+                <span style={{ fontSize: 24, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total - bundleSavings).toFixed(2)}</span>
               </div>
             )}
           </div>
@@ -1275,7 +1275,7 @@ export default function BookPage() {
           .bw-scope-grid { grid-template-columns: 1fr !important; }
           .bw-consent { font-size: 13px !important; line-height: 1.6 !important; }
           .bw-root input:not([type="checkbox"]):not([type="radio"]), .bw-root select, .bw-root textarea { min-height: 48px !important; font-size: 16px !important; }
-          .bw-nav { flex-direction: column-reverse !important; gap: 8px !important; }
+          .bw-nav { flex-direction: column !important; gap: 8px !important; }
           .bw-nav button { width: 100% !important; min-height: 52px !important; font-size: 15px !important; }
           .bw-nav-end button { width: 100% !important; min-height: 52px !important; font-size: 15px !important; }
           .bw-nav-end { justify-content: stretch !important; }
@@ -2044,7 +2044,6 @@ export default function BookPage() {
               )}
 
               <div className="bw-nav" style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>
-                <button style={s.btn(false)} onClick={() => setStep(0)}>Back</button>
                 <button
                   style={{ ...s.btn(), opacity: (() => {
                     if (isCommercial) return !commercialOption ? 0.5 : 1;
@@ -2073,6 +2072,7 @@ export default function BookPage() {
                 >
                   Continue
                 </button>
+                <button style={s.btn(false)} onClick={() => setStep(0)}>Back</button>
               </div>
             </div>
           )}
@@ -2231,7 +2231,7 @@ export default function BookPage() {
 
                 // Scoped visibility: which hardcoded cards show per scope
                 const showDynCards = isDeepCleanScope || isMoveInOut; // Windows shows for deep + move
-                const showBasCard  = isDeepCleanScope;                  // Basement only for Deep Clean
+                const showBasCard  = isDeepCleanScope || isMoveInOut;     // Basement for Deep Clean + Move In/Out
                 const showFlatCards = !isCommercial;                    // Oven/Fridge/Cabinet for all non-commercial
 
                 const hasAnyCard = showFlatCards || showDynCards || showBasCard;
@@ -2406,13 +2406,12 @@ export default function BookPage() {
               {calcResult && selectedAddonIds.length > 0 && (
                 <div style={{ textAlign: "right", marginBottom: 12 }}>
                   <span style={{ fontSize: 14, fontWeight: 600, color: "#1A1917", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-                    Subtotal: ${(calcResult.final_total).toFixed(2)}
+                    Subtotal: ${(calcResult.final_total - bundleSavings).toFixed(2)}
                   </span>
                 </div>
               )}
 
               <div className="bw-nav" style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
-                <button style={s.btn(false)} onClick={() => setStep(1)}>Back</button>
                 <button
                   style={{ ...s.btn(), opacity: (isRecurringScope && !frequencyStr) ? 0.5 : 1 }}
                   disabled={isRecurringScope && !frequencyStr}
@@ -2420,6 +2419,7 @@ export default function BookPage() {
                 >
                   Continue
                 </button>
+                <button style={s.btn(false)} onClick={() => setStep(1)}>Back</button>
               </div>
             </div>
           )}
@@ -2463,7 +2463,6 @@ export default function BookPage() {
               )}
 
               <div className="bw-nav" style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
-                <button style={s.btn(false)} onClick={() => isCommercial ? setStep(1) : setStep(2)}>Back</button>
                 <button
                   style={{ ...s.btn(), opacity: (!selectedDate || walkthroughBooking) ? 0.5 : 1 }}
                   disabled={!selectedDate || walkthroughBooking}
@@ -2477,6 +2476,7 @@ export default function BookPage() {
                 >
                   {walkthroughBooking ? "Scheduling..." : (isCommercial && commercialOption === "walkthrough") ? "Schedule Walkthrough" : "Continue"}
                 </button>
+                <button style={s.btn(false)} onClick={() => isCommercial ? setStep(1) : setStep(2)}>Back</button>
               </div>
             </div>
           )}
@@ -2526,7 +2526,7 @@ export default function BookPage() {
                   {frequencyStr && <Row label="Frequency" value={wLabel(frequencyStr)} />}
                   {selectedDate && <Row label="First Date" value={new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} />}
                   {address && <Row label="Address" value={address} />}
-                  {calcResult && <Row label="Total" value={`$${(calcResult.final_total * conditionMultiplier).toFixed(2)}`} bold />}
+                  {calcResult && <Row label="Total" value={`$${((calcResult.final_total - bundleSavings) * conditionMultiplier).toFixed(2)}`} bold />}
                 </div>
               </div>
 
@@ -2537,7 +2537,6 @@ export default function BookPage() {
               )}
 
               <div className="bw-nav" style={{ display: "flex", justifyContent: "space-between" }}>
-                <button style={s.btn(false)} onClick={() => setStep(3)}>Back</button>
                 <button
                   style={{ ...s.btn(), opacity: (booking || stripeSetupLoading || stripeEnabled === null || (stripeEnabled === true && !stripeCardReady)) ? 0.7 : 1 }}
                   disabled={booking || stripeSetupLoading || stripeEnabled === null || stripeEnabled === false || (stripeEnabled === true && !stripeCardReady)}
@@ -2545,6 +2544,7 @@ export default function BookPage() {
                 >
                   {booking ? "Processing..." : (stripeSetupLoading || stripeEnabled === null) ? "Setting up..." : stripeEnabled ? "Confirm & Book" : "Book It"}
                 </button>
+                <button style={s.btn(false)} onClick={() => setStep(3)}>Back</button>
               </div>
             </div>
           )}
