@@ -253,36 +253,36 @@ function SimpleCalendar({
 type UpsellTier = { min: number; max: number; price: number };
 const UPSELL_TIERS: Record<string, UpsellTier[]> = {
   weekly: [
-    { min: 0,    max: 749,   price: 185.40 },
-    { min: 750,  max: 999,   price: 185.40 },
-    { min: 1000, max: 1249,  price: 192.00 },
-    { min: 1250, max: 1499,  price: 207.00 },
-    { min: 1500, max: 1749,  price: 212.40 },
-    { min: 1750, max: 1999,  price: 250.80 },
-    { min: 2000, max: 2249,  price: 272.40 },
-    { min: 2250, max: 2499,  price: 300.00 },
-    { min: 2500, max: 2749,  price: 327.00 },
-    { min: 2750, max: 3499,  price: 360.00 },
-    { min: 3500, max: 3749,  price: 396.00 },
-    { min: 3750, max: 3999,  price: 480.00 },
-    { min: 4000, max: 4999,  price: 630.00 },
-    { min: 5000, max: 99999, price: 780.00 },
+    { min: 0,    max: 749,   price: 174.00 },
+    { min: 750,  max: 999,   price: 174.60 },
+    { min: 1000, max: 1249,  price: 180.00 },
+    { min: 1250, max: 1499,  price: 190.80 },
+    { min: 1500, max: 1749,  price: 198.00 },
+    { min: 1750, max: 1999,  price: 229.20 },
+    { min: 2000, max: 2249,  price: 240.00 },
+    { min: 2250, max: 2499,  price: 270.00 },
+    { min: 2500, max: 2749,  price: 300.00 },
+    { min: 2750, max: 3499,  price: 327.00 },
+    { min: 3500, max: 3749,  price: 327.00 },
+    { min: 3750, max: 3999,  price: 420.00 },
+    { min: 4000, max: 4999,  price: 570.00 },
+    { min: 5000, max: 99999, price: 660.00 },
   ],
   biweekly: [
-    { min: 0,    max: 749,   price: 200.85 },
-    { min: 750,  max: 999,   price: 200.85 },
-    { min: 1000, max: 1249,  price: 208.00 },
-    { min: 1250, max: 1499,  price: 224.25 },
-    { min: 1500, max: 1749,  price: 230.10 },
-    { min: 1750, max: 1999,  price: 271.70 },
-    { min: 2000, max: 2249,  price: 295.10 },
-    { min: 2250, max: 2499,  price: 325.00 },
-    { min: 2500, max: 2749,  price: 354.25 },
-    { min: 2750, max: 3499,  price: 390.00 },
-    { min: 3500, max: 3749,  price: 429.00 },
-    { min: 3750, max: 3999,  price: 520.00 },
-    { min: 4000, max: 4999,  price: 682.50 },
-    { min: 5000, max: 99999, price: 845.00 },
+    { min: 0,    max: 749,   price: 189.15 },
+    { min: 750,  max: 999,   price: 189.15 },
+    { min: 1000, max: 1249,  price: 201.50 },
+    { min: 1250, max: 1499,  price: 212.55 },
+    { min: 1500, max: 1749,  price: 224.25 },
+    { min: 1750, max: 1999,  price: 260.00 },
+    { min: 2000, max: 2249,  price: 265.85 },
+    { min: 2250, max: 2499,  price: 305.50 },
+    { min: 2500, max: 2749,  price: 342.55 },
+    { min: 2750, max: 3499,  price: 364.00 },
+    { min: 3500, max: 3749,  price: 403.00 },
+    { min: 3750, max: 3999,  price: 472.55 },
+    { min: 4000, max: 4999,  price: 650.00 },
+    { min: 5000, max: 99999, price: 780.00 },
   ],
   monthly: [
     { min: 0,    max: 749,   price: 216.30 },
@@ -399,6 +399,7 @@ export default function BookPage() {
 
   // Step 3: Arrival window (time range)
   const [arrivalWindow, setArrivalWindow] = useState<"morning" | "afternoon" | "">("");
+  const [recurringArrivalWindow, setRecurringArrivalWindow] = useState<"morning" | "afternoon" | "">("");
 
   // Step 2: Frequency + Add-ons
   const [frequencyStr, setFrequencyStr] = useState("");
@@ -756,6 +757,7 @@ export default function BookPage() {
             upsell_locked_rate: upsellAccepted && upsellPriceResult ? upsellPriceResult.recurringRate : null,
             upsell_first_visit_rate: upsellAccepted && upsellPriceResult ? upsellPriceResult.firstVisitRate : null,
             recurring_date: upsellAccepted ? recurringDate : null,
+            recurring_arrival_window: upsellAccepted ? recurringArrivalWindow || null : null,
             arrival_window: arrivalWindow || null,
             property_vacant: isMoveInOut,
             move_in_notes: (isMoveInOut || isDeepClean || isOneTimeStandard) && moveInNotes.trim() ? moveInNotes.trim() : null,
@@ -971,21 +973,21 @@ export default function BookPage() {
   const activeBundleId: number | null = (() => {
     for (const b of bundles) {
       const items = b.items as { addon_id: number }[];
-      if (items.every(it => selectedAddonIds.includes(it.addon_id))) return b.id as number;
+      if (items.every(it => selectedAddonIds.includes(Number(it.addon_id)))) return b.id as number;
     }
     return null;
   })();
   const activeBundle = bundles.find(b => b.id === activeBundleId) ?? null;
 
   const calcBundleSavings = (bundle: any): number => {
-    const items = (bundle.items as { addon_id: number; price_type: string }[]).filter(it => !isDynamicPricedAddon(it.addon_id));
+    const items = (bundle.items as { addon_id: number; price_type: string }[]).filter(it => !isDynamicPricedAddon(Number(it.addon_id)));
     const dv = parseFloat(bundle.discount_value);
     if (bundle.discount_type === "flat_per_item") return items.length * dv;
     if (bundle.discount_type === "flat_total") return dv;
     if (bundle.discount_type === "percentage") {
       let sum = 0;
       for (const it of items) {
-        const ab = calcResult?.addon_breakdown.find(x => x.id === it.addon_id);
+        const ab = calcResult?.addon_breakdown.find(x => x.id === Number(it.addon_id));
         if (ab) sum += ab.amount * dv / 100;
       }
       return Math.round(sum * 100) / 100;
@@ -998,14 +1000,14 @@ export default function BookPage() {
     if (activeBundleId !== null) return null;
     for (const b of bundles) {
       const items = b.items as { addon_id: number; addon_name: string }[];
-      const selected = items.filter(it => selectedAddonIds.includes(it.addon_id));
-      const missing = items.filter(it => !selectedAddonIds.includes(it.addon_id));
+      const selected = items.filter(it => selectedAddonIds.includes(Number(it.addon_id)));
+      const missing = items.filter(it => !selectedAddonIds.includes(Number(it.addon_id)));
       if (selected.length > 0 && missing.length === 1) return { bundleName: b.name, missingName: missing[0].addon_name };
     }
     return null;
   })();
 
-  const bundleAddonIds = new Set(bundles.flatMap(b => (b.items as { addon_id: number }[]).map(it => it.addon_id)));
+  const bundleAddonIds = new Set(bundles.flatMap(b => (b.items as { addon_id: number }[]).map(it => Number(it.addon_id))));
 
   const addonPersuasionLine = (() => {
     if (!scopeNameLower || isCommercial) return null;
@@ -1139,9 +1141,6 @@ export default function BookPage() {
       {calcResult.addon_breakdown.filter(a => a.amount !== 0).map(a => (
         <Row key={a.id} label={a.name.split(" — ")[0].split(" (")[0].trim()} value={`+$${Math.abs(a.amount).toFixed(2)}`} />
       ))}
-      {(calcResult.bundle_discount || 0) > 0 && (
-        <Row label="Appliance Bundle Discount" value={`-$${(calcResult.bundle_discount).toFixed(2)}`} green />
-      )}
       {calcResult.discount_amount > 0 && (
         <Row label="Discount code applied" value={`-$${calcResult.discount_amount.toFixed(2)}`} green />
       )}
@@ -1183,7 +1182,7 @@ export default function BookPage() {
           )}
           <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 8, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
             <span style={{ fontSize: 13, color: "#6B6860" }}>First Visit Total</span>
-            <span style={{ fontSize: 15, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total - bundleSavings).toFixed(2)}</span>
+            <span style={{ fontSize: 15, fontWeight: 800, color: "#1A1917" }}>${calcResult.final_total.toFixed(2)}</span>
           </div>
         </div>
       )}
@@ -1199,7 +1198,7 @@ export default function BookPage() {
           {sqft > 0 && <p style={{ margin: 0, fontSize: 11, color: "#6B6860" }}>{sqft.toLocaleString()} sqft</p>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          <span style={{ fontSize: 17, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total - bundleSavings).toFixed(2)}</span>
+          <span style={{ fontSize: 17, fontWeight: 800, color: "#1A1917" }}>${calcResult.final_total.toFixed(2)}</span>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6B6860" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
             style={{ transform: mobilePriceExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
             <polyline points="6 9 12 15 18 9" />
@@ -1264,7 +1263,7 @@ export default function BookPage() {
               <>
                 <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 12, marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <span style={{ fontSize: 13, color: "#6B6860" }}>First Visit Total</span>
-                  <span style={{ fontSize: 18, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total - bundleSavings).toFixed(2)}</span>
+                  <span style={{ fontSize: 18, fontWeight: 800, color: "#1A1917" }}>${calcResult.final_total.toFixed(2)}</span>
                 </div>
                 <div style={{ marginTop: 10, padding: "10px 12px", background: `${brand}0D`, borderRadius: 8, border: `1px solid ${brand}25`, display: "flex", flexDirection: "column", gap: 6 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1288,7 +1287,7 @@ export default function BookPage() {
             ) : (
               <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 12, marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                 <span style={{ fontSize: 13, color: "#6B6860" }}>Total</span>
-                <span style={{ fontSize: 24, fontWeight: 800, color: "#1A1917" }}>${(calcResult.final_total - bundleSavings).toFixed(2)}</span>
+                <span style={{ fontSize: 24, fontWeight: 800, color: "#1A1917" }}>${calcResult.final_total.toFixed(2)}</span>
               </div>
             )}
           </div>
@@ -2035,7 +2034,7 @@ export default function BookPage() {
                               {!upsellCadence || upsellPriceResult ? "Yes — lock in my rate" : "Enter your home size to continue"}
                             </button>
                             <button
-                              onClick={() => { setUpsellDeclined(true); setUpsellAccepted(false); setRecurringDate(""); setFrequencyStr(""); }}
+                              onClick={() => { setUpsellDeclined(true); setUpsellAccepted(false); setRecurringDate(""); setFrequencyStr(""); setRecurringArrivalWindow(""); }}
                               style={{ padding: "12px 20px", background: "#FFFFFF", color: "#6B6860", border: "1px solid #6B6860", borderRadius: 8, fontSize: 14, cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif" }}
                             >
                               No thanks, just the Deep Clean
@@ -2052,7 +2051,7 @@ export default function BookPage() {
                             First visit: <strong style={{ color: brand }}>${upsellPriceResult?.firstVisitRate?.toFixed(2) ?? "--"}</strong> ({offerSettings?.upsell_discount_percent ?? 15}% off applied).
                           </p>
                           <button
-                            onClick={() => { setUpsellAccepted(false); setUpsellDeclined(false); setUpsellCadence(""); setRecurringDate(""); setFrequencyStr(""); }}
+                            onClick={() => { setUpsellAccepted(false); setUpsellDeclined(false); setUpsellCadence(""); setRecurringDate(""); setFrequencyStr(""); setRecurringArrivalWindow(""); }}
                             style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: "#6B6860", textDecoration: "underline", cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif" }}
                           >
                             Change selection
@@ -2464,14 +2463,14 @@ export default function BookPage() {
                     </div>
 
                     {/* Appliance Bundle badge */}
-                    {activeBundle && bundleSavings > 0 && (
+                    {(calcResult?.bundle_discount ?? 0) > 0 && (
                       <div style={{
                         display: "flex", alignItems: "center", justifyContent: "center",
                         marginTop: 12, padding: "8px 16px",
                         background: "#2D6A4F", borderRadius: 20,
                       }}>
                         <span style={{ fontSize: 13, fontWeight: 600, color: "#fff", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-                          Appliance Bundle applied — you're saving ${bundleSavings.toFixed(2)}
+                          Appliance Bundle applied — you're saving ${(calcResult?.bundle_discount ?? 0).toFixed(2)}
                         </span>
                       </div>
                     )}
@@ -2487,7 +2486,7 @@ export default function BookPage() {
               {calcResult && selectedAddonIds.length > 0 && (
                 <div style={{ textAlign: "right", marginBottom: 12 }}>
                   <span style={{ fontSize: 14, fontWeight: 600, color: "#1A1917", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-                    Subtotal: ${(calcResult.final_total - bundleSavings).toFixed(2)}
+                    Subtotal: ${calcResult.final_total.toFixed(2)}
                   </span>
                 </div>
               )}
@@ -2513,7 +2512,7 @@ export default function BookPage() {
 
               <SimpleCalendar
                 selected={selectedDate}
-                onSelect={(d) => { setSelectedDate(d); setRecurringDate(""); setArrivalWindow(""); }}
+                onSelect={(d) => { setSelectedDate(d); setRecurringDate(""); setArrivalWindow(""); setRecurringArrivalWindow(""); }}
                 brand={brand}
                 leadDays={bookingSettings?.booking_lead_days ?? 7}
                 maxAdvanceDays={bookingSettings?.max_advance_days ?? 60}
@@ -2578,7 +2577,7 @@ export default function BookPage() {
                   </p>
                   <SimpleCalendar
                     selected={recurringDate}
-                    onSelect={setRecurringDate}
+                    onSelect={(d) => { setRecurringDate(d); setRecurringArrivalWindow(""); }}
                     brand={brand}
                     minDateStr={recurringMinDateStr}
                     maxAdvanceDays={bookingSettings?.max_advance_days ?? 60}
@@ -2595,12 +2594,42 @@ export default function BookPage() {
                   <p style={{ margin: "10px 0 0", fontSize: 12, color: "#6B6860", lineHeight: 1.5 }}>
                     Your recurring visits will continue every {upsellCadence === "weekly" ? "week" : upsellCadence === "biweekly" ? "2 weeks" : "4 weeks"} from this date forward — rate locked for {offerSettings?.rate_lock_duration_months ?? 24} months.
                   </p>
+
+                  {/* FIX 1: Arrival window pills for recurring date */}
                   {recurringDate && (
+                    <div style={{ marginTop: 16 }}>
+                      <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 600, color: "#6B6860" }}>Preferred Arrival Window</p>
+                      <div style={{ display: "flex", gap: 10 }}>
+                        {([
+                          { key: "morning",   label: "Morning",   sub: "9 AM – 12 PM" },
+                          { key: "afternoon", label: "Afternoon", sub: "12 PM – 2 PM" },
+                        ] as const).map(opt => (
+                          <button
+                            key={opt.key}
+                            onClick={() => setRecurringArrivalWindow(opt.key)}
+                            style={{
+                              flex: 1, padding: "10px 12px", borderRadius: 10,
+                              border: `2px solid ${recurringArrivalWindow === opt.key ? brand : "#E5E2DC"}`,
+                              background: recurringArrivalWindow === opt.key ? `${brand}12` : "#fff",
+                              cursor: "pointer", textAlign: "left" as const,
+                              fontFamily: "'Plus Jakarta Sans', sans-serif",
+                              transition: "all 0.15s",
+                            }}
+                          >
+                            <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#1A1917" }}>{opt.label}</p>
+                            <p style={{ margin: 0, fontSize: 12, color: "#6B6860" }}>{opt.sub}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {recurringDate && recurringArrivalWindow && (
                     <div style={{ marginTop: 12, padding: "12px 16px", background: `${brand}12`, borderRadius: 10, border: `1px solid ${brand}`, display: "flex", alignItems: "center", gap: 10 }}>
                       <Calendar size={16} color={brand} />
                       <span style={{ fontWeight: 600, fontSize: 14, color: "#1A1917" }}>
                         First Recurring: {new Date(recurringDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
-                        {" · "}{arrivalWindow === "morning" ? "9 AM – 12 PM" : "12 PM – 2 PM"}
+                        {" · "}{recurringArrivalWindow === "morning" ? "9 AM – 12 PM" : "12 PM – 2 PM"}
                       </span>
                     </div>
                   )}
@@ -2616,8 +2645,8 @@ export default function BookPage() {
               <div className="bw-nav" style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
                 <button style={s.btn(false)} onClick={() => isCommercial ? setStep(1) : setStep(2)}>Back</button>
                 <button
-                  style={{ ...s.btn(), opacity: (!selectedDate || !arrivalWindow || (upsellAccepted && !recurringDate) || walkthroughBooking) ? 0.5 : 1 }}
-                  disabled={!selectedDate || !arrivalWindow || (upsellAccepted && !recurringDate) || walkthroughBooking}
+                  style={{ ...s.btn(), opacity: (!selectedDate || !arrivalWindow || (upsellAccepted && !recurringDate) || (upsellAccepted && recurringDate && !recurringArrivalWindow) || walkthroughBooking) ? 0.5 : 1 }}
+                  disabled={!selectedDate || !arrivalWindow || (upsellAccepted && !recurringDate) || (upsellAccepted && recurringDate && !recurringArrivalWindow) || walkthroughBooking}
                   onClick={() => {
                     if (isCommercial && commercialOption === "walkthrough") {
                       submitWalkthroughBooking();
@@ -2681,9 +2710,10 @@ export default function BookPage() {
                     <Row label="First Recurring Date" value={new Date(recurringDate + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} />
                   )}
                   {arrivalWindow && <Row label="Arrival Window" value={arrivalWindow === "morning" ? "9 AM – 12 PM" : "12 PM – 2 PM"} />}
+                  {upsellAccepted && recurringArrivalWindow && <Row label="Recurring Arrival Window" value={recurringArrivalWindow === "morning" ? "9 AM – 12 PM" : "12 PM – 2 PM"} />}
                   {address && <Row label="Address" value={address} />}
                   {/* FIX 4: "Total" relabeled to "First Visit Total" */}
-                  {calcResult && <Row label="First Visit Total" value={`$${((calcResult.final_total - bundleSavings) * conditionMultiplier).toFixed(2)}`} bold />}
+                  {calcResult && <Row label="First Visit Total" value={`$${(calcResult.final_total * conditionMultiplier).toFixed(2)}`} bold />}
                 </div>
               </div>
 
