@@ -730,7 +730,7 @@ export default function BookPage() {
             upsell_cadence_selected: upsellAccepted ? upsellCadence : null,
             upsell_locked_rate: upsellAccepted && upsellPriceResult ? upsellPriceResult.recurringRate : null,
             property_vacant: isMoveInOut,
-            move_in_notes: isMoveInOut && moveInNotes.trim() ? moveInNotes.trim() : null,
+            move_in_notes: (isMoveInOut || isDeepClean || isOneTimeStandard) && moveInNotes.trim() ? moveInNotes.trim() : null,
             address: addressComponents?.formatted ?? address,
             address_street: addressComponents?.street ?? null,
             address_city: addressComponents?.city ?? null,
@@ -890,6 +890,7 @@ export default function BookPage() {
   const isRecurringScope = !isCommercial && !!scopeId && (selectedScope?.name ?? "").toLowerCase() === "recurring cleaning";
   const isMoveInOut = displayScopeKey === "move_in_out";
   const isDeepClean = displayScopeKey === "deep_clean";
+  const isOneTimeStandard = displayScopeKey === "one_time_standard";
   const isDeepCleanScope = selectedScope?.name?.toLowerCase().trim() === "deep clean";
   const getOverageRate = (freq: string) => freq === "weekly" ? 60 : freq === "biweekly" ? 65 : 70;
 
@@ -1656,12 +1657,12 @@ export default function BookPage() {
                 );
               })()}
 
-              {/* ── Move In / Move Out special notes + acknowledgment ─────────── */}
-              {isMoveInOut && scopeId && (
+              {/* ── Special notes (Deep Clean, Move In/Out, One-Time Standard) ── */}
+              {(isMoveInOut || isDeepClean || isOneTimeStandard) && scopeId && (
                 <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 24, marginTop: 8, marginBottom: 8 }}>
 
                   {/* Notes textarea */}
-                  <div style={{ marginBottom: 20 }}>
+                  <div style={{ marginBottom: isMoveInOut ? 20 : 0 }}>
                     <label style={{ display: "block", fontWeight: 600, fontSize: 13, color: "#1A1917", marginBottom: 6 }}>
                       Special notes or anything you'd like us to know
                     </label>
@@ -1681,24 +1682,28 @@ export default function BookPage() {
                     />
                   </div>
 
-                  {/* Single consolidated acknowledgment */}
-                  <p style={{ fontWeight: 600, fontSize: 15, color: "#1A1917", marginBottom: 12 }}>Before we confirm your booking</p>
-                  <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={moveInAck}
-                      onChange={e => setMoveInAck(e.target.checked)}
-                      style={{ marginTop: 2, accentColor: brand, width: 16, height: 16, flexShrink: 0 }}
-                    />
-                    <span style={{ fontSize: 13, color: "#1A1917", lineHeight: 1.5 }}>
-                      I confirm the property will be completely empty of furniture and personal belongings, no other contractors will be present, and the property will have running water and working electricity on the day of cleaning.
-                    </span>
-                  </label>
+                  {/* Acknowledgment checkbox — Move In/Out only */}
+                  {isMoveInOut && (
+                    <>
+                      <p style={{ fontWeight: 600, fontSize: 15, color: "#1A1917", marginBottom: 12, marginTop: 20 }}>Before we confirm your booking</p>
+                      <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={moveInAck}
+                          onChange={e => setMoveInAck(e.target.checked)}
+                          style={{ marginTop: 2, accentColor: brand, width: 16, height: 16, flexShrink: 0 }}
+                        />
+                        <span style={{ fontSize: 13, color: "#1A1917", lineHeight: 1.5 }}>
+                          I confirm the property will be completely empty of furniture and personal belongings, no other contractors will be present, and the property will have running water and working electricity on the day of cleaning.
+                        </span>
+                      </label>
+                    </>
+                  )}
                 </div>
               )}
 
               {scopeId && !isCommercial && (
-                <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 24, marginTop: isMoveInOut ? 0 : (isRecurringScope ? 16 : 8) }}>
+                <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 24, marginTop: (isMoveInOut || isDeepClean || isOneTimeStandard) ? 0 : (isRecurringScope ? 16 : 8) }}>
                   <p style={{ fontWeight: 700, fontSize: 15, color: "#1A1917", marginBottom: 16 }}>Home Details</p>
 
                   <FieldWrap label="Square Footage">
