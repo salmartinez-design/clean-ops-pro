@@ -41,10 +41,8 @@ router.get("/me", requireAuth, async (req, res) => {
       return res.status(404).json({ error: "Not Found", message: "No company for this user" });
     }
     const rows = await db.execute(sql`
-      SELECT c.*, st.slug AS tier_slug, st.name AS tier_name,
-             st.monthly_price_cents, st.max_technicians
+      SELECT c.*
       FROM companies c
-      LEFT JOIN subscription_tiers st ON st.id = c.subscription_tier_id
       WHERE c.id = ${req.auth!.companyId}
       LIMIT 1
     `);

@@ -25,20 +25,30 @@ export function applyTenantColor(hex: string) {
 export function useTenantBrand() {
   const token = useAuthStore(state => state.token);
 
-  const { data: company } = useGetMyCompany({
+  const { data: company, isLoading } = useGetMyCompany({
     request: { headers: getAuthHeaders() },
-    query: { enabled: !!token, retry: false, staleTime: 60_000 }
+    query: {
+      queryKey: ['/api/companies/me', token ?? ''],
+      enabled: !!token,
+      retry: 1,
+      staleTime: 60_000,
+    }
   });
 
+  const brandColor = (company as any)?.brand_color || '#5B9BD5';
+
   useEffect(() => {
-    const color = (company as any)?.brand_color || '#5B9BD5';
-    applyTenantColor(color);
-  }, [(company as any)?.brand_color]);
+    applyTenantColor(brandColor);
+  }, [brandColor]);
+
+  const rawName: string | null =
+    (company as any)?.name ?? (company as any)?.company_name ?? null;
 
   return {
     company,
-    brandColor: (company as any)?.brand_color || '#5B9BD5',
+    isLoading,
+    brandColor,
     logoUrl: (company as any)?.logo_url || null,
-    companyName: company?.name || 'Qleno',
+    companyName: rawName,
   };
 }

@@ -63,7 +63,7 @@ interface AppSidebarProps {
 export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebarProps) {
   const [location] = useLocation();
   const logout = useAuthStore(state => state.logout);
-  const { logoUrl, companyName } = useTenantBrand();
+  const { logoUrl, companyName, isLoading: tenantLoading, brandColor } = useTenantBrand();
 
   const token = useAuthStore(state => state.token);
   let userInfo: { email: string; role: string; firstName: string; lastName: string } | null = null;
@@ -119,8 +119,8 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
       height: '100%',
       overflow: 'hidden',
     }}>
-      {/* Logo */}
-      <div style={{ padding: '0 20px', height: 72, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #EEECE7' }}>
+      {/* Platform logo — identifies the software */}
+      <div style={{ padding: '0 20px', height: 60, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <QlenoLogo size="sm" />
         {mobile && (
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9E9B94', padding: 4, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
@@ -129,18 +129,31 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
         )}
       </div>
 
-      {/* Tenant identity */}
-      <div style={{ padding: '12px 16px', borderBottom: '1px solid #EEECE7', display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
-        {logoUrl ? (
-          <img src={logoUrl} alt={companyName} style={{ height: 36, width: 'auto', objectFit: 'contain', flexShrink: 0 }} />
-        ) : (
-          <div style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <span style={{ fontSize: 15, fontWeight: 800, color: '#FFFFFF', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-              {(companyName?.[0] || 'Q').toUpperCase()}
-            </span>
+      {/* Tenant identity — identifies who is logged in */}
+      <div style={{ padding: '8px 10px 10px', borderBottom: '1px solid #EEECE7' }}>
+        <div style={{ background: '#F4F3F0', borderRadius: 10, padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 9, overflow: 'hidden' }}>
+          {tenantLoading ? (
+            <div style={{ width: 30, height: 30, borderRadius: 7, backgroundColor: '#E5E2DC', flexShrink: 0 }} />
+          ) : logoUrl ? (
+            <img src={logoUrl} alt={companyName ?? ''} style={{ height: 30, width: 'auto', objectFit: 'contain', flexShrink: 0 }} />
+          ) : (
+            <div style={{ width: 30, height: 30, borderRadius: 7, backgroundColor: brandColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: '#FFFFFF', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                {companyName ? companyName[0].toUpperCase() : '…'}
+              </span>
+            </div>
+          )}
+          <div style={{ overflow: 'hidden', minWidth: 0 }}>
+            {tenantLoading ? (
+              <div style={{ height: 11, width: 80, borderRadius: 4, backgroundColor: '#E5E2DC' }} />
+            ) : (
+              <p style={{ fontSize: 12, fontWeight: 600, color: '#1A1917', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                {companyName ?? '—'}
+              </p>
+            )}
+            <p style={{ fontSize: 10, color: '#9E9B94', margin: '1px 0 0', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Tenant</p>
           </div>
-        )}
-        <p style={{ fontSize: 12, fontWeight: 600, color: '#1A1917', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{companyName}</p>
+        </div>
       </div>
 
       {/* Nav */}
