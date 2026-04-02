@@ -61,6 +61,7 @@ import quickbooksRouter from "./integrations/quickbooks.js";
 import bundlesRouter from "./bundles.js";
 import followUpRouter from "./follow-up.js";
 import leadsRouter from "./leads.js";
+import smsInboundRouter from "./sms-inbound.js";
 
 const router: IRouter = Router();
 
@@ -126,5 +127,6 @@ router.use("/public", publicRouter);
 router.use("/integrations/quickbooks", quickbooksRouter);
 router.use("/follow-up", followUpRouter);
 router.use("/leads", leadsRouter);
+router.use("/sms/inbound", smsInboundRouter);
 
 export default router;

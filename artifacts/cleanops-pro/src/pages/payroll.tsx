@@ -3,7 +3,7 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { useListUsers } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getAuthHeaders, getTokenRole } from "@/lib/auth";
-import { Download, Calendar, Plus, X, Zap, Trash2 } from "lucide-react";
+import { Download, Calendar, Plus, X, Zap, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -38,6 +38,152 @@ const PAY_GROUPS = [
   { label: 'Other',     types: ['compliment','amount_owed'] },
 ];
 
+function getDefaultPeriod() {
+  const today = new Date();
+  const start = new Date(today);
+  start.setDate(today.getDate() - today.getDay());
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return {
+    start: start.toISOString().slice(0, 10),
+    end: end.toISOString().slice(0, 10),
+  };
+}
+
+function WeeklyDetailView() {
+  const [period, setPeriod] = useState(getDefaultPeriod());
+  const [expanded, setExpanded] = useState<number[]>([]);
+  const FF = "inherit";
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['payroll-detail', period.start, period.end],
+    queryFn: () => apiFetch(`/payroll/detail?pay_period_start=${period.start}&pay_period_end=${period.end}`),
+    enabled: !!period.start && !!period.end,
+  });
+
+  const employees: any[] = data?.data || [];
+  const resPct = data?.res_tech_pay_pct ? Math.round(data.res_tech_pay_pct * 100) : 35;
+
+  const inputStyle: React.CSSProperties = { height: 34, padding: '0 10px', border: '1px solid #E5E2DC', borderRadius: 6, fontSize: 13, color: '#1A1917', background: '#fff', outline: 'none', fontFamily: FF };
+  const th: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0 10px 8px 0', textAlign: 'left', whiteSpace: 'nowrap' };
+  const td: React.CSSProperties = { fontSize: 12, color: '#1A1917', padding: '6px 10px 6px 0', borderTop: '1px solid #F4F3F0', verticalAlign: 'middle' };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ backgroundColor: '#fff', border: '1px solid #E5E2DC', borderRadius: 10, padding: '16px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#1A1917', fontFamily: FF }}>Pay Period:</span>
+          <input type="date" value={period.start} onChange={e => setPeriod(p => ({ ...p, start: e.target.value }))} style={inputStyle} />
+          <span style={{ fontSize: 12, color: '#9E9B94' }}>to</span>
+          <input type="date" value={period.end} onChange={e => setPeriod(p => ({ ...p, end: e.target.value }))} style={inputStyle} />
+          <button onClick={() => refetch()}
+            style={{ padding: '7px 16px', background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: FF }}>
+            Load
+          </button>
+          <span style={{ fontSize: 11, color: '#9E9B94', marginLeft: 'auto' }}>Commission rate: {resPct}% of job total</span>
+        </div>
+      </div>
+
+      {isLoading && <div style={{ padding: '40px', textAlign: 'center', color: '#9E9B94', fontSize: 13 }}>Loading…</div>}
+
+      {!isLoading && employees.length === 0 && (
+        <div style={{ padding: '40px', textAlign: 'center', color: '#9E9B94', fontSize: 13 }}>No completed jobs found for this period.</div>
+      )}
+
+      {employees.map((emp: any) => {
+        const isOpen = expanded.includes(emp.user_id);
+        const addlEntries = Object.entries(emp.additional_pay || {}).filter(([, v]) => (v as number) !== 0);
+        return (
+          <div key={emp.user_id} style={{ backgroundColor: '#fff', border: '1px solid #E5E2DC', borderRadius: 10, overflow: 'hidden' }}>
+            <div
+              onClick={() => setExpanded(p => isOpen ? p.filter(id => id !== emp.user_id) : [...p, emp.user_id])}
+              style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', borderBottom: isOpen ? '1px solid #EEECE7' : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                {isOpen ? <ChevronDown size={14} style={{ color: '#9E9B94' }} /> : <ChevronRight size={14} style={{ color: '#9E9B94' }} />}
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#1A1917' }}>{emp.name}</span>
+                <span style={{ fontSize: 12, color: '#9E9B94' }}>{emp.totals.job_count} jobs</span>
+              </div>
+              <div style={{ display: 'flex', gap: 24 }}>
+                <div style={{ textAlign: 'right' }}>
+                  <p style={{ fontSize: 10, color: '#9E9B94', margin: '0 0 1px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Job Total</p>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: '#1A1917', margin: 0 }}>${emp.totals.job_total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <p style={{ fontSize: 10, color: '#9E9B94', margin: '0 0 1px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Commission</p>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--brand)', margin: 0 }}>${emp.totals.commission.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <p style={{ fontSize: 10, color: '#9E9B94', margin: '0 0 1px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Grand Total</p>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: '#1A1917', margin: 0 }}>${emp.totals.grand_total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                </div>
+              </div>
+            </div>
+
+            {isOpen && (
+              <div style={{ padding: '0 20px 16px' }}>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 14 }}>
+                    <thead>
+                      <tr>
+                        {['Date', 'Client', 'Scope', 'Job Total', 'Commission', 'Hrs Sched', 'Hrs Worked', 'Eff. Rate'].map(h => (
+                          <th key={h} style={th}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {emp.jobs.map((job: any) => (
+                        <tr key={job.job_id}>
+                          <td style={td}>{job.date}</td>
+                          <td style={td}>{job.client}</td>
+                          <td style={{ ...td, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.scope}</td>
+                          <td style={td}>${job.job_total.toFixed(2)}</td>
+                          <td style={{ ...td, color: 'var(--brand)', fontWeight: 600 }}>${job.commission.toFixed(2)}</td>
+                          <td style={{ ...td, color: '#6B6860' }}>{job.hrs_scheduled.toFixed(1)}h</td>
+                          <td style={{ ...td, color: '#6B6860' }}>{job.hrs_worked.toFixed(1)}h</td>
+                          <td style={{ ...td, color: '#9E9B94', fontSize: 11 }}>{job.effective_rate != null ? `$${job.effective_rate.toFixed(2)}/hr` : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ background: '#FAFAF8' }}>
+                        <td style={{ ...td, fontWeight: 700 }} colSpan={3}>Subtotal</td>
+                        <td style={{ ...td, fontWeight: 700 }}>${emp.totals.job_total.toFixed(2)}</td>
+                        <td style={{ ...td, fontWeight: 700, color: 'var(--brand)' }}>${emp.totals.commission.toFixed(2)}</td>
+                        <td style={{ ...td, fontWeight: 700 }}>{emp.totals.hrs_scheduled.toFixed(1)}h</td>
+                        <td style={{ ...td, fontWeight: 700 }}>{emp.totals.hrs_worked.toFixed(1)}h</td>
+                        <td style={td}></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                {addlEntries.length > 0 && (
+                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #F4F3F0' }}>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>Additional Pay</p>
+                    <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                      {addlEntries.map(([type, amount]) => (
+                        <div key={type} style={{ fontSize: 12 }}>
+                          <span style={{ color: '#9E9B94' }}>{PAY_TYPE_LABELS[type] || type}:</span>{' '}
+                          <span style={{ fontWeight: 600, color: (amount as number) < 0 ? '#EF4444' : '#1A1917' }}>${(amount as number).toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: '2px solid #E5E2DC', display: 'flex', justifyContent: 'flex-end', gap: 4, alignItems: 'center' }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#1A1917' }}>Period Grand Total:</span>
+                  <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--brand)', marginLeft: 8 }}>${emp.totals.grand_total.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function PayrollPage() {
   const qc = useQueryClient();
   const { data, isLoading } = useListUsers({}, { request: { headers: getAuthHeaders() } });
@@ -50,6 +196,7 @@ export default function PayrollPage() {
   }, 0);
 
   const isOwnerAdmin = ['owner','admin'].includes(getTokenRole() || '');
+  const [activeView, setActiveView] = useState<'overview' | 'weekly-detail'>('overview');
 
   // Templates
   const { data: templatesData, refetch: refetchTemplates } = useQuery({
@@ -108,6 +255,23 @@ export default function PayrollPage() {
   return (
     <DashboardLayout>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {/* View Toggle */}
+        <div style={{ display: 'flex', gap: 4, background: '#F4F3F0', padding: 4, borderRadius: 8, width: 'fit-content' }}>
+          {[{ key: 'overview', label: 'Overview' }, { key: 'weekly-detail', label: 'Weekly Detail' }].map(v => (
+            <button key={v.key} onClick={() => setActiveView(v.key as any)}
+              style={{ padding: '6px 16px', borderRadius: 6, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                background: activeView === v.key ? '#fff' : 'transparent',
+                color: activeView === v.key ? '#1A1917' : '#9E9B94',
+                boxShadow: activeView === v.key ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+              }}>
+              {v.label}
+            </button>
+          ))}
+        </div>
+
+        {activeView === 'weekly-detail' && <WeeklyDetailView />}
+
+        {activeView === 'overview' && <>
         {/* Controls */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
           <button style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', border: '1px solid #E5E2DC', borderRadius: '8px', backgroundColor: 'transparent', color: '#6B7280', fontSize: '13px', cursor: 'pointer', fontFamily:'inherit' }}>
@@ -240,6 +404,7 @@ export default function PayrollPage() {
             </tbody>
           </table>
         </div>
+      </>}
       </div>
 
       {/* ── Apply Template Modal ── */}

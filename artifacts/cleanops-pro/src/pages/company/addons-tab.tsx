@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAuthHeaders } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -151,6 +151,7 @@ type Addon = {
   name: string;
   price_type: string;
   price_value: string;
+  duration_minutes: number;
   scope_ids: number[] | string;
   show_online: boolean;
   show_office: boolean;
@@ -173,12 +174,95 @@ type FeeRule = {
   rule_type: string;
   label: string;
   charge_percent: string;
-  tech_split_percent: string;
+  tech_comp_mode: string;
+  tech_comp_value: string;
   window_hours: number;
   is_active: boolean;
 };
 
 const EMPTY_ADDON = { name: "", price_type: "flat", price_value: "0", scope_ids: [] as number[], show_online: true, show_office: true };
+
+function AddonTimeMethodCard() {
+  const { toast } = useToast();
+  const FF = "'Plus Jakarta Sans', sans-serif";
+  const [method, setMethod] = useState<"minimum_minutes" | "pct_of_base">("minimum_minutes");
+  const [minMinutes, setMinMinutes] = useState("45");
+  const [pctOfBase, setPctOfBase] = useState("10");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API}/api/companies/me`, { headers: getAuthHeaders() })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        const c = d?.data ?? d;
+        if (!c) return;
+        setMethod(c.addon_time_method || "minimum_minutes");
+        setMinMinutes(String(c.addon_minimum_minutes ?? 45));
+        setPctOfBase(String(c.addon_pct_of_base ?? 10));
+      });
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await fetch(`${API}/api/companies/me`, {
+        method: "PATCH",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ addon_time_method: method, addon_minimum_minutes: parseInt(minMinutes), addon_pct_of_base: parseFloat(pctOfBase) }),
+      });
+      toast({ title: "Add-on time method saved" });
+    } catch { toast({ title: "Failed to save", variant: "destructive" }); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div style={{ ...card, marginBottom: 16 }}>
+      <p style={sectionHead}>Add-on Time Method</p>
+      <p style={sectionSub}>For flat-rate scopes, how should add-on duration affect estimated job time?</p>
+      <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+        {[
+          { value: "minimum_minutes", label: "Minimum Minutes", desc: "Each add-on adds a fixed number of minutes" },
+          { value: "pct_of_base", label: "Percentage of Base Price", desc: "Add-on time is X% of base job duration" },
+        ].map(opt => (
+          <button key={opt.value} onClick={() => setMethod(opt.value as any)}
+            style={{
+              flex: 1, padding: "12px 14px", borderRadius: 8, cursor: "pointer", textAlign: "left" as const, fontFamily: FF,
+              border: `2px solid ${method === opt.value ? "var(--brand)" : "#E5E2DC"}`,
+              background: method === opt.value ? "rgba(91,155,213,0.07)" : "#fff",
+            }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: "#1A1917", margin: "0 0 2px", fontFamily: FF }}>{opt.label}</p>
+            <p style={{ fontSize: 11, color: "#9E9B94", margin: 0, fontFamily: FF }}>{opt.desc}</p>
+          </button>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-end" }}>
+        {method === "minimum_minutes" ? (
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 700, color: "#9E9B94", margin: "0 0 6px", textTransform: "uppercase" as const, letterSpacing: "0.06em", fontFamily: FF }}>Default Minutes per Add-on</p>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input type="number" min="5" max="240" value={minMinutes} onChange={e => setMinMinutes(e.target.value)}
+                style={{ width: 80, padding: "8px 12px", border: "1px solid #E5E2DC", borderRadius: 8, fontSize: 13, fontFamily: FF, outline: "none" }} />
+              <span style={{ fontSize: 13, color: "#6B6860", fontFamily: FF }}>min</span>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 700, color: "#9E9B94", margin: "0 0 6px", textTransform: "uppercase" as const, letterSpacing: "0.06em", fontFamily: FF }}>Percentage of Base Duration</p>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input type="number" min="1" max="100" step="0.5" value={pctOfBase} onChange={e => setPctOfBase(e.target.value)}
+                style={{ width: 80, padding: "8px 12px", border: "1px solid #E5E2DC", borderRadius: 8, fontSize: 13, fontFamily: FF, outline: "none" }} />
+              <span style={{ fontSize: 13, color: "#6B6860", fontFamily: FF }}>%</span>
+            </div>
+          </div>
+        )}
+        <button onClick={save} disabled={saving}
+          style={{ padding: "9px 18px", background: "var(--brand)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13, fontFamily: FF, cursor: "pointer", opacity: saving ? 0.7 : 1 }}>
+          {saving ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export function AddonsTab() {
   const qc = useQueryClient();
@@ -251,7 +335,7 @@ export function AddonsTab() {
 
   function startEdit(addon: Addon) {
     setEditingId(addon.id);
-    setEditRow({ name: addon.name, price_type: addon.price_type, price_value: addon.price_value });
+    setEditRow({ name: addon.name, price_type: addon.price_type, price_value: addon.price_value, duration_minutes: addon.duration_minutes });
     setEditScopeIds(parseScopeIds(addon.scope_ids));
     setShowScopeEdit(null);
   }
@@ -267,12 +351,22 @@ export function AddonsTab() {
     setter(current.includes(id) ? current.filter(x => x !== id) : [...current, id]);
   }
 
+  const HIDDEN_NAME_PATTERNS = ['Loyalty Discount', 'Promo Discount', 'Second Appointment', 'Commercial Adjustment', 'Parking Fee'];
+  const visibleAddons = addons.filter(a =>
+    a.price_type !== 'time_only' &&
+    a.price_type !== 'manual_adj' &&
+    !HIDDEN_NAME_PATTERNS.some(p => a.name.includes(p))
+  );
+
   return (
     <div>
+      {/* ── Add-on Time Method Settings ──────────────────────────────── */}
+      <AddonTimeMethodCard />
+
       {/* ── Add-ons Table ─────────────────────────────────────────────── */}
       <div style={card}>
         <p style={sectionHead}>Add-ons</p>
-        <p style={sectionSub}>Manage all add-ons — pricing, scope visibility, and online availability.</p>
+        <p style={sectionSub}>Manage all add-ons — pricing, scope visibility, and online availability. Duration only applies to flat-rate scopes.</p>
 
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -281,6 +375,7 @@ export function AddonsTab() {
                 <th style={th}>Name</th>
                 <th style={th}>Type</th>
                 <th style={th}>Value</th>
+                <th style={th}>Duration (min)</th>
                 <th style={th}>Scopes</th>
                 <th style={{ ...th, textAlign: "center" as const }}>Online</th>
                 <th style={{ ...th, textAlign: "center" as const }}>Active</th>
@@ -288,7 +383,7 @@ export function AddonsTab() {
               </tr>
             </thead>
             <tbody>
-              {addons.map(addon => {
+              {visibleAddons.map(addon => {
                 const isEditing = editingId === addon.id;
                 const scopeIds = parseScopeIds(addon.scope_ids);
                 return (
@@ -309,6 +404,11 @@ export function AddonsTab() {
                       {isEditing
                         ? <input style={{ ...inputStyle, width: 80 }} type="number" step="0.01" value={String(editRow.price_value ?? "")} onChange={e => setEditRow(p => ({ ...p, price_value: e.target.value }))} />
                         : <span style={{ fontWeight: 600 }}>{Number(addon.price_value) !== 0 ? `$${Number(addon.price_value).toFixed(2)}` : "—"}</span>}
+                    </td>
+                    <td style={td}>
+                      {isEditing
+                        ? <input style={{ ...inputStyle, width: 70 }} type="number" min="0" step="5" value={String(editRow.duration_minutes ?? 0)} onChange={e => setEditRow(p => ({ ...p, duration_minutes: parseInt(e.target.value) || 0 }))} />
+                        : <span style={{ fontSize: 12, color: addon.duration_minutes > 0 ? '#1A1917' : '#9E9B94' }}>{addon.duration_minutes > 0 ? `${addon.duration_minutes}m` : "—"}</span>}
                     </td>
                     <td style={{ ...td, maxWidth: 220 }}>
                       {isEditing ? (
@@ -506,13 +606,14 @@ export function AddonsTab() {
       {/* ── Fee Rules ─────────────────────────────────────────────────── */}
       <div style={card}>
         <p style={sectionHead}>Fee Rules</p>
-        <p style={sectionSub}>Configure skip and lockout fees applied to jobs.</p>
+        <p style={sectionSub}>Skip and lockout fees — charge 100% of job total. Tech comp defaults to Flat $60.</p>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr>
               <th style={th}>Rule</th>
               <th style={th}>Charge %</th>
-              <th style={th}>Tech Split %</th>
+              <th style={th}>Tech Comp Mode</th>
+              <th style={th}>Tech Comp Value</th>
               <th style={th}>Window (hrs)</th>
               <th style={{ ...th, textAlign: "center" as const }}>Active</th>
               <th style={th}></th>
@@ -528,13 +629,29 @@ export function AddonsTab() {
                     {editing ? (
                       <input style={{ ...inputStyle, width: 70 }} type="number" step="0.01" value={String(editing.charge_percent ?? rule.charge_percent)}
                         onChange={e => setEditFeeRule(p => ({ ...p, [rule.id]: { ...p[rule.id], charge_percent: e.target.value as any } }))} />
-                    ) : `${rule.charge_percent}%`}
+                    ) : `${Number(rule.charge_percent).toFixed(0)}%`}
                   </td>
                   <td style={td}>
                     {editing ? (
-                      <input style={{ ...inputStyle, width: 70 }} type="number" step="0.01" value={String(editing.tech_split_percent ?? rule.tech_split_percent)}
-                        onChange={e => setEditFeeRule(p => ({ ...p, [rule.id]: { ...p[rule.id], tech_split_percent: e.target.value as any } }))} />
-                    ) : `${rule.tech_split_percent}%`}
+                      <select style={{ ...selectStyle, width: 110 }} value={String(editing.tech_comp_mode ?? rule.tech_comp_mode)}
+                        onChange={e => setEditFeeRule(p => ({ ...p, [rule.id]: { ...p[rule.id], tech_comp_mode: e.target.value as any } }))}>
+                        <option value="flat">Flat ($)</option>
+                        <option value="percentage">Percentage (%)</option>
+                        <option value="hourly">Hourly ($/hr)</option>
+                      </select>
+                    ) : <span style={{ fontSize: 12, background: "#F4F3F0", borderRadius: 4, padding: "2px 6px", textTransform: "capitalize" as const }}>{rule.tech_comp_mode}</span>}
+                  </td>
+                  <td style={td}>
+                    {editing ? (
+                      <input style={{ ...inputStyle, width: 80 }} type="number" step="0.01" value={String(editing.tech_comp_value ?? rule.tech_comp_value)}
+                        onChange={e => setEditFeeRule(p => ({ ...p, [rule.id]: { ...p[rule.id], tech_comp_value: e.target.value as any } }))} />
+                    ) : (
+                      <span style={{ fontWeight: 600 }}>
+                        {(editing?.tech_comp_mode ?? rule.tech_comp_mode) === 'percentage'
+                          ? `${Number(rule.tech_comp_value).toFixed(0)}%`
+                          : `$${Number(rule.tech_comp_value).toFixed(0)}`}
+                      </span>
+                    )}
                   </td>
                   <td style={td}>
                     {editing ? (
@@ -552,7 +669,8 @@ export function AddonsTab() {
                           onClick={() => {
                             patchFeeRule.mutate({ id: rule.id, updates: {
                               charge_percent: editing.charge_percent ?? rule.charge_percent,
-                              tech_split_percent: editing.tech_split_percent ?? rule.tech_split_percent,
+                              tech_comp_mode: editing.tech_comp_mode ?? rule.tech_comp_mode,
+                              tech_comp_value: editing.tech_comp_value ?? rule.tech_comp_value,
                               window_hours: editing.window_hours ?? rule.window_hours,
                             }});
                             setEditFeeRule(p => { const n = { ...p }; delete n[rule.id]; return n; });

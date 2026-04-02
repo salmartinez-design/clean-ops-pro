@@ -308,7 +308,7 @@ async function patchAddon(req: any, res: any) {
       name, addon_type, scope_ids, price_type, price_value,
       time_add_minutes, time_unit, is_itemized, is_taxed,
       show_office, show_online, show_portal, is_active, sort_order,
-      description, icon,
+      description, icon, duration_minutes,
     } = req.body;
 
     // Build typed updates object — Drizzle accepts partial column sets
@@ -328,6 +328,7 @@ async function patchAddon(req: any, res: any) {
     if (sort_order !== undefined)       updates.sort_order = sort_order;
     if (description !== undefined)      updates.description = description;
     if (icon !== undefined)             updates.icon = icon;
+    if (duration_minutes !== undefined) updates.duration_minutes = Number(duration_minutes);
     if (scope_ids !== undefined) {
       const arr = Array.isArray(scope_ids) ? scope_ids : [];
       updates.scope_ids = JSON.stringify(arr);
@@ -684,13 +685,14 @@ router.patch("/fee-rules/:id", requireAuth, requireRole("owner", "admin"), async
   try {
     const companyId = req.auth!.companyId;
     const id = parseInt(req.params.id);
-    const { charge_percent, tech_split_percent, is_active, window_hours } = req.body;
+    const { charge_percent, tech_comp_mode, tech_comp_value, is_active, window_hours } = req.body;
     await db.execute(sql`
       UPDATE pricing_fee_rules
-         SET charge_percent      = COALESCE(${charge_percent ?? null}, charge_percent),
-             tech_split_percent  = COALESCE(${tech_split_percent ?? null}, tech_split_percent),
-             is_active           = COALESCE(${is_active ?? null}, is_active),
-             window_hours        = COALESCE(${window_hours ?? null}, window_hours)
+         SET charge_percent  = COALESCE(${charge_percent ?? null}, charge_percent),
+             tech_comp_mode  = COALESCE(${tech_comp_mode ?? null}, tech_comp_mode),
+             tech_comp_value = COALESCE(${tech_comp_value != null ? String(tech_comp_value) : null}, tech_comp_value),
+             is_active       = COALESCE(${is_active ?? null}, is_active),
+             window_hours    = COALESCE(${window_hours ?? null}, window_hours)
        WHERE id = ${id} AND company_id = ${companyId}
     `);
     const updated = await db.execute(sql`SELECT * FROM pricing_fee_rules WHERE id = ${id} AND company_id = ${companyId}`);

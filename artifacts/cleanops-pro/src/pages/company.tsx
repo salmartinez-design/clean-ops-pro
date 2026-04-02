@@ -713,19 +713,35 @@ function PayrollOptionsTab() {
   const updateCompany = useUpdateMyCompany({ request: { headers: getAuthHeaders() } });
   const { toast } = useToast();
   const [mileageRate, setMileageRate] = useState('');
+  const [resTechPayPct, setResTechPayPct] = useState('35');
+  const [commercialHourlyRate, setCommercialHourlyRate] = useState('20');
+  const [commercialCompMode, setCommercialCompMode] = useState('allowed_hours');
   const [saving, setSaving] = useState(false);
+  const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 
   useEffect(() => {
-    if (company?.data?.mileage_rate != null) {
-      setMileageRate(String(company.data.mileage_rate));
-    }
-  }, [company?.data?.mileage_rate]);
+    if (company?.data?.mileage_rate != null) setMileageRate(String(company.data.mileage_rate));
+    const c = company?.data as any;
+    if (c?.res_tech_pay_pct != null) setResTechPayPct(String(Math.round(parseFloat(c.res_tech_pay_pct) * 100)));
+    if (c?.commercial_hourly_rate != null) setCommercialHourlyRate(String(c.commercial_hourly_rate));
+    if (c?.commercial_comp_mode != null) setCommercialCompMode(c.commercial_comp_mode);
+  }, [company?.data]);
 
   const handleSave = async () => {
-    if (!mileageRate) return;
     setSaving(true);
     try {
-      await updateCompany.mutateAsync({ body: { mileage_rate: mileageRate } as any });
+      await Promise.all([
+        updateCompany.mutateAsync({ body: { mileage_rate: mileageRate } as any }),
+        fetch(`${BASE}/api/companies/me`, {
+          method: 'PATCH',
+          headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            res_tech_pay_pct: parseFloat(resTechPayPct) / 100,
+            commercial_hourly_rate: parseFloat(commercialHourlyRate),
+            commercial_comp_mode: commercialCompMode,
+          }),
+        }),
+      ]);
       toast({ title: 'Payroll settings saved' });
     } catch {
       toast({ title: 'Failed to save', variant: 'destructive' });
@@ -734,35 +750,92 @@ function PayrollOptionsTab() {
     }
   };
 
-  const fieldLabel = { fontSize: 11, fontWeight: 700, color: '#9E9B94', textTransform: 'uppercase' as const, letterSpacing: '0.06em', display: 'block', marginBottom: 5, fontFamily: "'Plus Jakarta Sans', sans-serif" };
-  const fieldInput = { padding: '9px 12px', border: '1px solid #E5E2DC', borderRadius: 8, fontSize: 13, fontFamily: "'Plus Jakarta Sans', sans-serif", background: '#fff', color: '#1A1917', width: 160 };
+  const FF2 = "'Plus Jakarta Sans', sans-serif";
+  const fieldLabel = { fontSize: 11, fontWeight: 700, color: '#9E9B94', textTransform: 'uppercase' as const, letterSpacing: '0.06em', display: 'block', marginBottom: 5, fontFamily: FF2 };
+  const fieldInput: React.CSSProperties = { padding: '9px 12px', border: '1px solid #E5E2DC', borderRadius: 8, fontSize: 13, fontFamily: FF2, background: '#fff', color: '#1A1917', width: 160, outline: 'none' };
+  const sectionCard: React.CSSProperties = { background: '#fff', border: '1px solid #E5E2DC', borderRadius: 10, padding: '20px 24px' };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 28, maxWidth: 600 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 640 }}>
       <div>
-        <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A1917', margin: '0 0 4px', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Payroll Options</h3>
-        <p style={{ fontSize: 13, color: '#6B7280', margin: 0, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Configure pay cadence and reimbursement settings.</p>
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A1917', margin: '0 0 4px', fontFamily: FF2 }}>Payroll Options</h3>
+        <p style={{ fontSize: 13, color: '#6B7280', margin: 0, fontFamily: FF2 }}>Configure pay cadence, reimbursement, and technician compensation.</p>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <label style={fieldLabel}>Mileage Reimbursement Rate (per mile)</label>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#1A1917' }}>$</span>
-          <input
-            type="number"
-            step="0.001"
-            min="0"
-            value={mileageRate}
-            onChange={e => setMileageRate(e.target.value)}
-            style={fieldInput}
-            placeholder="0.700"
-          />
+
+      <div style={sectionCard}>
+        <p style={{ fontSize: 14, fontWeight: 700, color: '#1A1917', margin: '0 0 16px', fontFamily: FF2 }}>Residential Tech Commission</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <label style={fieldLabel}>Commission % of Job Total (per tech)</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <input
+              type="number" step="1" min="1" max="100" value={resTechPayPct}
+              onChange={e => setResTechPayPct(e.target.value)} style={fieldInput} placeholder="35"
+            />
+            <span style={{ fontSize: 13, color: '#6B7280', fontFamily: FF2 }}>%</span>
+          </div>
+          <p style={{ fontSize: 12, color: '#9E9B94', margin: 0, fontFamily: FF2 }}>Formula: Job Total × pct ÷ number of techs on job. Default 35%.</p>
         </div>
-        <p style={{ fontSize: 12, color: '#9E9B94', margin: 0 }}>Updated annually to match the IRS standard mileage rate.</p>
       </div>
+
+      <div style={sectionCard}>
+        <p style={{ fontSize: 14, fontWeight: 700, color: '#1A1917', margin: '0 0 16px', fontFamily: FF2 }}>Commercial Tech Compensation</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <label style={fieldLabel}>Hourly Rate for Commercial Jobs</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#1A1917' }}>$</span>
+              <input
+                type="number" step="0.25" min="0" value={commercialHourlyRate}
+                onChange={e => setCommercialHourlyRate(e.target.value)} style={fieldInput} placeholder="20.00"
+              />
+              <span style={{ fontSize: 13, color: '#6B7280', fontFamily: FF2 }}>/hr</span>
+            </div>
+          </div>
+          <div>
+            <label style={fieldLabel}>Default Hours Used for Pay Calculation</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[
+                { value: 'allowed_hours', label: 'Allowed Hours', desc: 'Scheduled / estimated hours' },
+                { value: 'worked_hours', label: 'Worked Hours', desc: 'Actual clocked time' },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setCommercialCompMode(opt.value)}
+                  style={{
+                    flex: 1, padding: '12px 14px', borderRadius: 8, cursor: 'pointer', textAlign: 'left' as const,
+                    border: `2px solid ${commercialCompMode === opt.value ? 'var(--brand, #5B9BD5)' : '#E5E2DC'}`,
+                    background: commercialCompMode === opt.value ? 'rgba(91,155,213,0.07)' : '#fff',
+                    fontFamily: FF2,
+                  }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1917', margin: '0 0 2px' }}>{opt.label}</p>
+                  <p style={{ fontSize: 11, color: '#9E9B94', margin: 0 }}>{opt.desc}</p>
+                </button>
+              ))}
+            </div>
+            <p style={{ fontSize: 12, color: '#9E9B94', margin: '6px 0 0', fontFamily: FF2 }}>Formula: rate × hours. Can be overridden per job.</p>
+          </div>
+        </div>
+      </div>
+
+      <div style={sectionCard}>
+        <p style={{ fontSize: 14, fontWeight: 700, color: '#1A1917', margin: '0 0 16px', fontFamily: FF2 }}>Mileage Reimbursement</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <label style={fieldLabel}>Rate per mile</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: '#1A1917' }}>$</span>
+            <input
+              type="number" step="0.001" min="0" value={mileageRate}
+              onChange={e => setMileageRate(e.target.value)} style={fieldInput} placeholder="0.700"
+            />
+          </div>
+          <p style={{ fontSize: 12, color: '#9E9B94', margin: 0, fontFamily: FF2 }}>Updated annually to match the IRS standard mileage rate.</p>
+        </div>
+      </div>
+
       <button
         onClick={handleSave}
         disabled={saving}
-        style={{ padding: '9px 20px', background: 'var(--brand, #00C9A0)', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, fontFamily: "'Plus Jakarta Sans', sans-serif", cursor: 'pointer', alignSelf: 'flex-start' }}
+        style={{ padding: '9px 20px', background: 'var(--brand, #00C9A0)', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, fontFamily: FF2, cursor: 'pointer', alignSelf: 'flex-start' }}
       >
         {saving ? 'Saving...' : 'Save Payroll Settings'}
       </button>
@@ -806,6 +879,7 @@ function SmsSmsSettingsCard() {
     sms_paused_enabled: false, sms_complete_enabled: false,
   });
   const [twilioFrom, setTwilioFrom] = useState("");
+  const [arrivalAlertWindow, setArrivalAlertWindow] = useState("45");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -822,6 +896,7 @@ function SmsSmsSettingsCard() {
           sms_complete_enabled:  !!c.sms_complete_enabled,
         });
         setTwilioFrom(c.twilio_from_number ?? "");
+        setArrivalAlertWindow(String(c.arrival_alert_window_minutes ?? 45));
       })
       .finally(() => setLoading(false));
   }, []);
@@ -832,7 +907,7 @@ function SmsSmsSettingsCard() {
       const r = await fetch(`${API}/api/companies/me`, {
         method: "PATCH",
         headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ ...settings, twilio_from_number: twilioFrom || null }),
+        body: JSON.stringify({ ...settings, twilio_from_number: twilioFrom || null, arrival_alert_window_minutes: parseInt(arrivalAlertWindow) || 45 }),
       });
       if (!r.ok) throw new Error();
       toast({ title: "SMS settings saved" });
@@ -871,6 +946,21 @@ function SmsSmsSettingsCard() {
             </button>
           </div>
         ))}
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: '#9E9B94', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Arrival Alert Window</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <input
+            type="number"
+            min="5"
+            max="120"
+            value={arrivalAlertWindow}
+            onChange={e => setArrivalAlertWindow(e.target.value)}
+            style={{ width: 80, padding: '9px 12px', border: '1px solid #E5E2DC', borderRadius: 8, fontSize: 13, fontFamily: FF, outline: 'none' }}
+          />
+          <span style={{ fontSize: 13, color: '#6B6860', fontFamily: FF }}>minutes before arrival — client receives "on my way" SMS</span>
+        </div>
+        <p style={{ fontSize: 11, color: '#9E9B94', margin: '5px 0 0' }}>Used as the <span style={{ fontFamily: 'monospace' }}>&#123;&#123;arrival_alert_window&#125;&#125;</span> placeholder in SMS templates.</p>
       </div>
       <div style={{ marginBottom: 16 }}>
         <p style={{ fontSize: 11, fontWeight: 700, color: '#9E9B94', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Twilio From Number</p>

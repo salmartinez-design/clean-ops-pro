@@ -132,6 +132,16 @@ router.patch("/me", requireAuth, async (req, res) => {
     const { dispatch_start_hour, dispatch_end_hour } = req.body;
     if (dispatch_start_hour !== undefined) patch.dispatch_start_hour = Number(dispatch_start_hour);
     if (dispatch_end_hour !== undefined) patch.dispatch_end_hour = Number(dispatch_end_hour);
+    const { arrival_alert_window_minutes } = req.body;
+    if (arrival_alert_window_minutes !== undefined) patch.arrival_alert_window_minutes = Number(arrival_alert_window_minutes);
+    const { res_tech_pay_pct, commercial_hourly_rate, commercial_comp_mode } = req.body;
+    if (res_tech_pay_pct !== undefined) patch.res_tech_pay_pct = String(res_tech_pay_pct);
+    if (commercial_hourly_rate !== undefined) patch.commercial_hourly_rate = String(commercial_hourly_rate);
+    if (commercial_comp_mode !== undefined) patch.commercial_comp_mode = commercial_comp_mode;
+    const { addon_time_method, addon_minimum_minutes, addon_pct_of_base } = req.body;
+    if (addon_time_method !== undefined) patch.addon_time_method = addon_time_method;
+    if (addon_minimum_minutes !== undefined) patch.addon_minimum_minutes = Number(addon_minimum_minutes);
+    if (addon_pct_of_base !== undefined) patch.addon_pct_of_base = String(addon_pct_of_base);
 
     if (Object.keys(patch).length === 0) return res.json({ success: true });
 

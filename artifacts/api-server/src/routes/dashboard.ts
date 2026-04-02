@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, clientsTable, usersTable, invoicesTable, timeclockTable, scorecardsTable, accountsTable, accountPropertiesTable, quotesTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, lt, isNull, count, sum, avg, desc, sql, isNotNull } from "drizzle-orm";
+import { eq, and, gte, lte, lt, isNull, count, sum, avg, desc, sql, isNotNull, ne } from "drizzle-orm";
 import { requireAuth } from "../lib/auth.js";
 
 const router = Router();
@@ -95,7 +95,10 @@ router.get("/metrics", requireAuth, async (req, res) => {
       ))
       .where(and(
         eq(usersTable.company_id, req.auth!.companyId),
-        eq(usersTable.is_active, true)
+        eq(usersTable.is_active, true),
+        eq(usersTable.role, "technician"),
+        ne(usersTable.first_name, "Francisco"),
+        ne(usersTable.first_name, "Maribel")
       ))
       .groupBy(usersTable.id)
       .orderBy(desc(count(jobsTable.id)))

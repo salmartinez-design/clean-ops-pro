@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { usersTable, timeclockTable, additionalPayTable, jobsTable } from "@workspace/db/schema";
+import { usersTable, timeclockTable, additionalPayTable, jobsTable, clientsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, sum, count, sql, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
 
@@ -140,6 +140,142 @@ router.get("/summary", requireAuth, requireRole("owner", "admin", "office"), asy
   } catch (err) {
     console.error("Payroll summary error:", err);
     return res.status(500).json({ error: "Internal Server Error", message: "Failed to get payroll summary" });
+  }
+});
+
+// ── Payroll Detail (per-job breakdown) ────────────────────────────────────────
+
+router.get("/detail", requireAuth, async (req, res) => {
+  try {
+    const { pay_period_start, pay_period_end, user_id } = req.query;
+    if (!pay_period_start || !pay_period_end) {
+      return res.status(400).json({ error: "pay_period_start and pay_period_end are required" });
+    }
+
+    const role = (req as any).auth!.role;
+    const myUserId = (req as any).auth!.userId;
+    const companyId = (req as any).auth!.companyId;
+
+    // Techs can only see their own data
+    const filterUserId = role === "technician" ? myUserId : (user_id ? parseInt(user_id as string) : null);
+
+    // Get company payroll settings (using raw SQL since columns added via ALTER TABLE)
+    const compRows = await db.execute(sql`SELECT res_tech_pay_pct, commercial_hourly_rate, commercial_comp_mode FROM companies WHERE id = ${companyId} LIMIT 1`);
+    const compSettings = (compRows.rows[0] as any) || { res_tech_pay_pct: 0.35, commercial_hourly_rate: 20.00, commercial_comp_mode: "allowed_hours" };
+    const resPct = parseFloat(String(compSettings.res_tech_pay_pct ?? 0.35));
+
+    // Get all techs (to calculate num_techs_on_job approximation)
+    const jobConditions: any[] = [
+      eq(jobsTable.company_id, companyId),
+      eq(jobsTable.status, "complete"),
+      gte(jobsTable.scheduled_date, pay_period_start as string),
+      lte(jobsTable.scheduled_date, pay_period_end as string),
+    ];
+    if (filterUserId) jobConditions.push(eq(jobsTable.assigned_user_id, filterUserId));
+
+    const jobs = await db
+      .select({
+        id: jobsTable.id,
+        scheduled_date: jobsTable.scheduled_date,
+        service_type: jobsTable.service_type,
+        base_fee: jobsTable.base_fee,
+        billed_amount: jobsTable.billed_amount,
+        allowed_hours: jobsTable.allowed_hours,
+        actual_hours: jobsTable.actual_hours,
+        assigned_user_id: jobsTable.assigned_user_id,
+        client_first: clientsTable.first_name,
+        client_last: clientsTable.last_name,
+      })
+      .from(jobsTable)
+      .leftJoin(clientsTable, eq(jobsTable.client_id, clientsTable.id))
+      .where(and(...jobConditions))
+      .orderBy(jobsTable.scheduled_date);
+
+    // Get additional pay for the period (tips, mileage — period level, not per job)
+    const addlPayConditions: any[] = [
+      eq(additionalPayTable.company_id, companyId),
+      gte(additionalPayTable.created_at, new Date(pay_period_start as string)),
+      lte(additionalPayTable.created_at, new Date(pay_period_end as string)),
+    ];
+    if (filterUserId) addlPayConditions.push(eq(additionalPayTable.user_id, filterUserId));
+
+    const addlPay = await db
+      .select({ user_id: additionalPayTable.user_id, type: additionalPayTable.type, amount: additionalPayTable.amount, notes: additionalPayTable.notes })
+      .from(additionalPayTable)
+      .where(and(...addlPayConditions));
+
+    // Group jobs by user
+    const byUser = new Map<number, typeof jobs>();
+    for (const job of jobs) {
+      const uid = job.assigned_user_id ?? 0;
+      if (!byUser.has(uid)) byUser.set(uid, []);
+      byUser.get(uid)!.push(job);
+    }
+
+    // Get all relevant users
+    const userIds = [...new Set(jobs.map(j => j.assigned_user_id).filter(Boolean))];
+    const allUsers = userIds.length
+      ? await db.select({ id: usersTable.id, first_name: usersTable.first_name, last_name: usersTable.last_name }).from(usersTable).where(inArray(usersTable.id, userIds as number[]))
+      : [];
+
+    const userMap = new Map(allUsers.map(u => [u.id, u]));
+
+    const result = [];
+    for (const [uid, userJobs] of byUser) {
+      const user = userMap.get(uid) || { first_name: "Unknown", last_name: "" };
+      const userAddlPay = addlPay.filter(p => p.user_id === uid);
+
+      const jobRows = userJobs.map(job => {
+        const jobTotal = parseFloat(String(job.billed_amount || job.base_fee || 0));
+        const commission = Math.round(jobTotal * resPct * 100) / 100;
+        const allowedHrs = parseFloat(String(job.allowed_hours || 0));
+        const workedHrs = parseFloat(String(job.actual_hours || 0));
+        const effectiveRate = workedHrs > 0 ? Math.round((commission / workedHrs) * 100) / 100 : null;
+        return {
+          job_id: job.id,
+          date: job.scheduled_date,
+          client: `${job.client_first || ""} ${job.client_last || ""}`.trim(),
+          scope: job.service_type,
+          job_total: jobTotal,
+          commission,
+          hrs_scheduled: allowedHrs,
+          hrs_worked: workedHrs,
+          effective_rate: effectiveRate,
+        };
+      });
+
+      // Additional pay by type
+      const addlByType: Record<string, number> = {};
+      for (const p of userAddlPay) {
+        addlByType[p.type] = (addlByType[p.type] || 0) + parseFloat(String(p.amount || 0));
+      }
+
+      const totalCommission = jobRows.reduce((s, j) => s + j.commission, 0);
+      const totalJobTotal = jobRows.reduce((s, j) => s + j.job_total, 0);
+      const totalHrsScheduled = jobRows.reduce((s, j) => s + j.hrs_scheduled, 0);
+      const totalHrsWorked = jobRows.reduce((s, j) => s + j.hrs_worked, 0);
+      const grandTotal = totalCommission + Object.values(addlByType).reduce((s, v) => s + v, 0);
+
+      result.push({
+        user_id: uid,
+        name: `${user.first_name} ${user.last_name}`.trim(),
+        jobs: jobRows,
+        additional_pay: addlByType,
+        totals: {
+          job_count: jobRows.length,
+          job_total: Math.round(totalJobTotal * 100) / 100,
+          commission: Math.round(totalCommission * 100) / 100,
+          hrs_scheduled: Math.round(totalHrsScheduled * 100) / 100,
+          hrs_worked: Math.round(totalHrsWorked * 100) / 100,
+          grand_total: Math.round(grandTotal * 100) / 100,
+        },
+      });
+    }
+
+    return res.json({ data: result, res_tech_pay_pct: resPct });
+  } catch (err) {
+    console.error("Payroll detail error:", err);
+    return res.status(500).json({ error: "Internal Server Error", message: "Failed to get payroll detail" });
   }
 });
 
