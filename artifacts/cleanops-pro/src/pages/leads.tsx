@@ -216,11 +216,18 @@ function AddLeadDrawer({ onClose, onSaved }: { onClose: () => void; onSaved: () 
             <div>
               <label style={lbl}>Source</label>
               <select value={form.source} onChange={e => set("source", e.target.value)} style={selectStyle}>
-                <option value="manual">Manual</option>
+                <option value="google_local_services">Google Local Services</option>
+                <option value="google_search">Google Search</option>
+                <option value="facebook">Facebook</option>
+                <option value="referral">Referral</option>
+                <option value="realtor">Realtor</option>
+                <option value="online_booking">Online Booking</option>
                 <option value="booking_widget">Booking Widget</option>
-                <option value="very_dirty">Very Dirty</option>
                 <option value="contact_form">Contact Form</option>
                 <option value="quote_request">Quote Request</option>
+                <option value="very_dirty">Very Dirty</option>
+                <option value="very_dirty_callback">Very Dirty Callback</option>
+                <option value="manual">Manual</option>
               </select>
             </div>
             <div>
