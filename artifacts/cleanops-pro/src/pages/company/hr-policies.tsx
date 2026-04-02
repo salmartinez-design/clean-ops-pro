@@ -241,7 +241,7 @@ function HolidayEditor({ holidays, onChange }: { holidays: Holiday[]; onChange: 
 
 export function HRPoliciesTab() {
   const role = getTokenRole();
-  const isOwner = role === "owner";
+  const isOwner = role === "owner" || role === "super_admin";
   const { toast } = useToast();
 
   const [payPolicy, setPayPolicy] = useState<any>(null);
