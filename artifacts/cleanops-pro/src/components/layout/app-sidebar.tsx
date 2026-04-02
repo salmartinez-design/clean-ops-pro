@@ -121,7 +121,7 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
     }}>
       {/* Platform logo — identifies the software */}
       <div style={{ padding: '0 20px', height: 60, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <QlenoLogo size="sm" />
+        <QlenoLogo size="md" />
         {mobile && (
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9E9B94', padding: 4, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
             <X size={18} />
@@ -151,7 +151,6 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
                 {companyName ?? '—'}
               </p>
             )}
-            <p style={{ fontSize: 10, color: '#9E9B94', margin: '1px 0 0', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Tenant</p>
           </div>
         </div>
       </div>

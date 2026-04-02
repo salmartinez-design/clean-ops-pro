@@ -351,7 +351,7 @@ export function AddonsTab() {
     setter(current.includes(id) ? current.filter(x => x !== id) : [...current, id]);
   }
 
-  const HIDDEN_NAME_PATTERNS = ['Loyalty Discount', 'Promo Discount', 'Second Appointment', 'Commercial Adjustment', 'Parking Fee'];
+  const HIDDEN_NAME_PATTERNS = ['Loyalty Discount', 'Promo Discount', 'Second Appointment', 'Commercial Adjustment', 'Parking Fee', '__TEST_', '__V1'];
   const visibleAddons = addons.filter(a =>
     a.price_type !== 'time_only' &&
     a.price_type !== 'manual_adj' &&

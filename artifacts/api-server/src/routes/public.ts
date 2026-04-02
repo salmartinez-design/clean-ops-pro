@@ -842,16 +842,16 @@ router.post("/book/confirm", rateLimit, async (req, res) => {
 <p style="color:#1A1917;font-size:15px;margin:0 0 20px;">Your cleaning appointment has been confirmed. Here's a summary:</p>
 <table style="width:100%;border-collapse:collapse;font-size:14px;color:#1A1917;">
   <tr><td style="padding:8px 0;color:#6B6860;width:160px;">Service</td><td style="padding:8px 0;font-weight:600;">${scopeName}${upsellAcceptedVal ? " + Recurring" : ""}</td></tr>
-  <tr><td style="padding:8px 0;color:#6B6860;">Deep Clean Date</td><td style="padding:8px 0;font-weight:600;">${dateStr}</td></tr>
+  <tr><td style="padding:8px 0;color:#6B6860;">Date</td><td style="padding:8px 0;font-weight:600;">${dateStr}</td></tr>
   ${arrivalWindowLabel ? `<tr><td style="padding:8px 0;color:#6B6860;">Arrival Window</td><td style="padding:8px 0;">${arrivalWindowLabel}</td></tr>` : ""}
-  ${upsellAcceptedVal && recurDateStr ? `<tr><td style="padding:8px 0;color:#6B6860;">First Recurring</td><td style="padding:8px 0;font-weight:600;">${recurDateStr}</td></tr>` : ""}
+  ${upsellAcceptedVal && recurDateStr ? `<tr><td style="padding:8px 0;color:#6B6860;">First Recurring Date</td><td style="padding:8px 0;font-weight:600;">${recurDateStr}</td></tr>` : ""}
   ${upsellAcceptedVal && recurDateStr && recurLockedRate ? `<tr><td style="padding:8px 0;color:#6B6860;vertical-align:top;">Rate Lock</td><td style="padding:8px 0;">$${recurLockedRate}/visit every ${recurCadenceLabel} — locked for 24 months</td></tr>` : ""}
   ${!upsellAcceptedVal ? `<tr><td style="padding:8px 0;color:#6B6860;">Frequency</td><td style="padding:8px 0;">${freqStr}</td></tr>` : ""}
   <tr><td style="padding:8px 0;color:#6B6860;">Address</td><td style="padding:8px 0;">${address || "On file"}</td></tr>
-  <tr><td style="padding:8px 0;color:#6B6860;">Estimated Total</td><td style="padding:8px 0;font-weight:600;">$${adjustedTotal.toFixed(2)}</td></tr>
+  <tr><td style="padding:8px 0;color:#6B6860;">First Visit Total</td><td style="padding:8px 0;font-weight:600;">$${adjustedTotal.toFixed(2)}</td></tr>
   <tr><td style="padding:8px 0;color:#6B6860;">Payment</td><td style="padding:8px 0;">${cardStr}</td></tr>
 </table>
-${upsellAcceptedVal && recurDateStr ? `<p style="background:#F0F7FF;border-left:3px solid #5B9BD5;padding:10px 14px;font-size:13px;color:#1A1917;margin:20px 0 0;">Your Deep Clean is scheduled for <strong>${dateStr}</strong>. Your first recurring cleaning is scheduled for <strong>${recurDateStr}</strong>, then every ${recurCadenceLabel} from there — your rate is locked at $${recurLockedRate}/visit for 24 months.</p>` : ""}
+${upsellAcceptedVal && recurDateStr ? `<p style="background:#F0F7FF;border-left:3px solid #5B9BD5;padding:10px 14px;font-size:13px;color:#1A1917;margin:20px 0 0;">Your first visit is scheduled for <strong>${dateStr}</strong>. Your first recurring cleaning is scheduled for <strong>${recurDateStr}</strong>, then every ${recurCadenceLabel} from there — your rate is locked at $${recurLockedRate}/visit for 24 months.</p>` : ""}
 <p style="color:#6B6860;font-size:13px;margin:24px 0 0;">Questions? Call us at (773) 706-6000 or reply to this email. We look forward to seeing you!</p>
 </div></div>`,
         });
@@ -872,11 +872,11 @@ ${upsellAcceptedVal && recurDateStr ? `<p style="background:#F0F7FF;border-left:
   <tr><td style="padding:8px 0;color:#6B6860;">Email</td><td style="padding:8px 0;">${email}</td></tr>
   <tr><td style="padding:8px 0;color:#6B6860;">Address</td><td style="padding:8px 0;">${address || "Not provided"}</td></tr>
   <tr><td style="padding:8px 0;color:#6B6860;">Service</td><td style="padding:8px 0;">${scopeName}${upsellAcceptedVal ? " + Recurring (upsell)" : ""} — ${sqft} sqft</td></tr>
-  <tr><td style="padding:8px 0;color:#6B6860;">Deep Clean Date</td><td style="padding:8px 0;font-weight:600;">${dateStr}</td></tr>
+  <tr><td style="padding:8px 0;color:#6B6860;">Date</td><td style="padding:8px 0;font-weight:600;">${dateStr}</td></tr>
   ${arrivalWindowLabel ? `<tr><td style="padding:8px 0;color:#6B6860;">Arrival Window</td><td style="padding:8px 0;">${arrivalWindowLabel}</td></tr>` : ""}
   ${recurDateStr ? `<tr><td style="padding:8px 0;color:#6B6860;">First Recurring</td><td style="padding:8px 0;font-weight:600;">${recurDateStr}</td></tr>` : ""}
   ${recurLockedRate ? `<tr><td style="padding:8px 0;color:#6B6860;">Locked Rate</td><td style="padding:8px 0;">$${recurLockedRate}/visit every ${recurCadenceLabel} for 24 months</td></tr>` : ""}
-  <tr><td style="padding:8px 0;color:#6B6860;">Deep Clean Total</td><td style="padding:8px 0;font-weight:600;">$${adjustedTotal.toFixed(2)}</td></tr>
+  <tr><td style="padding:8px 0;color:#6B6860;">First Visit Total</td><td style="padding:8px 0;font-weight:600;">$${adjustedTotal.toFixed(2)}</td></tr>
   <tr><td style="padding:8px 0;color:#6B6860;">Payment</td><td style="padding:8px 0;">${cardStr}</td></tr>
   <tr><td style="padding:8px 0;color:#6B6860;">Client ID</td><td style="padding:8px 0;">#${clientId}</td></tr>
   <tr><td style="padding:8px 0;color:#6B6860;">Job #1 (Deep Clean)</td><td style="padding:8px 0;">#${jobId} — UNASSIGNED</td></tr>

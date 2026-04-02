@@ -364,6 +364,7 @@ export default function BookPage() {
 
   // Move In/Out acknowledgments
   const [moveInAck, setMoveInAck] = useState(false);
+  const [standardDismissed, setStandardDismissed] = useState(false);
   const [moveInNotes, setMoveInNotes] = useState("");
 
   // Offer settings (loaded from API, never hardcoded)
@@ -852,7 +853,7 @@ export default function BookPage() {
   function selectScope(newScopeId: number, key: string) {
     setScopeId(newScopeId);
     setDisplayScopeKey(key);
-    setMoveInAck(false); setMoveInNotes("");
+    setMoveInAck(false); setMoveInNotes(""); setStandardDismissed(false);
     setUpsellCadence(""); setUpsellAccepted(false); setUpsellDeclined(false);
     setUpsellTermsOpen(false); setUpsellCadenceError(false);
     setLastCleanedResponse(""); setLastCleanedOverride(false); setOverageAcknowledged(false);
@@ -925,23 +926,26 @@ export default function BookPage() {
   const getOverageRate = (freq: string) => freq === "weekly" ? 60 : freq === "biweekly" ? 65 : 70;
 
   // Upsell state machine — mutually exclusive, explicit
-  const showVeryDirtyCard   = isDeepCleanScope && cleanliness === 3;
-  const showUpsellOffer     = isDeepCleanScope && cleanliness > 0 && cleanliness !== 3 && !upsellAccepted && !upsellDeclined;
-  const showUpsellConfirmed = isDeepCleanScope && upsellAccepted === true;
-  const showSoftNudge       = isDeepCleanScope && upsellDeclined === true && cleanliness !== 3;
+  const showVeryDirtyCard   = (isDeepCleanScope || (isOneTimeStandard && standardDismissed)) && cleanliness === 3;
+  const showStandardAdvisory = isOneTimeStandard && !standardDismissed && !!scopeId;
+  const showUpsellOffer     = !upsellAccepted && !upsellDeclined && (
+    (isDeepCleanScope && cleanliness > 0 && cleanliness !== 3) ||
+    (isOneTimeStandard && standardDismissed && cleanliness > 0 && cleanliness !== 3) ||
+    (isMoveInOut && !!scopeId)
+  );
+  const showUpsellConfirmed = (isDeepCleanScope || isOneTimeStandard || isMoveInOut) && upsellAccepted === true;
+  const showSoftNudge       = (isDeepCleanScope || isOneTimeStandard || isMoveInOut) && upsellDeclined === true && cleanliness !== 3;
+  const upsellContext       = isMoveInOut ? "move_in_out" : isOneTimeStandard ? "standard" : "deep_clean";
   const cleanlinessLabel: Record<number, string> = { 1: "Very Clean", 2: "Moderately Clean", 3: "Very Dirty" };
 
   // Synchronous upsell price — instant, zero network dependency
   const upsellPriceResult = calculateUpsellPrice(sqft, upsellCadence, offerSettings?.upsell_discount_percent ?? 15);
 
-  // Compute the minimum allowed recurring date (Deep Clean date + one cadence interval)
-  // Keys match upsellCadence values: weekly / biweekly / monthly
-  const cadenceIntervalDays: Record<string, number> = { weekly: 7, biweekly: 14, monthly: 28 };
+  // Minimum recurring start date = scope date + 7 days (applies to all cadences equally per spec)
   const recurringMinDateStr = (() => {
-    if (!selectedDate || !upsellCadence) return "";
-    const days = cadenceIntervalDays[upsellCadence] ?? 14;
+    if (!selectedDate) return "";
     const d = new Date(selectedDate + "T12:00:00");
-    d.setDate(d.getDate() + days);
+    d.setDate(d.getDate() + 7);
     return d.toISOString().split("T")[0];
   })();
 
@@ -1128,13 +1132,12 @@ export default function BookPage() {
   // ── Shared price breakdown content (used in sidebar + mobile) ────────────
   const priceBreakdownRows = calcResult ? (
     <>
-      {/* FIX 3: scope name truncates; sqft always visible on its own line below */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8, width: "100%" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <span style={{ fontSize: 13, color: "#6B6860", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
+          <span style={{ fontSize: 13, color: "#6B6860", display: "block", lineHeight: 1.4 }}>
             {upsellAccepted ? "Deep Clean (First Visit)" : calcResult.scope_name}
+            {sqft > 0 && <span style={{ color: "#9E9B94" }}>{" · "}{sqft.toLocaleString()} sqft</span>}
           </span>
-          {sqft > 0 && <span style={{ fontSize: 11, color: "#9E9B94", display: "block", marginTop: 1 }}>{sqft.toLocaleString()} sqft</span>}
         </div>
         <span style={{ flexShrink: 0, fontSize: 13, color: "#1A1917", whiteSpace: "nowrap", paddingLeft: 4 }}>${calcResult.base_price.toFixed(2)}</span>
       </div>
@@ -1252,8 +1255,14 @@ export default function BookPage() {
           </div>
         </div>
 
-        {/* Section 2 — Price Summary (Steps 1+, when pricing available) */}
-        {step >= 1 && calcResult && (
+        {/* Section 2 — Price Summary */}
+        {step >= 1 && (
+          step === 2 ? (
+            <div style={s.card}>
+              <p style={sectionLabel}>Price Summary</p>
+              <p style={{ margin: 0, fontSize: 13, color: "#9E9B94", lineHeight: 1.5 }}>Your price will appear after you select any add-ons.</p>
+            </div>
+          ) : calcResult ? (
           <div style={s.card}>
             <p style={sectionLabel}>Price Summary</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1261,10 +1270,12 @@ export default function BookPage() {
             </div>
             {upsellAccepted && upsellPriceResult ? (
               <>
-                <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 12, marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <span style={{ fontSize: 13, color: "#6B6860" }}>First Visit Total</span>
-                  <span style={{ fontSize: 18, fontWeight: 800, color: "#1A1917" }}>${calcResult.final_total.toFixed(2)}</span>
-                </div>
+                {calcResult.addon_breakdown.filter(a => a.amount !== 0).length > 0 && (
+                  <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 12, marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <span style={{ fontSize: 13, color: "#6B6860" }}>First Visit Total</span>
+                    <span style={{ fontSize: 18, fontWeight: 800, color: "#1A1917" }}>${calcResult.final_total.toFixed(2)}</span>
+                  </div>
+                )}
                 <div style={{ marginTop: 10, padding: "10px 12px", background: `${brand}0D`, borderRadius: 8, border: `1px solid ${brand}25`, display: "flex", flexDirection: "column", gap: 6 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontSize: 13, color: "#6B6860" }}>First Recurring Visit (15% off)</span>
@@ -1285,12 +1296,15 @@ export default function BookPage() {
                 </div>
               </>
             ) : (
-              <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 12, marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                <span style={{ fontSize: 13, color: "#6B6860" }}>Total</span>
-                <span style={{ fontSize: 24, fontWeight: 800, color: "#1A1917" }}>${calcResult.final_total.toFixed(2)}</span>
-              </div>
+              calcResult.addon_breakdown.filter(a => a.amount !== 0).length > 0 ? (
+                <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 12, marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                  <span style={{ fontSize: 13, color: "#6B6860" }}>First Visit Total</span>
+                  <span style={{ fontSize: 24, fontWeight: 800, color: "#1A1917" }}>${calcResult.final_total.toFixed(2)}</span>
+                </div>
+              ) : null
             )}
           </div>
+          ) : null
         )}
 
         {/* Section 3 — Office Locations */}
@@ -1732,6 +1746,33 @@ export default function BookPage() {
                 );
               })()}
 
+              {/* ── Standard Clean Advisory (3.9) ── */}
+              {showStandardAdvisory && (
+                <div style={{ marginTop: 16, background: "#FFFFFF", border: "1px solid #E5E2DC", borderLeft: `3px solid ${brand}`, borderRadius: 10, padding: 20 }}>
+                  <p style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 600, color: "#1A1917" }}>Is your home ready for a Standard Clean?</p>
+                  <p style={{ margin: "0 0 20px", fontSize: 14, color: "#6B6860", lineHeight: 1.6 }}>
+                    Standard Cleaning works best for already-maintained homes. If your home needs more attention than expected, our team may need additional time — any extra time is billed at our standard hourly rate. If it has been a while since your last professional clean, we recommend starting with a Deep Clean.
+                  </p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <button
+                      onClick={() => {
+                        const dc = scopes.find(s => s.name?.toLowerCase().trim() === "deep clean");
+                        if (dc) { setScopeId(dc.id); setDisplayScopeKey("deep_clean"); setStandardDismissed(false); }
+                      }}
+                      style={{ padding: "12px 20px", background: brand, color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+                    >
+                      Start with a Deep Clean
+                    </button>
+                    <button
+                      onClick={() => setStandardDismissed(true)}
+                      style={{ padding: "12px 20px", background: "#FFFFFF", color: "#6B6860", border: "1px solid #D1CEC7", borderRadius: 8, fontSize: 14, cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+                    >
+                      Continue with Standard Clean
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* ── Special notes (Deep Clean, Move In/Out, One-Time Standard) ── */}
               {(isMoveInOut || isDeepClean || isOneTimeStandard) && scopeId && (
                 <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 24, marginTop: 8, marginBottom: 8 }}>
@@ -1813,7 +1854,7 @@ export default function BookPage() {
                     </p>
                   )}
 
-                  {showCleanlinessQ && (
+                  {showCleanlinessQ && !showStandardAdvisory && (
                     <div style={{ marginBottom: 16 }}>
                       <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#6B6860", marginBottom: 8 }}>
                         How would you rate the current cleanliness of your home?
@@ -1946,9 +1987,17 @@ export default function BookPage() {
                       {showUpsellOffer && (
                         <>
                           <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 700, color: brand, textTransform: "uppercase", letterSpacing: "0.08em" }}>Limited Offer</p>
-                          <p style={{ margin: "0 0 12px", fontSize: 18, fontWeight: 600, color: "#1A1917", lineHeight: 1.3 }}>Turn today's Deep Clean into a fresh start</p>
+                          <p style={{ margin: "0 0 12px", fontSize: 18, fontWeight: 600, color: "#1A1917", lineHeight: 1.3 }}>
+                            {upsellContext === "move_in_out"
+                              ? "Want to keep your home clean after the move?"
+                              : upsellContext === "standard"
+                              ? "Make this a regular thing and save"
+                              : "Turn today's Deep Clean into a fresh start"}
+                          </p>
                           <p style={{ margin: "0 0 16px", fontSize: 14, color: "#6B6860", lineHeight: 1.6 }}>
-                            Start recurring service today and get {offerSettings?.upsell_discount_percent ?? 15}% off your first recurring cleaning{offerSettings?.rate_lock_enabled !== false ? ` — plus your recurring rate is locked for ${offerSettings?.rate_lock_duration_months ?? 24} months. Your rate will never increase as long as your home stays consistent and your service continues.` : "."}
+                            {upsellContext === "move_in_out"
+                              ? `Start recurring service today and get ${offerSettings?.upsell_discount_percent ?? 15}% off your first cleaning.${offerSettings?.rate_lock_enabled !== false ? ` Your rate is locked for ${offerSettings?.rate_lock_duration_months ?? 24} months.` : ""}`
+                              : `Start recurring service today and get ${offerSettings?.upsell_discount_percent ?? 15}% off your first recurring cleaning${offerSettings?.rate_lock_enabled !== false ? ` — plus your recurring rate is locked for ${offerSettings?.rate_lock_duration_months ?? 24} months. Your rate will never increase as long as your home stays consistent and your service continues.` : "."}`}
                           </p>
 
                           <div style={{ marginBottom: 14 }}>
@@ -2037,7 +2086,11 @@ export default function BookPage() {
                               onClick={() => { setUpsellDeclined(true); setUpsellAccepted(false); setRecurringDate(""); setFrequencyStr(""); setRecurringArrivalWindow(""); }}
                               style={{ padding: "12px 20px", background: "#FFFFFF", color: "#6B6860", border: "1px solid #6B6860", borderRadius: 8, fontSize: 14, cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif" }}
                             >
-                              No thanks, just the Deep Clean
+                              {upsellContext === "move_in_out"
+                                ? "No thanks, just the Move In/Out clean"
+                                : upsellContext === "standard"
+                                ? "No thanks, just the Standard Clean"
+                                : "No thanks, just the Deep Clean"}
                             </button>
                           </div>
                         </>
@@ -2129,24 +2182,26 @@ export default function BookPage() {
                   style={{ ...s.btn(), opacity: (() => {
                     if (isCommercial) return !commercialOption ? 0.5 : 1;
                     if (!scopeId || !sqft) return 0.5;
+                    if (showStandardAdvisory) return 0.5;
                     if (isMoveInOut && !moveInAck) return 0.5;
-                    if (isMoveInOut && showCleanlinessQ && cleanliness === 0) return 0.5;
+                    if (isMoveInOut && (!upsellAccepted && !upsellDeclined)) return 0.5;
                     if (showVeryDirtyCard) return 0.5;
                     if (isDeepCleanScope && (cleanliness === 0 || (!upsellAccepted && !upsellDeclined))) return 0.5;
+                    if (isOneTimeStandard && standardDismissed && (cleanliness === 0 || (!upsellAccepted && !upsellDeclined))) return 0.5;
                     if (isRecurringScope && (!lastCleanedResponse || (["1_3_months", "over_3_months"].includes(lastCleanedResponse) && (!lastCleanedOverride || !overageAcknowledged)) || cleanliness === 0)) return 0.5;
-                    if (!isMoveInOut && !isDeepCleanScope && !isRecurringScope && showCleanlinessQ && cleanliness === 0) return 0.5;
                     return 1;
                   })() }}
                   disabled={(() => {
                     if (isCommercial) return !commercialOption;
                     if (!scopeId || !sqft) return true;
                     if (!isCommercial && (bedrooms < 1 || bathrooms < 1)) return true;
+                    if (showStandardAdvisory) return true;
                     if (isMoveInOut && !moveInAck) return true;
-                    if (isMoveInOut && showCleanlinessQ && cleanliness === 0) return true;
+                    if (isMoveInOut && (!upsellAccepted && !upsellDeclined)) return true;
                     if (showVeryDirtyCard) return true;
                     if (isDeepCleanScope && (cleanliness === 0 || (!upsellAccepted && !upsellDeclined))) return true;
+                    if (isOneTimeStandard && standardDismissed && (cleanliness === 0 || (!upsellAccepted && !upsellDeclined))) return true;
                     if (isRecurringScope && (!lastCleanedResponse || (["1_3_months", "over_3_months"].includes(lastCleanedResponse) && (!lastCleanedOverride || !overageAcknowledged)) || cleanliness === 0)) return true;
-                    if (!isMoveInOut && !isDeepCleanScope && !isRecurringScope && showCleanlinessQ && cleanliness === 0) return true;
                     return false;
                   })()}
                   onClick={() => isCommercial ? setStep(3) : setStep(2)}
@@ -2183,7 +2238,7 @@ export default function BookPage() {
                       onClick={() => { setUpsellAccepted(false); setUpsellDeclined(false); setStep(1); }}
                       style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: brand, cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600 }}
                     >
-                      Change
+                      Change or remove recurring
                     </button>
                   </div>
                 </div>
@@ -2319,12 +2374,19 @@ export default function BookPage() {
                 return hasAnyCard ? (
                   <div style={{ marginBottom: 16 }}>
                     <span style={s.label}>Add-ons (optional)</span>
+                    {showFlatCards && !applianceActive && (
+                      <div style={{ margin: "8px 0 10px", padding: "8px 14px", background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
+                        <span style={{ fontSize: 12, color: "#166534", fontWeight: 600, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                          Add both appliances and save $20 — pay $80 instead of $100.
+                        </span>
+                      </div>
+                    )}
                     <div className="bw-grid2" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginTop: 8 }}>
 
                       {/* Card 1 — Oven Cleaning */}
                       {showFlatCards && (
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          <div style={cardStyle(ovenSel)} onClick={() => ovenDb && toggle(ovenDb.id)}>
+                          <div title="Most ovens haven't been deep cleaned in over a year" style={cardStyle(ovenSel)} onClick={() => ovenDb && toggle(ovenDb.id)}>
                             <div style={iconAreaStyle(ovenSel)}>
                               <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ color: brand }}>
                                 <rect x="8" y="8" width="48" height="48" rx="4" stroke="currentColor" strokeWidth="2.5"/>
@@ -2342,19 +2404,16 @@ export default function BookPage() {
                                 <div style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: 14, color: "#1A1917" }}>Oven Cleaning</div>
                                 {ovenSel ? addedChip : <div style={{ fontWeight: 600, fontSize: 13, color: "#1A1917", flexShrink: 0 }}>{flatPriceNode(50, applianceActive)}</div>}
                               </div>
-                              <p style={{ margin: "6px 0 0 28px", fontSize: 12, color: "#6B6860", lineHeight: 1.4 }}>
-                                Recommended by 9 out of 10 clients
-                              </p>
                             </div>
                           </div>
-                          {showOvenNudge && amberNudge("Add Oven Cleaning to unlock the Appliance Bundle — save $10")}
+                          {showOvenNudge && amberNudge("Add Oven Cleaning to unlock the bundle — save $20 total")}
                         </div>
                       )}
 
                       {/* Card 2 — Refrigerator Cleaning */}
                       {showFlatCards && (
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          <div style={cardStyle(fridgeSel)} onClick={() => fridgeDb && toggle(fridgeDb.id)}>
+                          <div title="Removes odors and buildup most regular cleanings miss" style={cardStyle(fridgeSel)} onClick={() => fridgeDb && toggle(fridgeDb.id)}>
                             <div style={iconAreaStyle(fridgeSel)}>
                               <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ color: brand }}>
                                 <rect x="12" y="4" width="40" height="56" rx="4" stroke="currentColor" strokeWidth="2.5"/>
@@ -2370,19 +2429,16 @@ export default function BookPage() {
                                 <div style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: 14, color: "#1A1917" }}>Refrigerator Cleaning</div>
                                 {fridgeSel ? addedChip : <div style={{ fontWeight: 600, fontSize: 13, color: "#1A1917", flexShrink: 0 }}>{flatPriceNode(50, applianceActive)}</div>}
                               </div>
-                              <p style={{ margin: "6px 0 0 28px", fontSize: 12, color: "#6B6860", lineHeight: 1.4 }}>
-                                Recommended by 9 out of 10 clients
-                              </p>
                             </div>
                           </div>
-                          {showFridgeNudge && amberNudge("Add Refrigerator Cleaning to unlock the Appliance Bundle — save $10")}
+                          {showFridgeNudge && amberNudge("Add Refrigerator Cleaning to unlock the bundle — save $20 total")}
                         </div>
                       )}
 
                       {/* Card 3 — Kitchen Cabinets */}
                       {showFlatCards && (
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          <div style={cardStyle(cabSel)} onClick={() => cabDb && toggle(cabDb.id)}>
+                          <div title="Works best with emptied cabinets — our team can advise" style={cardStyle(cabSel)} onClick={() => cabDb && toggle(cabDb.id)}>
                             <div style={iconAreaStyle(cabSel)}>
                               <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ color: brand }}>
                                 <rect x="4" y="8" width="26" height="48" rx="2" stroke="currentColor" strokeWidth="2.5"/>
@@ -2399,9 +2455,6 @@ export default function BookPage() {
                                 <div style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: 14, color: "#1A1917" }}>Kitchen Cabinets</div>
                                 {cabSel ? addedChip : <span style={{ fontWeight: 600, fontSize: 13, color: "#1A1917", flexShrink: 0 }}>+$50.00</span>}
                               </div>
-                              <p style={{ margin: "6px 0 0 28px", fontSize: 12, color: "#6B6860", lineHeight: 1.4 }}>
-                                Cabinets must be empty upon arrival
-                              </p>
                             </div>
                           </div>
                         </div>
@@ -2422,11 +2475,11 @@ export default function BookPage() {
                             <div style={{ padding: 16 }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                                 <div style={checkStyle(winSel)}>{winSel && <CheckCircle2 size={14} color="#fff" />}</div>
-                                <div style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: 14, color: "#1A1917" }}>Windows (inside panes only) — Tracks not included</div>
+                                <div style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: 14, color: "#1A1917" }}>Windows</div>
                                 {winSel ? addedChip : dynPriceNode && <div style={{ fontWeight: 600, fontSize: 13, color: "#1A1917", flexShrink: 0 }}>{dynPriceNode}</div>}
                               </div>
                               <p style={{ margin: "6px 0 0 28px", fontSize: 12, color: "#6B6860", lineHeight: 1.4 }}>
-                                {dynSubLabel}
+                                Inside panes only. Tracks not included.
                               </p>
                             </div>
                           </div>
@@ -2436,7 +2489,7 @@ export default function BookPage() {
                       {/* Card 5 — Clean Basement */}
                       {showBasCard && (
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          <div style={cardStyle(basSel)} onClick={() => basDb && toggle(basDb.id)}>
+                          <div title="Often the most neglected space — clients notice immediately" style={cardStyle(basSel)} onClick={() => basDb && toggle(basDb.id)}>
                             <div style={iconAreaStyle(basSel)}>
                               <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ color: brand }}>
                                 <path d="M4 28 L32 8 L60 28" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -2452,9 +2505,6 @@ export default function BookPage() {
                                 <div style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: 14, color: "#1A1917" }}>Clean Basement</div>
                                 {basSel ? addedChip : dynPriceNode && <div style={{ fontWeight: 600, fontSize: 13, color: "#1A1917", flexShrink: 0 }}>{dynPriceNode}</div>}
                               </div>
-                              <p style={{ margin: "6px 0 0 28px", fontSize: 12, color: "#6B6860", lineHeight: 1.4 }}>
-                                {dynSubLabel}
-                              </p>
                             </div>
                           </div>
                         </div>
@@ -2462,15 +2512,15 @@ export default function BookPage() {
 
                     </div>
 
-                    {/* Appliance Bundle badge */}
-                    {(calcResult?.bundle_discount ?? 0) > 0 && (
+                    {/* Appliance Bundle badge — post-selection */}
+                    {applianceActive && (
                       <div style={{
                         display: "flex", alignItems: "center", justifyContent: "center",
                         marginTop: 12, padding: "8px 16px",
                         background: "#2D6A4F", borderRadius: 20,
                       }}>
                         <span style={{ fontSize: 13, fontWeight: 600, color: "#fff", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-                          Appliance Bundle applied — you're saving ${(calcResult?.bundle_discount ?? 0).toFixed(2)}
+                          Appliance Bundle applied — you're saving $20.00
                         </span>
                       </div>
                     )}
@@ -2572,8 +2622,7 @@ export default function BookPage() {
                 <div style={{ marginTop: 24, paddingTop: 20, borderTop: "1px solid #E5E2DC" }}>
                   <p style={{ ...s.h2, marginTop: 0 }}>When would you like your first recurring cleaning?</p>
                   <p style={s.sub}>
-                    Must be at least one full {upsellCadence === "weekly" ? "week" : upsellCadence === "biweekly" ? "2 weeks" : "4 weeks"} after your Deep Clean.
-                    {" Earliest: "}{new Date(recurringMinDateStr + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}{"."}
+                    Must be at least one week after your cleaning. Earliest: {new Date(recurringMinDateStr + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}.
                   </p>
                   <SimpleCalendar
                     selected={recurringDate}
@@ -2592,7 +2641,7 @@ export default function BookPage() {
                     } : undefined}
                   />
                   <p style={{ margin: "10px 0 0", fontSize: 12, color: "#6B6860", lineHeight: 1.5 }}>
-                    Your recurring visits will continue every {upsellCadence === "weekly" ? "week" : upsellCadence === "biweekly" ? "2 weeks" : "4 weeks"} from this date forward — rate locked for {offerSettings?.rate_lock_duration_months ?? 24} months.
+                    This is when your recurring service begins. You can start later if needed — your rate is locked either way.
                   </p>
 
                   {/* FIX 1: Arrival window pills for recurring date */}
@@ -2785,31 +2834,23 @@ export default function BookPage() {
                   <Row label="Name" value={`${firstName} ${lastName}`} />
                   <Row label="Email" value={email} />
                   <Row label="Phone" value={phone} />
-                  {address && <Row label="Address" value={address} />}
                   <Row label="Service" value={selectedScope?.name ?? ""} />
-                  {sqft > 0 && <Row label="Sq Ft" value={`${sqft.toLocaleString()} sqft · ${bedrooms}br / ${bathrooms}ba`} />}
-                  {!isCommercial && frequencyStr && <Row label="Frequency" value={wLabel(frequencyStr)} />}
-                  {isCommercial && commercialOption === "single" && <Row label="Rate" value="$180 for up to 3 hrs · $60/additional hr" />}
-                  {selectedDate && <Row label="First Cleaning" value={new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })} bold />}
-                  {arrivalWindow && <Row label="Arrival Window" value={arrivalWindow === "morning" ? "9 AM – 12 PM" : "12 PM – 2 PM"} />}
-                  {upsellAccepted && recurringDate && <Row label="First Recurring" value={new Date(recurringDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })} bold />}
-                  {bookResult.pricing?.final_total !== undefined && <Row label="Total" value={`$${bookResult.pricing.final_total.toFixed(2)}`} bold />}
+                  {sqft > 0 && <Row label="Sq Ft" value={`${sqft.toLocaleString()} sqft`} />}
+                  {upsellAccepted && <Row label="Frequency" value={wLabel(upsellCadence)} />}
+                  {selectedDate && <Row label="First Date" value={new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })} bold />}
+                  {upsellAccepted && recurringDate && <Row label="First Recurring Date" value={new Date(recurringDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })} bold />}
+                  {arrivalWindow && <Row label="Arrival Window" value={arrivalWindow === "morning" ? "Morning (9 AM – 12 PM)" : "Afternoon (12 PM – 2 PM)"} />}
+                  {upsellAccepted && recurringArrivalWindow && <Row label="Recurring Arrival Window" value={recurringArrivalWindow === "morning" ? "Morning (9 AM – 12 PM)" : "Afternoon (12 PM – 2 PM)"} />}
+                  {address && <Row label="Address" value={address} />}
+                  {bookResult.pricing?.final_total !== undefined && <Row label="First Visit Total" value={`$${bookResult.pricing.final_total.toFixed(2)}`} bold />}
                 </div>
               </div>
 
-              {bookResult.pricing?.addon_breakdown?.length > 0 && (
-                <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 16, marginBottom: 24 }}>
-                  <p style={{ margin: "0 0 12px", fontWeight: 700, fontSize: 14, color: "#1A1917" }}>Add-ons</p>
-                  {bookResult.pricing.addon_breakdown.map((a: any) => (
-                    <Row key={a.id} label={a.name.split(" — ")[0].split(" (")[0].trim()} value={`$${a.amount.toFixed(2)}`} />
-                  ))}
+              {upsellAccepted && (
+                <div style={{ border: "1px solid #E5E2DC", borderRadius: 10, padding: "14px 18px", marginBottom: 24, fontSize: 13, color: "#6B6860", lineHeight: 1.6 }}>
+                  The card you authorize today will be kept securely on file and used to process payment after each completed cleaning, including your recurring visits. You may update your card at any time by contacting our office.
                 </div>
               )}
-
-              <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 10, padding: "14px 18px", marginBottom: 24 }}>
-                <p style={{ margin: 0, fontSize: 13, color: "#166534", fontWeight: 600 }}>Your card has been saved securely.</p>
-                <p style={{ margin: "4px 0 0", fontSize: 13, color: "#166534" }}>You will be charged after each completed cleaning, not at booking.</p>
-              </div>
 
               {company.booking_policies && (
                 <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 20 }}>

@@ -357,6 +357,7 @@ function GeneralTab() {
   const [paymentTermsDays, setPaymentTermsDays] = useState(0);
   const [dispatchStartHour, setDispatchStartHour] = useState(8);
   const [dispatchEndHour, setDispatchEndHour] = useState(18);
+  const [reviewLink, setReviewLink] = useState('');
 
   useEffect(() => {
     if (company) {
@@ -365,6 +366,7 @@ function GeneralTab() {
       setPaymentTermsDays((company as any).payment_terms_days ?? 0);
       setDispatchStartHour((company as any).dispatch_start_hour ?? 8);
       setDispatchEndHour((company as any).dispatch_end_hour ?? 18);
+      setReviewLink((company as any).review_link || '');
     }
   }, [company]);
 
@@ -374,7 +376,7 @@ function GeneralTab() {
       return;
     }
     updateCompany.mutate(
-      { data: { name, pay_cadence: payCadence as any, payment_terms_days: paymentTermsDays, dispatch_start_hour: dispatchStartHour, dispatch_end_hour: dispatchEndHour } as any },
+      { data: { name, pay_cadence: payCadence as any, payment_terms_days: paymentTermsDays, dispatch_start_hour: dispatchStartHour, dispatch_end_hour: dispatchEndHour, review_link: reviewLink || null } as any },
       {
         onSuccess: () => toast({ title: "Settings saved", description: "Company profile updated." }),
         onError: () => toast({ variant: "destructive", title: "Error", description: "Failed to save settings." }),
@@ -418,6 +420,20 @@ function GeneralTab() {
           <option value={15}>NET 15</option>
           <option value={30}>NET 30</option>
         </select>
+      </Section>
+      <Section title="Google Review Link" desc="Paste your Google review URL here. Used in post-job review request messages. Leave blank to disable review requests.">
+        <input
+          type="url"
+          value={reviewLink}
+          onChange={e => setReviewLink(e.target.value)}
+          placeholder="https://g.page/r/your-review-link"
+          style={{ width: '100%', fontFamily: FF, fontSize: '13px', color: '#1A1917', backgroundColor: '#FFFFFF', border: '1px solid #E5E2DC', borderRadius: '6px', padding: '10px 14px', outline: 'none', boxSizing: 'border-box' }}
+        />
+        {reviewLink && (
+          <p style={{ fontFamily: FF, fontSize: 11, color: '#6B7280', marginTop: 6 }}>
+            <a href={reviewLink} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--brand)', textDecoration: 'underline' }}>Test link</a>
+          </p>
+        )}
       </Section>
       <Section title="Dispatch Board Hours" desc="The dispatch timeline will only show this window by default. Jobs outside this range cannot be scheduled from the board.">
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>

@@ -140,6 +140,8 @@ router.patch("/me", requireAuth, async (req, res) => {
     if (addon_time_method !== undefined) patch.addon_time_method = addon_time_method;
     if (addon_minimum_minutes !== undefined) patch.addon_minimum_minutes = Number(addon_minimum_minutes);
     if (addon_pct_of_base !== undefined) patch.addon_pct_of_base = String(addon_pct_of_base);
+    const { review_link } = req.body;
+    if (review_link !== undefined) patch.review_link = review_link || null;
 
     if (Object.keys(patch).length === 0) return res.json({ success: true });
 
