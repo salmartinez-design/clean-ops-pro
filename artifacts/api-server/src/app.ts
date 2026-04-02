@@ -5,6 +5,7 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import rateLimit from "express-rate-limit";
 import router from "./routes";
+import stripeWebhookRouter from "./routes/stripe-webhook.js";
 
 const __appDir: string =
   typeof __dirname !== "undefined"
@@ -16,6 +17,16 @@ const app: Express = express();
 app.set("trust proxy", 1);
 
 app.use(cors());
+
+// ── Stripe Webhook — raw body BEFORE express.json() ─────────────────────────
+// Stripe requires the raw request body to validate HMAC signatures.
+// Must be registered before express.json() parses the body.
+app.use(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  stripeWebhookRouter
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
