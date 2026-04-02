@@ -9,6 +9,7 @@ import { Link, useLocation } from "wouter";
 import { useAuthStore } from "@/lib/auth";
 import { useTenantBrand } from "@/lib/tenant-brand";
 import { QlenoLogo } from "@/components/brand/QlenoLogo";
+import { QlenoMark } from "@/components/brand/QlenoMark";
 import { useEffect, useState, useCallback } from "react";
 
 function useNeedsContactedCount(role: string | undefined) {
@@ -24,9 +25,8 @@ function useNeedsContactedCount(role: string | undefined) {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return;
-      const data: { status: string; count: string }[] = await res.json();
-      const row = data.find(r => r.status === "needs_contacted");
-      setCount(row ? parseInt(row.count, 10) : 0);
+      const data: Record<string, number> = await res.json();
+      setCount(data["needs_contacted"] ?? 0);
     } catch { /* silent */ }
   }, [eligible, token]);
 
@@ -91,6 +91,7 @@ interface AppSidebarProps {
 
 export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebarProps) {
   const [location] = useLocation();
+  const [isHovered, setIsHovered] = useState(false);
   const logout = useAuthStore(state => state.logout);
   const { logoUrl, companyName, isLoading: tenantLoading, brandColor } = useTenantBrand();
 
@@ -120,83 +121,113 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
       ? location === url
       : location === url || location.startsWith(url + '/');
 
-  const navItemStyle = (active: boolean): React.CSSProperties => ({
-    height: 38,
-    padding: '0 12px',
-    margin: '1px 8px',
-    borderRadius: 8,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    cursor: 'pointer',
-    transition: 'all 0.12s',
-    backgroundColor: active ? 'var(--brand-soft)' : 'transparent',
-    borderLeft: active ? '3px solid var(--brand)' : '3px solid transparent',
-    color: active ? 'var(--brand)' : '#6B6860',
-    fontWeight: active ? 600 : 500,
-    fontSize: 13,
-    fontFamily: "'Plus Jakarta Sans', sans-serif",
-    textDecoration: 'none',
-  });
+  const expanded = mobile || isHovered;
 
   const sidebarContent = (
-    <div style={{
-      width: mobile ? 264 : 220,
-      minWidth: mobile ? 264 : 220,
-      backgroundColor: '#FFFFFF',
-      borderRight: '1px solid #EEECE7',
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100%',
-      overflow: 'hidden',
-    }}>
-      {/* Platform logo — identifies the software */}
-      <div style={{ padding: '0 20px', height: 60, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <QlenoLogo size="md" />
-        {mobile && (
+    <div
+      onMouseEnter={() => { if (!mobile) setIsHovered(true); }}
+      onMouseLeave={() => { if (!mobile) setIsHovered(false); }}
+      style={{
+        width: mobile ? 264 : (expanded ? 220 : 56),
+        minWidth: mobile ? 264 : (expanded ? 220 : 56),
+        backgroundColor: '#FFFFFF',
+        borderRight: '1px solid #EEECE7',
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        overflow: 'hidden',
+        transition: mobile ? 'none' : 'width 200ms ease, min-width 200ms ease',
+        ...(mobile ? {} : {
+          position: 'absolute' as const,
+          top: 0,
+          left: 0,
+          bottom: 0,
+          zIndex: 20,
+          boxShadow: isHovered ? '4px 0 20px rgba(0,0,0,0.08)' : 'none',
+        }),
+      }}
+    >
+      {/* Logo */}
+      <div style={{
+        padding: expanded ? '0 20px' : '0',
+        height: 60, flexShrink: 0,
+        display: 'flex', alignItems: 'center',
+        justifyContent: expanded ? 'space-between' : 'center',
+        overflow: 'hidden',
+      }}>
+        {expanded
+          ? <QlenoLogo size="md" />
+          : <QlenoMark size={26} />
+        }
+        {mobile && expanded && (
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9E9B94', padding: 4, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
             <X size={18} />
           </button>
         )}
       </div>
 
-      {/* Tenant identity — identifies who is logged in */}
-      <div style={{ padding: '8px 10px 10px', borderBottom: '1px solid #EEECE7' }}>
-        <div style={{ background: '#F4F3F0', borderRadius: 10, padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 9, overflow: 'hidden' }}>
-          {tenantLoading ? (
-            <div style={{ width: 30, height: 30, borderRadius: 7, backgroundColor: '#E5E2DC', flexShrink: 0 }} />
-          ) : logoUrl ? (
-            <img src={logoUrl} alt={companyName ?? ''} style={{ height: 30, width: 'auto', objectFit: 'contain', flexShrink: 0 }} />
-          ) : (
-            <div style={{ width: 30, height: 30, borderRadius: 7, backgroundColor: brandColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <span style={{ fontSize: 13, fontWeight: 800, color: '#FFFFFF', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-                {companyName ? companyName[0].toUpperCase() : '…'}
-              </span>
-            </div>
-          )}
-          <div style={{ overflow: 'hidden', minWidth: 0 }}>
+      {/* Tenant identity — only shown when expanded */}
+      <div style={{
+        padding: expanded ? '8px 10px 10px' : '8px 6px 10px',
+        borderBottom: '1px solid #EEECE7',
+        overflow: 'hidden',
+      }}>
+        {expanded ? (
+          <div style={{ background: '#F4F3F0', borderRadius: 10, padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 9, overflow: 'hidden' }}>
             {tenantLoading ? (
-              <div style={{ height: 11, width: 80, borderRadius: 4, backgroundColor: '#E5E2DC' }} />
+              <div style={{ width: 30, height: 30, borderRadius: 7, backgroundColor: '#E5E2DC', flexShrink: 0 }} />
+            ) : logoUrl ? (
+              <img src={logoUrl} alt={companyName ?? ''} style={{ height: 30, width: 'auto', objectFit: 'contain', flexShrink: 0 }} />
             ) : (
-              <p style={{ fontSize: 12, fontWeight: 600, color: '#1A1917', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-                {companyName ?? '—'}
-              </p>
+              <div style={{ width: 30, height: 30, borderRadius: 7, backgroundColor: brandColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: '#FFFFFF', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                  {companyName ? companyName[0].toUpperCase() : '…'}
+                </span>
+              </div>
+            )}
+            <div style={{ overflow: 'hidden', minWidth: 0 }}>
+              {tenantLoading ? (
+                <div style={{ height: 11, width: 80, borderRadius: 4, backgroundColor: '#E5E2DC' }} />
+              ) : (
+                <p style={{ fontSize: 12, fontWeight: 600, color: '#1A1917', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                  {companyName ?? '—'}
+                </p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            {tenantLoading ? (
+              <div style={{ width: 32, height: 32, borderRadius: 7, backgroundColor: '#E5E2DC' }} />
+            ) : logoUrl ? (
+              <img src={logoUrl} alt="" style={{ height: 32, width: 32, objectFit: 'contain', borderRadius: 7 }} />
+            ) : (
+              <div style={{ width: 32, height: 32, borderRadius: 7, backgroundColor: brandColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: '#FFFFFF', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                  {companyName ? companyName[0].toUpperCase() : '…'}
+                </span>
+              </div>
             )}
           </div>
-        </div>
+        )}
       </div>
 
       {/* Nav */}
-      <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 0 12px' }}>
+      <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 0 12px' }}>
         {NAV_SECTIONS.map(section => (
           <div key={section.label}>
-            <p style={{
-              fontSize: 10, fontWeight: 600, color: '#9E9B94', letterSpacing: '0.08em',
-              textTransform: 'uppercase', padding: '20px 0 6px 16px', margin: 0,
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-            }}>
-              {section.label}
-            </p>
+            {/* Section label — only when expanded */}
+            {expanded && (
+              <p style={{
+                fontSize: 10, fontWeight: 600, color: '#9E9B94', letterSpacing: '0.08em',
+                textTransform: 'uppercase', padding: '20px 0 6px 16px', margin: 0,
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                whiteSpace: 'nowrap',
+              }}>
+                {section.label}
+              </p>
+            )}
+            {!expanded && <div style={{ height: 12 }} />}
             {section.items
               .filter(item => !item.roles || (userInfo && item.roles.includes(userInfo.role)))
               .map(item => {
@@ -206,7 +237,27 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
                 return (
                   <Link key={item.title + item.url} href={item.url} onClick={mobile ? onClose : undefined}>
                     <div
-                      style={navItemStyle(active)}
+                      style={{
+                        height: 38,
+                        padding: expanded ? '0 12px' : '0',
+                        margin: expanded ? '1px 8px' : '1px 6px',
+                        borderRadius: 8,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: expanded ? 'flex-start' : 'center',
+                        gap: 10,
+                        cursor: 'pointer',
+                        transition: 'all 0.12s',
+                        backgroundColor: active ? 'var(--brand-soft)' : 'transparent',
+                        borderLeft: expanded && active ? '3px solid var(--brand)' : '3px solid transparent',
+                        color: active ? 'var(--brand)' : '#6B6860',
+                        fontWeight: active ? 600 : 500,
+                        fontSize: 13,
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        textDecoration: 'none',
+                        position: 'relative' as const,
+                        title: !expanded ? item.title : undefined,
+                      } as React.CSSProperties}
                       onMouseEnter={e => {
                         if (!active) {
                           e.currentTarget.style.backgroundColor = '#F0EEE9';
@@ -219,10 +270,13 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
                           e.currentTarget.style.color = '#6B6860';
                         }
                       }}
+                      title={!expanded ? item.title : undefined}
                     >
                       <Icon size={16} style={{ flexShrink: 0, color: 'inherit' }} />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{item.title}</span>
-                      {badgeCount > 0 && (
+                      {expanded && (
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{item.title}</span>
+                      )}
+                      {expanded && badgeCount > 0 && (
                         <span style={{
                           backgroundColor: 'var(--brand)',
                           color: '#FFFFFF',
@@ -239,6 +293,18 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
                           {badgeCount > 99 ? '99+' : badgeCount}
                         </span>
                       )}
+                      {!expanded && badgeCount > 0 && (
+                        <span style={{
+                          position: 'absolute',
+                          top: 4,
+                          right: 4,
+                          width: 7,
+                          height: 7,
+                          borderRadius: '50%',
+                          backgroundColor: 'var(--brand)',
+                          border: '1.5px solid #fff',
+                        }} />
+                      )}
                     </div>
                   </Link>
                 );
@@ -248,25 +314,44 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
       </nav>
 
       <div style={{ borderTop: '1px solid #EEECE7' }} />
+
       {/* User footer */}
-      <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ width: 30, height: 30, borderRadius: '50%', backgroundColor: 'var(--brand-soft)', color: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-          {initials}
+      {expanded ? (
+        <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 30, height: 30, borderRadius: '50%', backgroundColor: 'var(--brand-soft)', color: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+            {initials}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#1A1917', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+              {userInfo?.firstName} {userInfo?.lastName}
+            </p>
+            <p style={{ margin: 0, fontSize: 10, color: '#9E9B94', textTransform: 'capitalize', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{userInfo?.role}</p>
+          </div>
+          <button
+            onClick={() => logout()}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9E9B94', padding: 4, display: 'flex', alignItems: 'center' }}
+            title="Sign out"
+          >
+            <LogOut size={14} />
+          </button>
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#1A1917', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-            {userInfo?.firstName} {userInfo?.lastName}
-          </p>
-          <p style={{ margin: 0, fontSize: 10, color: '#9E9B94', textTransform: 'capitalize', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{userInfo?.role}</p>
+      ) : (
+        <div style={{ padding: '12px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+          <div
+            style={{ width: 30, height: 30, borderRadius: '50%', backgroundColor: 'var(--brand-soft)', color: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, cursor: 'default', fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+            title={`${userInfo?.firstName} ${userInfo?.lastName} (${userInfo?.role})`}
+          >
+            {initials}
+          </div>
+          <button
+            onClick={() => logout()}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9E9B94', padding: 4, display: 'flex', alignItems: 'center' }}
+            title="Sign out"
+          >
+            <LogOut size={13} />
+          </button>
         </div>
-        <button
-          onClick={() => logout()}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9E9B94', padding: 4, display: 'flex', alignItems: 'center' }}
-          title="Sign out"
-        >
-          <LogOut size={14} />
-        </button>
-      </div>
+      )}
     </div>
   );
 

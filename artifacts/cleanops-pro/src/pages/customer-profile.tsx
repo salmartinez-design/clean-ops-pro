@@ -3028,59 +3028,14 @@ export default function CustomerProfilePage() {
   });
 
   const isMobile = useIsMobile();
-  const [rightTab, setRightTab] = useState<"details" | "history">("details");
-  const [activeSection, setActiveSection] = useState("sec-service");
-  const rightScrollRef = useRef<HTMLDivElement>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [showMessageDrawer, setShowMessageDrawer] = useState(false);
   const [showEditProfileDrawer, setShowEditProfileDrawer] = useState(false);
+  const [showAlarmCode, setShowAlarmCode] = useState(false);
+  const [activeTab, setActiveTab] = useState<"profile" | "history">("profile");
   const showToast = useCallback((message: string, type: "success" | "error" = "success") => setToast({ message, type }), []);
 
-  useEffect(() => {
-    if (rightTab !== "details") return;
-    const container = rightScrollRef.current;
-    if (!container) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) setActiveSection(entry.target.id);
-        });
-      },
-      { root: container, rootMargin: "0px 0px -60% 0px", threshold: 0 }
-    );
-    NAV_PILLS.forEach(({ id }) => {
-      const el = container.querySelector(`#${id}`);
-      if (el) observer.observe(el);
-    });
-    return () => observer.disconnect();
-  }, [rightTab, profile]);
-
-  const scrollToSection = useCallback((id: string) => {
-    if (rightTab !== "details") {
-      setRightTab("details");
-      setActiveSection(id);
-      setTimeout(() => {
-        const container = rightScrollRef.current;
-        const el = container?.querySelector<HTMLElement>(`#${id}`);
-        if (el && container) {
-          const containerTop = container.getBoundingClientRect().top;
-          const elTop = el.getBoundingClientRect().top;
-          container.scrollTo({ top: container.scrollTop + (elTop - containerTop) - 8, behavior: "smooth" });
-        }
-      }, 120);
-    } else {
-      setActiveSection(id);
-      setTimeout(() => {
-        const container = rightScrollRef.current;
-        const el = container?.querySelector<HTMLElement>(`#${id}`);
-        if (el && container) {
-          const containerTop = container.getBoundingClientRect().top;
-          const elTop = el.getBoundingClientRect().top;
-          container.scrollTo({ top: container.scrollTop + (elTop - containerTop) - 8, behavior: "smooth" });
-        }
-      }, 50);
-    }
-  }, [rightTab]);
+  const goBack = () => navigate("/customers");
 
   if (isLoading || !profile) {
     return (
@@ -3093,112 +3048,373 @@ export default function CustomerProfilePage() {
   }
 
   const jhStats = jhData?.stats || null;
+  const ltv = jhStats?.total_revenue ?? profile.stats?.revenue_all_time ?? 0;
+  const lastCleaning = jhStats?.last_cleaning ?? profile.stats?.last_cleaning;
+  const nextCleaning = jhStats?.next_cleaning ?? profile.stats?.next_cleaning;
+  const initials = `${profile.first_name?.[0] || ""}${profile.last_name?.[0] || ""}`.toUpperCase();
+  const isRecurring = jhStats?.is_recurring ?? (profile.service_type === "recurring" || (profile.frequency && profile.frequency !== "on_demand"));
+  const freqBadge = recurringSchedule?.frequency
+    ? (FREQ_LABELS[recurringSchedule.frequency] || recurringSchedule.frequency)
+    : (profile.frequency ? (FREQ_LABELS[profile.frequency] || freqLabel(profile.frequency)) : null);
+  const invoices = profile.invoices || [];
+  const lastPaidInvoice = invoices
+    .filter((i: any) => i.paid_at)
+    .sort((a: any, b: any) => new Date(b.paid_at).getTime() - new Date(a.paid_at).getTime())[0];
 
-  const sectionCounts: Record<string, number | undefined> = {
-    "sec-service":     undefined,
-    "sec-billing":     (profile.invoices || []).length || undefined,
-    "sec-quotes":      undefined,
-    "sec-agreements":  (profile.agreements || []).length || undefined,
-    "sec-scorecards":  (profile.scorecards || []).length || undefined,
-    "sec-contacts":    (profile.notification_settings || []).length || undefined,
-    "sec-portal":      undefined,
-    "sec-tech":        (profile.tech_preferences || []).length || undefined,
-    "sec-tickets":     undefined,
-    "sec-inspections": undefined,
-    "sec-attachments": undefined,
-    "sec-homeimages":  undefined,
+  // ─── Stat pills ────────────────────────────────────────────────────────────
+  const jobsCompleted = jhStats?.jobs_completed ?? 0;
+  const totalRevenue = jhStats?.total_revenue ?? 0;
+
+  // ─── Shared card style ────────────────────────────────────────────────────
+  const CS: React.CSSProperties = {
+    background: "#FFFFFF",
+    border: "1px solid #E5E2DC",
+    borderRadius: 12,
+    padding: "18px 20px",
+    marginBottom: 14,
   };
-
-  const DetailsSections = (
-    <div ref={rightScrollRef} style={{ flex: 1, overflowY: "auto" as const, padding: "10px 12px 16px" }}>
-      <CollapsibleSection title="Service Details" sectionId="sec-service" defaultOpen>
-        <ServiceDetailsSection client={profile} onUpdate={updateMut.mutateAsync} refetch={refetchProfile} recurringSchedule={recurringSchedule} onToast={showToast} />
-      </CollapsibleSection>
-      <CollapsibleSection title="Billing & Payments" sectionId="sec-billing" count={(profile.invoices || []).length}>
-        <BillingSection client={profile} invoices={profile.invoices || []} refetch={refetchProfile} />
-      </CollapsibleSection>
-      <CollapsibleSection title="Quotes" sectionId="sec-quotes">
-        <QuotesTab clientId={clientId} client={profile} />
-      </CollapsibleSection>
-      <CollapsibleSection title="Agreements" sectionId="sec-agreements" count={(profile.agreements || []).length}>
-        <AgreementsTab clientId={clientId} agreements={profile.agreements || []} refetch={refetchProfile} />
-      </CollapsibleSection>
-      <CollapsibleSection title="Scorecards" sectionId="sec-scorecards" count={(profile.scorecards || []).length}>
-        <ScorecardsTab scorecards={profile.scorecards || []} />
-      </CollapsibleSection>
-      <CollapsibleSection title="Contacts & Notifications" sectionId="sec-contacts" count={(profile.notification_settings || []).length}>
-        <ContactsTab clientId={clientId} notifications={profile.notification_settings || []} refetch={refetchProfile} />
-      </CollapsibleSection>
-      <CollapsibleSection title="Client Portal" sectionId="sec-portal">
-        <PortalTab clientId={clientId} client={profile} onPortalInvite={() => apiFetch(`/api/clients/${clientId}/portal-invite`, { method: "POST" })} refetch={refetchProfile} />
-      </CollapsibleSection>
-      <CollapsibleSection title="Technician Preferences" sectionId="sec-tech" count={(profile.tech_preferences || []).length}>
-        <TechPrefsTab clientId={clientId} prefs={profile.tech_preferences || []} refetch={refetchProfile} />
-      </CollapsibleSection>
-      <CollapsibleSection title="Contact Tickets" sectionId="sec-tickets">
-        <ContactTicketsSection clientId={clientId} />
-      </CollapsibleSection>
-      <CollapsibleSection title="Inspections" sectionId="sec-inspections">
-        <InspectionsSection />
-      </CollapsibleSection>
-      <CollapsibleSection title="Attachments" sectionId="sec-attachments">
-        <AttachmentsSection clientId={clientId} />
-      </CollapsibleSection>
-      <CollapsibleSection title="Home Images" sectionId="sec-homeimages">
-        <HomeImagesSection clientId={clientId} />
-      </CollapsibleSection>
+  const CTitle: React.CSSProperties = {
+    fontSize: 10, fontWeight: 700, color: "#9E9B94",
+    textTransform: "uppercase" as const, letterSpacing: "0.08em", marginBottom: 12,
+  };
+  const DL2 = ({ label, value }: { label: string; value: React.ReactNode }) => (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, padding: "5px 0", borderBottom: "1px solid #F0EEE9" }}>
+      <span style={{ fontSize: 12, color: "#9E9B94", flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", textAlign: "right" as const }}>{value || "—"}</span>
     </div>
   );
 
-  const TabBar = (
-    <div style={{ display: "flex", flexShrink: 0, background: "#FFFFFF", borderRadius: "10px 10px 0 0", border: "1px solid #E5E2DC", borderBottom: "none", padding: "0 4px" }}>
-      {(["details", "history"] as const).map((tab) => {
-        const label = tab === "details" ? "Details" : "Job History";
-        const isActive = rightTab === tab;
-        return (
-          <button key={tab} onClick={() => setRightTab(tab)} style={{ padding: "11px 18px", border: "none", cursor: "pointer", fontFamily: FF, fontSize: 13, fontWeight: isActive ? 700 : 500, color: isActive ? "var(--brand)" : "#6B6860", background: "transparent", borderBottom: isActive ? "2px solid var(--brand)" : "2px solid transparent", transition: "color 120ms, border-color 120ms", minHeight: 44 }}>
-            {label}
+  // ─── Desktop Hero Strip ────────────────────────────────────────────────────
+  const HeroStrip = (
+    <div style={{
+      background: "#FFFFFF", borderBottom: "1px solid #E5E2DC",
+      padding: "14px 28px 14px", flexShrink: 0, fontFamily: FF,
+    }}>
+      {/* Row 1: back + breadcrumb */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
+        <button
+          onClick={goBack}
+          style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer", color: "#9E9B94", fontSize: 13, padding: 0, fontFamily: FF }}
+        >
+          <ArrowLeft size={14} />
+          <span>Clients</span>
+        </button>
+        <span style={{ color: "#D0CEC9" }}>/</span>
+        <span style={{ fontSize: 13, color: "#1A1917", fontWeight: 500 }}>{profile.first_name} {profile.last_name}</span>
+      </div>
+
+      {/* Row 2: identity + stats + actions */}
+      <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+
+        {/* Avatar */}
+        <div style={{
+          width: 46, height: 46, borderRadius: "50%", background: "var(--brand-dim)",
+          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 18, fontWeight: 800, color: "var(--brand)" }}>{initials}</span>
+        </div>
+
+        {/* Name + badges */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 20, fontWeight: 700, color: "#0A0E1A" }}>
+              {profile.first_name} {profile.last_name}
+            </span>
+            <span style={{
+              fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4,
+              textTransform: "uppercase" as const, letterSpacing: "0.06em",
+              background: profile.is_active !== false ? "#DCFCE7" : "#F3F4F6",
+              color: profile.is_active !== false ? "#166534" : "#6B7280",
+            }}>
+              {profile.is_active !== false ? "Active" : "Inactive"}
+            </span>
+            <span style={{
+              fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4,
+              textTransform: "uppercase" as const, letterSpacing: "0.06em",
+              background: isRecurring ? "var(--brand-dim)" : "#F3F4F6",
+              color: isRecurring ? "var(--brand)" : "#6B7280",
+            }}>
+              {isRecurring ? "Recurring" : "One-Time"}
+            </span>
+            {freqBadge && (
+              <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 4, background: "#EDE9FE", color: "#7C3AED", textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>
+                {freqBadge}
+              </span>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 14, marginTop: 5, fontSize: 12, color: "#9E9B94", flexWrap: "wrap" }}>
+            <span>CL-{String(profile.id).padStart(4, "0")}</span>
+            {lastCleaning && <span>Last: <strong style={{ color: "#1A1917" }}>{fmtDate(lastCleaning)}</strong></span>}
+            <span>Next: <strong style={{ color: nextCleaning ? "var(--brand)" : "#9E9B94" }}>{nextCleaning ? fmtDate(nextCleaning) : "Not scheduled"}</strong></span>
+            {profile.zone_name && (
+              <span style={{ padding: "1px 6px", borderRadius: 4, background: profile.zone_color ? `${profile.zone_color}22` : "#EDE9FE", color: profile.zone_color || "#7C3AED", fontSize: 11, fontWeight: 600 }}>
+                {profile.zone_name}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* LTV */}
+        <div style={{ background: "#0A0E1A", borderRadius: 10, padding: "8px 16px", textAlign: "center" as const, flexShrink: 0 }}>
+          <div style={{ fontSize: 20, fontWeight: 900, color: "#00C9A0", lineHeight: 1 }}>
+            ${ltv.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+          </div>
+          <div style={{ fontSize: 9, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase" as const, letterSpacing: "0.07em", marginTop: 2 }}>Lifetime Value</div>
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", flexShrink: 0 }}>
+          <button onClick={() => navigate(`/dispatch?client_id=${clientId}`)} style={{ padding: "8px 14px", background: "var(--brand)", border: "none", borderRadius: 8, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FF }}>
+            Schedule Job
           </button>
-        );
-      })}
+          <button onClick={() => setShowMessageDrawer(true)} style={{ padding: "8px 14px", background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 8, color: "#1A1917", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: FF }}>
+            Message
+          </button>
+          <button onClick={() => navigate(`/clients/${clientId}/invoices`)} style={{ padding: "8px 14px", background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 8, color: "#1A1917", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: FF }}>
+            Invoice
+          </button>
+          <button onClick={() => setShowEditProfileDrawer(true)} style={{ padding: "8px 14px", background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 8, color: "#1A1917", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: FF }}>
+            Edit
+          </button>
+        </div>
+      </div>
+
+      {/* Tab bar */}
+      <div style={{ display: "flex", gap: 0, marginTop: 14, borderBottom: "1px solid #E5E2DC", marginLeft: -28, marginRight: -28, paddingLeft: 28 }}>
+        {(["profile", "history"] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            style={{
+              padding: "8px 18px", border: "none", cursor: "pointer", fontFamily: FF,
+              fontSize: 13, fontWeight: activeTab === tab ? 700 : 500,
+              color: activeTab === tab ? "var(--brand)" : "#6B6860",
+              background: "transparent",
+              borderBottom: activeTab === tab ? "2px solid var(--brand)" : "2px solid transparent",
+              marginBottom: -1, transition: "color 120ms, border-color 120ms",
+            }}
+          >
+            {tab === "profile" ? "Profile" : "Job History"}
+          </button>
+        ))}
+      </div>
     </div>
   );
 
-  return (
-    <DashboardLayout fullBleed>
-      {/* Drawers & Toast */}
-      {toast && <Toast message={toast.message} type={toast.type} onDone={() => setToast(null)} />}
-      {showMessageDrawer && <SendMessageDrawer client={profile} onClose={() => setShowMessageDrawer(false)} onToast={showToast} />}
-      {showEditProfileDrawer && <EditProfileDrawer client={profile} onClose={() => setShowEditProfileDrawer(false)} onSave={updateMut.mutateAsync} onToast={showToast} />}
+  // ─── Profile Canvas (scrollable, centered) ─────────────────────────────────
+  const ProfileCanvas = (
+    <div style={{ flex: 1, overflowY: "auto" as const, background: "#F7F6F3" }}>
+      <div style={{ maxWidth: 840, margin: "0 auto", padding: "24px 24px 80px" }}>
 
-      {isMobile ? (
-        /* ═══════════════ MOBILE LAYOUT ═══════════════ */
+        {/* ── Card 1: Contact & Basic Info ── */}
+        <div style={CS}>
+          <div style={CTitle}>Contact & Basic Info</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 24px" }}>
+            {profile.phone && <DL2 label="Phone" value={<a href={`tel:${profile.phone}`} style={{ color: "var(--brand)", textDecoration: "none" }}>{profile.phone}</a>} />}
+            {profile.email && <DL2 label="Email" value={<a href={`mailto:${profile.email}`} style={{ color: "var(--brand)", textDecoration: "none", wordBreak: "break-all" as const }}>{profile.email}</a>} />}
+            {profile.address && <DL2 label="Address" value={[profile.address, profile.city, profile.state, profile.zip].filter(Boolean).join(", ")} />}
+            {profile.service_type && <DL2 label="Service Type" value={profile.service_type} />}
+            {profile.client_since && <DL2 label="Client Since" value={fmtDate(profile.client_since)} />}
+            {profile.referral_source && <DL2 label="Source" value={SOURCE_LABELS[profile.referral_source] || String(profile.referral_source).replace(/_/g, " ")} />}
+            {profile.company_name && <DL2 label="Company" value={profile.company_name} />}
+            {(profile.loyalty_points > 0) && <DL2 label="Loyalty Points" value={profile.loyalty_points} />}
+          </div>
+        </div>
+
+        {/* ── Card 2: Access & Entry ── */}
+        {(profile.home_access_notes || profile.alarm_code || profile.pets) && (
+          <div style={CS}>
+            <div style={CTitle}>Access & Entry</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {profile.home_access_notes && (
+                <div style={{ background: "#FAFAF8", border: "1px solid #F0EEE9", borderRadius: 8, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase" as const, letterSpacing: "0.07em", marginBottom: 4 }}>Entry Instructions</div>
+                  <div style={{ fontSize: 13, color: "#374151", whiteSpace: "pre-wrap" as const, lineHeight: 1.5 }}>{profile.home_access_notes}</div>
+                </div>
+              )}
+              {profile.alarm_code && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#FAFAF8", border: "1px solid #F0EEE9", borderRadius: 8, padding: "10px 12px" }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase" as const, letterSpacing: "0.07em", minWidth: 90 }}>Alarm Code</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", letterSpacing: showAlarmCode ? "normal" : "0.18em", fontFamily: "monospace" }}>
+                    {showAlarmCode ? profile.alarm_code : "•".repeat(profile.alarm_code.length || 6)}
+                  </span>
+                  <button onClick={() => setShowAlarmCode(v => !v)} style={{ background: "none", border: "none", cursor: "pointer", color: "#9E9B94", padding: 0, marginLeft: 4, display: "flex", alignItems: "center" }}>
+                    {showAlarmCode ? <EyeOff size={13} /> : <Eye size={13} />}
+                  </button>
+                </div>
+              )}
+              {profile.pets && (
+                <div style={{ background: "#FAFAF8", border: "1px solid #F0EEE9", borderRadius: 8, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase" as const, letterSpacing: "0.07em", marginBottom: 4 }}>Pets / Notes</div>
+                  <div style={{ fontSize: 13, color: "#374151" }}>{profile.pets}</div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Card 3: Recurring Schedule ── */}
+        <div style={CS}>
+          <div style={CTitle}>Recurring Schedule</div>
+          <ServiceDetailsSection
+            client={profile}
+            onUpdate={updateMut.mutateAsync}
+            refetch={refetchProfile}
+            recurringSchedule={recurringSchedule}
+            onToast={showToast}
+          />
+        </div>
+
+        {/* ── Card 4: Performance & Intelligence ── */}
+        {jhStats && (
+          <div style={CS}>
+            <div style={CTitle}>Performance</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 12, marginBottom: 12 }}>
+              {([
+                { label: "Jobs Done", value: jobsCompleted },
+                { label: "Revenue", value: `$${totalRevenue.toLocaleString("en-US", { maximumFractionDigits: 0 })}` },
+                { label: "Avg Invoice", value: jhStats.avg_invoice ? `$${Number(jhStats.avg_invoice).toFixed(0)}` : "—" },
+                { label: "eCard Rate", value: jhStats.ecard_pct != null ? `${jhStats.ecard_pct}%` : "—" },
+              ] as { label: string; value: React.ReactNode }[]).map(({ label, value }) => (
+                <div key={label} style={{ background: "#F7F6F3", borderRadius: 8, padding: "10px 12px", textAlign: "center" as const }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: "#1A1917" }}>{value}</div>
+                  <div style={{ fontSize: 10, color: "#9E9B94", textTransform: "uppercase" as const, letterSpacing: "0.06em", marginTop: 2 }}>{label}</div>
+                </div>
+              ))}
+            </div>
+            <ClientIntelligencePanel jhStats={jhStats} profile={profile} noCard />
+          </div>
+        )}
+
+        {/* ── Card 5: Billing ── */}
+        <div style={CS}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div style={CTitle}>Billing & Payments</div>
+            {lastPaidInvoice && (
+              <span style={{ fontSize: 11, color: "#9E9B94" }}>
+                Last payment: <strong style={{ color: "#1A1917" }}>{fmtDate(lastPaidInvoice.paid_at)}</strong>
+              </span>
+            )}
+          </div>
+          <BillingSection client={profile} invoices={invoices} refetch={refetchProfile} />
+        </div>
+
+        {/* ── Card 6: Client Notes ── */}
+        <div style={CS}>
+          <div style={CTitle}>Client Notes</div>
+          <textarea
+            defaultValue={profile.notes || ""}
+            onBlur={async (e) => {
+              if (e.target.value !== (profile.notes || "")) {
+                try {
+                  await updateMut.mutateAsync({ notes: e.target.value });
+                  showToast("Notes saved");
+                } catch { showToast("Failed to save notes", "error"); }
+              }
+            }}
+            placeholder="Internal notes about this client (auto-saves on blur)..."
+            rows={4}
+            style={{
+              width: "100%", padding: "10px 12px", border: "1px solid #E5E2DC", borderRadius: 8,
+              fontSize: 13, color: "#374151", resize: "vertical" as const, outline: "none",
+              fontFamily: FF, boxSizing: "border-box" as const, lineHeight: 1.5, background: "#FAFAF8",
+            }}
+          />
+        </div>
+
+        {/* ── Card 7: Homes / Service Addresses ── */}
+        <div style={CS}>
+          <div style={CTitle}>Service Addresses</div>
+          <HomesTab clientId={clientId} homes={profile.homes || []} refetch={refetchProfile} />
+        </div>
+
+        {/* ── Accordions: Cards 8-16 ── */}
+
+        <CollapsibleSection title="Job History" count={undefined}>
+          <JobHistoryPanel clientId={clientId} jhData={jhData} isLoading={jhLoading} profile={profile} />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Communication Log">
+          <CommLogTab clientId={clientId} />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Quotes">
+          <QuotesTab clientId={clientId} client={profile} />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Agreements" count={(profile.agreements || []).length || undefined}>
+          <AgreementsTab clientId={clientId} agreements={profile.agreements || []} refetch={refetchProfile} />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Scorecards" count={(profile.scorecards || []).length || undefined}>
+          <ScorecardsTab scorecards={profile.scorecards || []} />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Contacts & Notifications" count={(profile.notification_settings || []).length || undefined}>
+          <ContactsTab clientId={clientId} notifications={profile.notification_settings || []} refetch={refetchProfile} />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Client Portal">
+          <PortalTab clientId={clientId} client={profile} onPortalInvite={() => apiFetch(`/api/clients/${clientId}/portal-invite`, { method: "POST" })} refetch={refetchProfile} />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Technician Preferences" count={(profile.tech_preferences || []).length || undefined}>
+          <TechPrefsTab clientId={clientId} prefs={profile.tech_preferences || []} refetch={refetchProfile} />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Contact Tickets">
+          <ContactTicketsSection clientId={clientId} />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Inspections">
+          <InspectionsSection />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Attachments">
+          <AttachmentsSection clientId={clientId} />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Home Images">
+          <HomeImagesSection clientId={clientId} />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Rate Locks">
+          <OverviewTab client={profile} onUpdate={updateMut.mutateAsync} refetch={refetchProfile} />
+        </CollapsibleSection>
+
+      </div>
+    </div>
+  );
+
+  // ─── Mobile Layout ────────────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <DashboardLayout fullBleed>
+        {toast && <Toast message={toast.message} type={toast.type} onDone={() => setToast(null)} />}
+        {showMessageDrawer && <SendMessageDrawer client={profile} onClose={() => setShowMessageDrawer(false)} onToast={showToast} />}
+        {showEditProfileDrawer && <EditProfileDrawer client={profile} onClose={() => setShowEditProfileDrawer(false)} onSave={updateMut.mutateAsync} onToast={showToast} />}
         <div style={{ display: "flex", flexDirection: "column", fontFamily: FF, background: "#F7F6F3", minHeight: "100dvh" }}>
-          {/* Breadcrumb */}
           <div style={{ padding: "12px 16px 0", display: "flex", alignItems: "center", gap: 8 }}>
-            <button onClick={() => navigate("/customers")} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: "#9E9B94", fontSize: 13, padding: 0, fontFamily: FF, minHeight: 44 }}>
+            <button onClick={goBack} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: "#9E9B94", fontSize: 13, padding: 0, fontFamily: FF, minHeight: 44 }}>
               <ArrowLeft size={14} /> Clients
             </button>
             <span style={{ color: "#C4C0BB" }}>/</span>
             <span style={{ fontSize: 13, fontWeight: 600, color: "#1A1917" }}>{profile.first_name} {profile.last_name}</span>
           </div>
-
-          {/* Mobile Hero */}
           <div style={{ background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 12, margin: "12px 16px 0", padding: "16px", fontFamily: FF }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
               <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--brand-dim)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <span style={{ fontSize: 18, fontWeight: 800, color: "var(--brand)" }}>{profile.first_name?.[0]}{profile.last_name?.[0]}</span>
+                <span style={{ fontSize: 18, fontWeight: 800, color: "var(--brand)" }}>{initials}</span>
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 17, fontWeight: 800, color: "#0A0E1A", whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis" }}>{profile.first_name} {profile.last_name}</div>
                 <div style={{ fontSize: 10, fontWeight: 700, color: "#6B6860", marginTop: 2 }}>CL-{String(profile.id).padStart(4, "0")}</div>
               </div>
               <div style={{ background: "#0A0E1A", borderRadius: 8, padding: "8px 12px", textAlign: "center" as const }}>
-                <div style={{ fontSize: 16, fontWeight: 900, color: "#00C9A0" }}>${(jhStats?.total_revenue || 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}</div>
+                <div style={{ fontSize: 16, fontWeight: 900, color: "#00C9A0" }}>${ltv.toLocaleString("en-US", { maximumFractionDigits: 0 })}</div>
                 <div style={{ fontSize: 9, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>LTV</div>
               </div>
             </div>
-            {/* Mobile action buttons 2x2 grid */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
               <button onClick={() => navigate(`/dispatch?client_id=${clientId}`)} style={{ padding: "10px", background: "var(--brand)", border: "none", borderRadius: 8, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: FF, minHeight: 44 }}>Schedule Job</button>
               <button onClick={() => setShowMessageDrawer(true)} style={{ padding: "10px", background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 8, color: "#1A1917", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: FF, minHeight: 44 }}>Send Message</button>
@@ -3206,84 +3422,57 @@ export default function CustomerProfilePage() {
               <button onClick={() => setShowEditProfileDrawer(true)} style={{ padding: "10px", background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 8, color: "#1A1917", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: FF, minHeight: 44 }}>Edit Profile</button>
             </div>
           </div>
-
-          {/* Mobile section chips */}
-          <div style={{ display: "flex", gap: 8, overflowX: "auto" as const, padding: "12px 16px", scrollbarWidth: "none" as any }}>
-            {NAV_PILLS.map(({ id, label }) => (
-              <button key={id} onClick={() => scrollToSection(id)} style={{ flexShrink: 0, padding: "8px 14px", borderRadius: 20, border: "none", cursor: "pointer", fontFamily: FF, fontSize: 12, fontWeight: activeSection === id ? 700 : 500, background: activeSection === id ? "var(--brand)" : "#EEECE8", color: activeSection === id ? "#fff" : "#6B6860", whiteSpace: "nowrap" as const, minHeight: 44 }}>
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {/* Mobile tab bar */}
-          <div style={{ margin: "0 16px" }}>
-            {TabBar}
-            <div style={{ background: "#FFFFFF", border: "1px solid #E5E2DC", borderTop: "none", borderRadius: "0 0 10px 10px" }}>
-              {rightTab === "details" && DetailsSections}
-              {rightTab === "history" && (
-                <div style={{ height: 600, display: "flex", flexDirection: "column" }}>
-                  <JobHistoryPanel clientId={clientId} jhData={jhData} isLoading={jhLoading} profile={profile} />
-                </div>
-              )}
+          <div style={{ padding: "16px 16px 80px" }}>
+            <div style={CS}>
+              <ServiceDetailsSection client={profile} onUpdate={updateMut.mutateAsync} refetch={refetchProfile} recurringSchedule={recurringSchedule} onToast={showToast} />
             </div>
-          </div>
-          <div style={{ height: 24 }} />
-        </div>
-      ) : (
-        /* ═══════════════ DESKTOP LAYOUT ═══════════════ */
-        <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", fontFamily: FF, background: "#F7F6F3" }}>
-
-          {/* Zone 1: Hero */}
-          <div style={{ flexShrink: 0, padding: "16px 24px 0", background: "#F7F6F3" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: 14 }}>
-              <button onClick={() => navigate("/customers")} style={{ display: "flex", alignItems: "center", gap: "6px", background: "none", border: "none", cursor: "pointer", color: "#9E9B94", fontSize: "13px", padding: 0, fontFamily: FF }}>
-                <ArrowLeft size={14} /> Clients
-              </button>
-              <span style={{ color: "#C4C0BB", fontSize: "13px" }}>/</span>
-              <span style={{ fontSize: "13px", fontWeight: 600, color: "#1A1917" }}>{profile.first_name} {profile.last_name}</span>
-            </div>
-            <ProfileHero
-              client={profile} stats={profile.stats} jhStats={jhStats} recurringSchedule={recurringSchedule}
-              onSchedule={() => navigate(`/dispatch?client_id=${clientId}`)}
-              onMessage={() => setShowMessageDrawer(true)}
-              onInvoice={() => navigate(`/clients/${clientId}/invoices`)}
-              onEdit={() => setShowEditProfileDrawer(true)}
-            />
-          </div>
-
-          {/* Zone 2: Two-column */}
-          <div style={{ flex: 1, display: "flex", gap: 14, padding: "14px 24px 14px", overflow: "hidden", minHeight: 0 }}>
-
-            {/* Left column */}
-            <div style={{ width: 300, flexShrink: 0, display: "flex", flexDirection: "column", gap: 10, overflow: "hidden" }}>
-              <div style={{ flex: 1, overflow: "hidden", background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 10, display: "flex", flexDirection: "column" }}>
-                <div style={{ flex: 1, overflowY: "auto" as const }}>
-                  <ClientDetailsPanel client={profile} jhStats={jhStats} recurringSchedule={recurringSchedule} noCard />
-                  <div style={{ borderTop: "1px solid #E5E2DC", margin: "0 12px" }} />
-                  <ClientIntelligencePanel jhStats={jhStats} profile={profile} noCard />
-                </div>
-              </div>
-              <div style={{ flexShrink: 0, background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 10, overflow: "hidden" }}>
-                <VerticalSectionNav active={rightTab === "history" ? "" : activeSection} onNavigate={scrollToSection} counts={sectionCounts} />
-              </div>
-            </div>
-
-            {/* Right column */}
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
-              {TabBar}
-              <div style={{ flex: 1, overflow: "hidden", background: "#FFFFFF", border: "1px solid #E5E2DC", borderTop: "none", borderRadius: "0 0 10px 10px", display: "flex", flexDirection: "column" }}>
-                {rightTab === "details" && DetailsSections}
-                {rightTab === "history" && (
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                    <JobHistoryPanel clientId={clientId} jhData={jhData} isLoading={jhLoading} profile={profile} />
-                  </div>
-                )}
-              </div>
-            </div>
+            <CollapsibleSection title="Billing" count={invoices.length || undefined}>
+              <BillingSection client={profile} invoices={invoices} refetch={refetchProfile} />
+            </CollapsibleSection>
+            <CollapsibleSection title="Communication Log">
+              <CommLogTab clientId={clientId} client={profile} onToast={showToast} />
+            </CollapsibleSection>
+            <CollapsibleSection title="Job History">
+              <JobHistoryPanel clientId={clientId} jhData={jhData} isLoading={jhLoading} profile={profile} />
+            </CollapsibleSection>
+            <CollapsibleSection title="Quotes">
+              <QuotesTab clientId={clientId} client={profile} />
+            </CollapsibleSection>
+            <CollapsibleSection title="Agreements" count={(profile.agreements || []).length || undefined}>
+              <AgreementsTab clientId={clientId} agreements={profile.agreements || []} refetch={refetchProfile} />
+            </CollapsibleSection>
+            <CollapsibleSection title="Scorecards" count={(profile.scorecards || []).length || undefined}>
+              <ScorecardsTab scorecards={profile.scorecards || []} />
+            </CollapsibleSection>
+            <CollapsibleSection title="Contacts" count={(profile.notification_settings || []).length || undefined}>
+              <ContactsTab clientId={clientId} notifications={profile.notification_settings || []} refetch={refetchProfile} />
+            </CollapsibleSection>
+            <CollapsibleSection title="Portal">
+              <PortalTab clientId={clientId} client={profile} onPortalInvite={() => apiFetch(`/api/clients/${clientId}/portal-invite`, { method: "POST" })} refetch={refetchProfile} />
+            </CollapsibleSection>
           </div>
         </div>
-      )}
+      </DashboardLayout>
+    );
+  }
+
+  // ─── Desktop Layout ───────────────────────────────────────────────────────
+  return (
+    <DashboardLayout fullBleed>
+      {toast && <Toast message={toast.message} type={toast.type} onDone={() => setToast(null)} />}
+      {showMessageDrawer && <SendMessageDrawer client={profile} onClose={() => setShowMessageDrawer(false)} onToast={showToast} />}
+      {showEditProfileDrawer && <EditProfileDrawer client={profile} onClose={() => setShowEditProfileDrawer(false)} onSave={updateMut.mutateAsync} onToast={showToast} />}
+
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", fontFamily: FF, background: "#F7F6F3" }}>
+        {HeroStrip}
+        {activeTab === "profile" ? ProfileCanvas : (
+          <div style={{ flex: 1, overflow: "hidden", background: "#F7F6F3", display: "flex", flexDirection: "column" }}>
+            <div style={{ maxWidth: 840, margin: "0 auto", padding: "24px", width: "100%", flex: 1, display: "flex", flexDirection: "column" }}>
+              <JobHistoryPanel clientId={clientId} jhData={jhData} isLoading={jhLoading} profile={profile} />
+            </div>
+          </div>
+        )}
+      </div>
     </DashboardLayout>
   );
 }

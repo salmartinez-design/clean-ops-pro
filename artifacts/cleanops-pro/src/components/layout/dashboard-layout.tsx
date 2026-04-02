@@ -577,7 +577,10 @@ export function DashboardLayout({ children, title, fullBleed, onNewJob }: Dashbo
   // Desktop layout
   return (
     <div style={{ display: 'flex', height: '100vh', width: '100%', backgroundColor: '#F7F6F3', overflow: 'hidden' }}>
-      <AppSidebar />
+      {/* Sidebar slot — 56px wide; sidebar overlays via absolute positioning */}
+      <div style={{ position: 'relative', width: 56, flexShrink: 0 }}>
+        <AppSidebar />
+      </div>
 
       {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} />}
       {chatOpen && <ChatPanel onClose={() => setChatOpen(false)} userId={user?.id || 0} />}

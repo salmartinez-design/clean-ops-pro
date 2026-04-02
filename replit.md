@@ -30,17 +30,27 @@ Qleno is a multi-tenant SaaS platform for residential and commercial cleaning bu
 - **Text Colors:** `#1A1917` (primary), `#6B7280` (secondary), `#9E9B94` (muted).
 - **Icons:** Lucide icons.
 
+**Sidebar Navigation (`app-sidebar.tsx`):**
+- **Collapsed state (desktop):** 56px wide, icons only, no text labels, overlay on hover
+- **Hover expand:** Expands to 220px with smooth 200ms transition; overlays content (does not push)
+- The `dashboard-layout.tsx` wraps the sidebar in a `position: relative` container at `width: 56px`; sidebar uses `position: absolute` to expand without shifting content
+- Mobile: Unchanged — full-width slide-in drawer triggered by hamburger
+- Leads badge: Shows dot in collapsed mode, count pill in expanded mode; fetches `/api/leads/status-counts` every 30s
+
 **Client Profile Page (`/customers/:id`):**
-- **2-zone viewport-filling layout** using `fullBleed` DashboardLayout prop
-- Zone 1: Hero section (breadcrumb + `ProfileHero` component with 4 action buttons)
-- Zone 2: Left 300px column (ClientDetailsPanel + ClientIntelligencePanel stacked, + VerticalSectionNav) + Right flex column (Details/Job History tabs)
+- **New design (2026):** Sticky hero strip at top + single centered scrollable canvas (max-width 840px)
+- Hero strip: Back "← Clients" button, avatar initials, name, ACTIVE/INACTIVE badge, Recurring/One-Time badge, frequency badge, LTV dark box, Schedule/Message/Invoice/Edit action buttons, Profile/Job History tab switcher
+- Canvas cards (always visible): Contact & Basic Info, Access & Entry, Recurring Schedule, Performance, Billing & Payments, Client Notes (auto-saves on blur), Service Addresses
+- Canvas accordions (collapsed by default): Job History, Communication Log, Quotes, Agreements, Scorecards, Contacts & Notifications, Portal, Tech Preferences, Contact Tickets, Inspections, Attachments, Home Images, Rate Locks
+- Scroll preservation: customers list saves scroll to `sessionStorage` on navigation; restores on back
+- All sub-components (drawers, tabs) in `customer-profile.tsx` (lines 1-2999); main render at line 3000+
 - Hero buttons: Schedule Job → `/dispatch?client_id=`, Send Message → `SendMessageDrawer`, Create Invoice → `/clients/:id/invoices`, Edit Profile → `EditProfileDrawer`
 - `SendMessageDrawer`: SMS/Email tabs, uses Twilio via `/api/clients/:id/communications/sms`
 - `EditProfileDrawer`: Full profile field editor, calls `PUT /api/clients/:id`
-- `ServiceDetailsSection`: Inline edit form for service fields + recurring schedule, saves to both `/api/clients/:id` and `PATCH /api/clients/:id/recurring-schedule`
-- `HomeImagesSection`: Fetches job photos via `GET /api/clients/:id/job-photos`, groups by job with before/after badge labels
 - `Toast`: Fixed-position bottom-right, auto-dismisses in 3.5s, success/error variants
-- Mobile responsive: stacked layout with horizontal scroll section chips
+- Mobile: Stacked hero + collapsible accordion cards
+
+**leads table:** All columns now present — `status`, `city`, `state`, `zip`, `source`, `scope`, `bedrooms`, `bathrooms`, `notes`, `quote_amount`, `assigned_to`, `updated_at`, `quoted_at`, `contacted_at`, `booked_at`, `closed_reason`, `agreement_signed`, `job_id` (all added via ALTER TABLE IF NOT EXISTS)
 
 **Feature Specifications & System Design Choices:**
 - **Core Functionality:** Multi-tenant JWT auth, KPI dashboard, dispatch board, employee/customer/account management, invoice generation, payroll, GPS geofencing, service zone management, smart dispatch, recurring job scheduling, communication logging, HR policy configuration, quote tool, security hardening (rate limiting, audit logging), agreement builder with e-sign, client portal, public booking widget, and comprehensive reporting.

@@ -53,6 +53,21 @@ export default function CustomersPage() {
   const [limit, setLimit] = useState(PAGE_SIZE);
   const { activeBranchId } = useBranch();
 
+  // Restore scroll position when returning from a customer profile
+  useEffect(() => {
+    const stored = sessionStorage.getItem('customers_scroll');
+    if (stored) {
+      sessionStorage.removeItem('customers_scroll');
+      const scrollTop = parseInt(stored, 10);
+      if (scrollTop > 0) {
+        requestAnimationFrame(() => {
+          const main = document.querySelector('main');
+          if (main) main.scrollTop = scrollTop;
+        });
+      }
+    }
+  }, []);
+
   // 300ms debounce on search
   useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput), 300);
@@ -90,6 +105,12 @@ export default function CustomersPage() {
 
   const toggleAll = () =>
     setSelected(prev => prev.length === clients.length ? [] : clients.map(c => c.id));
+
+  const navigateToClient = (id: number) => {
+    const scrollTop = document.querySelector('main')?.scrollTop ?? 0;
+    sessionStorage.setItem('customers_scroll', String(scrollTop));
+    navigate(`/customers/${id}`);
+  };
 
   const TH: React.CSSProperties = {
     padding: "11px 16px", textAlign: "left", fontSize: "11px", fontWeight: 600,
@@ -203,7 +224,7 @@ export default function CustomersPage() {
               return (
                 <div
                   key={client.id}
-                  onClick={() => navigate(`/customers/${client.id}`)}
+                  onClick={() => navigateToClient(client.id)}
                   style={{ borderBottom: "1px solid #F0EEE9", padding: "14px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -305,7 +326,7 @@ export default function CustomersPage() {
                       <tr
                         key={client.id}
                         style={rowStyle}
-                        onClick={() => navigate(`/customers/${client.id}`)}
+                        onClick={() => navigateToClient(client.id)}
                         onMouseEnter={e => { if (!isSelected) e.currentTarget.style.backgroundColor = "#F7F6F3"; }}
                         onMouseLeave={e => { e.currentTarget.style.backgroundColor = isSelected ? "rgba(91,155,213,0.05)" : "transparent"; }}
                       >
