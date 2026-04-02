@@ -71,6 +71,17 @@ export function getTokenRole(): string | null {
   }
 }
 
+export function getTokenIsSuperAdmin(): boolean {
+  const token = useAuthStore.getState().token;
+  if (!token) return false;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.isSuperAdmin === true || payload.role === 'super_admin';
+  } catch {
+    return false;
+  }
+}
+
 function getTokenExp(): number | null {
   const token = useAuthStore.getState().token;
   if (!token) return null;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, Link } from "wouter";
-import { useAuthStore, getTokenRole } from "@/lib/auth";
+import { useAuthStore, getTokenRole, getTokenIsSuperAdmin } from "@/lib/auth";
 import {
   LayoutDashboard, Building2, CreditCard, BookOpen,
   LogOut, X, Menu, ArrowLeft, Shield
@@ -202,8 +202,7 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
 
   useEffect(() => {
     if (!token) { setLocation("/login"); return; }
-    const role = getTokenRole();
-    if (role !== "super_admin") {
+    if (!getTokenIsSuperAdmin()) {
       setLocation("/dashboard");
     }
   }, [token, setLocation]);

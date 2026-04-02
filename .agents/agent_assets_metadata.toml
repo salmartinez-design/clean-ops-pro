@@ -6,3 +6,9 @@ id = "oqOSmlMUrB5P_dDu8ueHv"
 uri = "file://client-list.csv"
 type = "table"
 title = "PHES Client List — All 1,275 Clients"
+
+[[outputs]]
+id = "mv5w7Cphya1ivorTKrJ8y"
+uri = "file://missing-contact-info.csv"
+type = "table"
+title = "139 Active Clients with Missing Contact Info"

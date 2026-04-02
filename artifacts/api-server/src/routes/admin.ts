@@ -8,6 +8,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, sql, and, inArray, gte, desc } from "drizzle-orm";
 import { requireAuth, requireRole, signToken } from "../lib/auth.js";
+import type { Request, Response, NextFunction } from "express";
 
 const router = Router();
 
@@ -17,7 +18,19 @@ const PLAN_MRR: Record<string, number> = {
   enterprise: 299,
 };
 
-const isSuperAdmin = [requireAuth, requireRole("super_admin")];
+function requireSuperAdminAccess(req: Request, res: Response, next: NextFunction): void {
+  if (!req.auth) {
+    res.status(401).json({ error: "Unauthorized", message: "Not authenticated" });
+    return;
+  }
+  if (req.auth.role === "super_admin" || req.auth.isSuperAdmin === true) {
+    next();
+    return;
+  }
+  res.status(403).json({ error: "Forbidden", message: "Super admin access required" });
+}
+
+const isSuperAdmin = [requireAuth, requireSuperAdminAccess];
 
 /* ── DASHBOARD ────────────────────────────────────────────────── */
 router.get("/dashboard", ...isSuperAdmin, async (_req, res) => {

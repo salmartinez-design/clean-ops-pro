@@ -139,7 +139,6 @@ async function cleanupDemoData(companyId: number) {
 }
 
 const SUPER_ADMINS = [
-  { email: "sal@cleanopspro.com",   password: "SalCleanOps2026!",   first_name: "Sal",   last_name: "CleanOps" },
   { email: "admin@cleanopspro.com", password: "AdminCleanOps2026!", first_name: "Admin", last_name: "CleanOps" },
 ];
 

@@ -7,6 +7,7 @@ export interface AuthPayload {
   role: string;
   email: string;
   first_name?: string;
+  isSuperAdmin?: boolean;
 }
 
 declare global {

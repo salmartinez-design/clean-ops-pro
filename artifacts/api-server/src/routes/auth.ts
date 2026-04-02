@@ -20,11 +20,10 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ error: "Bad Request", message: "Invalid email" });
     }
 
-    const user = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.email, email.toLowerCase().trim()))
-      .limit(1);
+    const rawResult = await db.execute(
+      sql`SELECT *, COALESCE(is_super_admin, false) AS is_super_admin FROM users WHERE email = ${email.toLowerCase().trim()} LIMIT 1`
+    );
+    const user = rawResult.rows as any[];
 
     if (!user[0]) {
       await logAudit(req, "login_failed", "user", null, null, { email, reason: "user_not_found" });
@@ -41,12 +40,15 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Unauthorized", message: "Account is inactive" });
     }
 
+    const isSuperAdminFlag = user[0].is_super_admin === true;
+
     const token = signToken({
       userId: user[0].id,
       companyId: user[0].company_id,
       role: user[0].role,
       email: user[0].email,
       first_name: user[0].first_name ?? undefined,
+      isSuperAdmin: isSuperAdminFlag,
     });
 
     await logAudit(req, "login_success", "user", user[0].id, null, { email });
@@ -61,6 +63,7 @@ router.post("/login", async (req, res) => {
         role: user[0].role,
         company_id: user[0].company_id,
         avatar_url: user[0].avatar_url,
+        is_super_admin: isSuperAdminFlag,
       },
     });
   } catch (err) {
