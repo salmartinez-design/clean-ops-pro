@@ -36,17 +36,17 @@ Qleno is a multi-tenant SaaS platform designed for residential and commercial cl
 - Mobile: full-width slide-in drawer, unchanged
 - Leads badge: dot in collapsed mode, count pill in expanded mode
 
-**Customer Profile Page (`/customers/:id`) — 3-Panel Layout:**
-- **Hero Strip** (sticky, full width): breadcrumb, avatar, name, ACTIVE/RECURRING/freq badges, LTV dark box, action buttons, then 5-tab bar
-- **Left Stats Panel** (260px, `position: sticky`, `height: calc(100vh - 130px)`, `overflow-y: auto`): Client Stats card (Client Since, Last/Next Cleaning, LTV, Last 12mo Revenue, Avg Bill, Total Visits, Pending, Skips, Bumps, eCard Rate, Tech Consistency) + Revenue Trend card
-- **Tab Content Area** (flex: 1, scrolls independently) — 5 tabs:
-  - **Profile**: Contact & Basic Info, Service Addresses, Access & Entry, Client Notes (auto-saves on blur)
-  - **Schedule**: Recurring Schedule, Technician Preferences, Rate Locks
-  - **Billing**: `BillingSection` (CardOnFile + Invoices + Payments + QuickBooks)
-  - **History**: `JobHistoryPanel` + `CommLogTab`
-  - **More**: Quotes, Agreements, Scorecards, Contacts, Portal, Tickets, Inspections, Attachments, Home Images (collapsible)
-- Mobile: compact hero + scrollable tab bar + no side panel (tab content is full width)
-- Sub-components in `customer-profile.tsx` (lines 1-2999); `PROFILE_TABS` const + main `CustomerProfilePage` export at ~line 3000
+**Customer Profile Page (`/customers/:id`) — 3-Panel, 4-Tab Layout:**
+- **Hero Strip** (sticky, full width): breadcrumb, avatar, name, ACTIVE/RECURRING/freq badges, LTV dark box, action buttons, then 4-tab bar
+- **Left Stats Panel** (260px, `position: sticky`, `top: 0`, `height: calc(100vh - 64px)`, ALWAYS VISIBLE on all tabs): Client Stats card — Client Since, Last/Next Cleaning (brand color if within 7 days), LTV, Last 12mo, Avg Bill, Total Visits, Pending, Skips, Bumps, eCard Rate, Tech Consistency ("X techs / Y visits")
+- **Tab Content Area** (flex: 1, no max-width cap, scrolls independently) — 4 semantic tabs:
+  - **CLIENT** (2-col grid): Left — Contact & Basic Info + Billing & Payments (`CardOnFileTab`). Right — Invoices table (`BillingTab`) + QuickBooks (`QuickBooksTab`)
+  - **PROPERTY** (2-col grid): Left — Service Addresses + Access & Entry (alarm code in yellow warning box) + Client Notes (auto-saves on blur). Right — Recurring Schedule (`ServiceDetailsSection`) + Rate History + Rate Locks (`OverviewTab`) + Home Images (`HomeImagesSection`)
+  - **JOBS** (single column, full width): Job History table + Scorecards + Inspections + Communication Log
+  - **ADMIN** (2-col grid top + full-width collapsibles): Top-left — Client Portal + Contacts & Notifications. Top-right — Tech Preferences (with Do Not Schedule warning banner) + Contact Tickets. Below — Quotes (open), Agreements (open), Attachments (collapsed)
+- Mobile: compact hero + Next/Visits summary row + horizontally scrollable tab bar + no side stats panel
+- Default tab on load: `"client"` — `useState<ProfileTab>("client")`
+- Sub-components in `customer-profile.tsx` (lines 1-2999); `PROFILE_TABS` const + `CustomerProfilePage` export at ~line 3000
 - `CommLogTab` only accepts `{ clientId: number }` — no other props
 - Scroll preservation on customers list via `sessionStorage`
 
