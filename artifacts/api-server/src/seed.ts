@@ -469,10 +469,16 @@ export async function seedIfNeeded() {
     }
 
     // ── Ensure office user credentials (always runs) ──────────────────────────
+    // Migrate Maribel's email from info@phes.io → maribel@phes.io if needed
+    await db.execute(sql`
+      UPDATE users SET email = 'maribel@phes.io'
+      WHERE company_id = 1 AND first_name = 'Maribel' AND last_name = 'Castillo'
+      AND email = 'info@phes.io'
+    `);
     const officeHash = await bcrypt.hash("phes1234", 10);
     await db.update(usersTable)
       .set({ password_hash: officeHash, role: "office" } as any)
-      .where(eq(usersTable.email, "info@phes.io"));
+      .where(eq(usersTable.email, "maribel@phes.io"));
     await db.update(usersTable)
       .set({ password_hash: officeHash, role: "office" } as any)
       .where(eq(usersTable.email, "franciscojestevezs@gmail.com"));
