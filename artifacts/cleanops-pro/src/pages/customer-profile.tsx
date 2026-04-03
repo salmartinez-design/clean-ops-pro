@@ -3362,6 +3362,7 @@ function JobCalendar({ clientId, clientName }: { clientId: number; clientName: s
   const [form, setForm] = useState({ new_date: "", reason: "", notes: "" });
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [statusSaving, setStatusSaving] = useState(false);
 
   const months: Date[] = [anchor, addMonths(anchor, 1), addMonths(anchor, 2)];
   const from = toLocalDateStr(startOfMonth(months[0]));
@@ -3407,6 +3408,23 @@ function JobCalendar({ clientId, clientName }: { clientId: number; clientName: s
     } catch (e: any) {
       setSaveErr(e.message || "Failed to reschedule");
     } finally { setSaving(false); }
+  }
+
+  async function handleStatusChange(newStatus: "void" | "skip" | "booked") {
+    if (!modal?.job) return;
+    setStatusSaving(true);
+    try {
+      await apiFetch(`/api/clients/${clientId}/jobs/${modal.job.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: newStatus }),
+      });
+      qc.invalidateQueries({ queryKey: ["client-calendar-jobs", clientId] });
+      qc.invalidateQueries({ queryKey: ["client-job-history", clientId] });
+      refetch();
+      setModal(null);
+    } catch (e: any) {
+      setSaveErr(e.message || "Failed to update status");
+    } finally { setStatusSaving(false); }
   }
 
   // ── Drag handlers ────────────────────────────────────────────────────────────
@@ -3592,11 +3610,36 @@ function JobCalendar({ clientId, clientName }: { clientId: number; clientName: s
                     ))}
                   </div>
 
-                  {ro ? (
+                  {!ro && (
+                    <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+                      <button
+                        onClick={() => handleStatusChange("void")}
+                        disabled={statusSaving}
+                        style={{ flex: 1, padding: "6px 0", fontSize: 12, fontWeight: 700, background: "#FEE2E2", color: "#DC2626", border: "1px solid #EF4444", borderRadius: 6, cursor: "pointer", fontFamily: FF }}
+                      >Mark Void</button>
+                      <button
+                        onClick={() => handleStatusChange("skip")}
+                        disabled={statusSaving}
+                        style={{ flex: 1, padding: "6px 0", fontSize: 12, fontWeight: 700, background: "#F3F4F6", color: "#6B7280", border: "1px solid #D1D5DB", borderRadius: 6, cursor: "pointer", fontFamily: FF }}
+                      >Mark Skip</button>
+                    </div>
+                  )}
+
+                  {ro && ["cancelled"].includes(String(j.status)) && (
+                    <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+                      <button
+                        onClick={() => handleStatusChange("booked")}
+                        disabled={statusSaving}
+                        style={{ flex: 1, padding: "6px 0", fontSize: 12, fontWeight: 700, background: "#DBEAFE", color: "#1D4ED8", border: "1px solid #3B82F6", borderRadius: 6, cursor: "pointer", fontFamily: FF }}
+                      >Restore to Booked</button>
+                    </div>
+                  )}
+
+                  {ro && !["cancelled"].includes(String(j.status)) ? (
                     <div style={{ textAlign: "center", fontSize: 12, color: "#9E9B94", marginBottom: 16 }}>
                       This job is {chip.label.toLowerCase()} and cannot be rescheduled.
                     </div>
-                  ) : (
+                  ) : ro ? null : (
                     <>
                       <div style={{ marginBottom: 12 }}>
                         <label style={{ fontSize: 12, color: "#6B6860", display: "block", marginBottom: 4 }}>New Date *</label>
@@ -3835,6 +3878,12 @@ export default function CustomerProfilePage() {
         <div style={{ background: "#0A0E1A", borderRadius: 10, padding: "7px 14px", textAlign: "center" as const, flexShrink: 0 }}>
           <div style={{ fontSize: 19, fontWeight: 900, color: "#00C9A0", lineHeight: 1 }}>${ltv.toLocaleString("en-US", { maximumFractionDigits: 0 })}</div>
           <div style={{ fontSize: 9, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase" as const, letterSpacing: "0.07em", marginTop: 2 }}>Lifetime Value</div>
+          {jhStats?.ytd_revenue != null && (
+            <div style={{ marginTop: 5, paddingTop: 5, borderTop: "1px solid rgba(255,255,255,0.12)" }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "#86EFAC", lineHeight: 1 }}>${(jhStats.ytd_revenue as number).toLocaleString("en-US", { maximumFractionDigits: 0 })}</div>
+              <div style={{ fontSize: 8, fontWeight: 700, color: "#6B7280", textTransform: "uppercase" as const, letterSpacing: "0.07em", marginTop: 1 }}>{new Date().getFullYear()} So Far</div>
+            </div>
+          )}
         </div>
         <div style={{ display: "flex", gap: 7, flexWrap: "wrap", flexShrink: 0 }}>
           <button onClick={() => navigate(`/dispatch?client_id=${clientId}`)} style={{ padding: "7px 13px", background: "var(--brand)", border: "none", borderRadius: 8, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FF }}>Schedule Job</button>

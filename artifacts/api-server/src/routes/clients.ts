@@ -781,6 +781,10 @@ router.get("/:id/job-history", requireAuth, async (req, res) => {
     const priorSixStart = new Date(now.getFullYear(), now.getMonth() - 12, now.getDate());
 
     const total_revenue = records.reduce((s, r) => s + parseFloat(r.revenue), 0);
+    const ytdStart = new Date().getFullYear();
+    const ytd_revenue = records
+      .filter(r => new Date(r.job_date).getFullYear() >= ytdStart)
+      .reduce((s, r) => s + parseFloat(r.revenue), 0);
     const total_visits = records.length;
     const unique_techs = new Set(records.map(r => r.technician).filter(Boolean)).size;
 
@@ -824,6 +828,7 @@ router.get("/:id/job-history", requireAuth, async (req, res) => {
       rows: records,
       stats: {
         total_revenue,
+        ytd_revenue,
         total_visits,
         unique_techs,
         revenue_last_12mo,
@@ -1203,6 +1208,42 @@ router.post("/:id/referrals", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("POST referrals:", err);
     return res.status(500).json({ error: "Failed to create referral" });
+  }
+});
+
+// ─── PATCH JOB STATUS (from calendar — void / skip / done / booked) ──────────
+router.patch("/:clientId/jobs/:jobId/status", requireAuth, async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId);
+    const companyId = req.auth!.companyId;
+    const { status } = req.body;
+
+    const ALLOWED = ["scheduled", "cancelled", "complete"];
+    // Also accept our UI-friendly aliases
+    const mapped: Record<string, string> = {
+      booked: "scheduled", void: "cancelled", done: "complete",
+      skip: "cancelled", skipped: "cancelled",
+    };
+    const dbStatus = mapped[String(status)] ?? String(status);
+    if (!ALLOWED.includes(dbStatus)) {
+      return res.status(400).json({ error: `Invalid status: ${status}` });
+    }
+
+    const existing = await db.execute(sql`
+      SELECT id, status, client_id FROM jobs
+      WHERE id = ${jobId} AND company_id = ${companyId}
+      LIMIT 1
+    `);
+    if (!existing.rows.length) return res.status(404).json({ error: "Job not found" });
+
+    await db.execute(sql`
+      UPDATE jobs SET status = ${dbStatus}::job_status WHERE id = ${jobId}
+    `);
+
+    return res.json({ ok: true, status: dbStatus });
+  } catch (err) {
+    console.error("PATCH job status:", err);
+    return res.status(500).json({ error: "Failed to update job status" });
   }
 });
 
