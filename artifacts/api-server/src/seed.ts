@@ -478,6 +478,13 @@ export async function seedIfNeeded() {
       .where(eq(usersTable.email, "franciscojestevezs@gmail.com"));
     console.log("[seed] Office user credentials ensured (info@phes.io → office, phes1234)");
 
+    // ── Ensure Sal (owner) credentials (always runs) ───────────────────────────
+    const salHash = await bcrypt.hash("phes1234", 10);
+    await db.update(usersTable)
+      .set({ password_hash: salHash } as any)
+      .where(eq(usersTable.email, "salmartinez@phes.io"));
+    console.log("[seed] Sal owner credentials ensured (salmartinez@phes.io → phes1234)");
+
   } catch (err) {
     console.error("[seed] Seed error (non-fatal):", err);
   }
