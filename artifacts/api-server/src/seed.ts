@@ -585,8 +585,14 @@ export async function seedIfNeeded() {
     // Migrate Maribel's email from info@phes.io → maribel@phes.io if needed
     await db.execute(sql`
       UPDATE users SET email = 'maribel@phes.io'
-      WHERE company_id = 1 AND first_name = 'Maribel' AND last_name = 'Castillo'
+      WHERE company_id = ${companyId} AND first_name = 'Maribel' AND last_name = 'Castillo'
       AND email = 'info@phes.io'
+    `);
+    // Migrate Francisco's email from old gmail → festevez@phes.io if needed
+    await db.execute(sql`
+      UPDATE users SET email = 'festevez@phes.io'
+      WHERE company_id = ${companyId} AND first_name = 'Francisco'
+      AND email = 'franciscojestevezs@gmail.com'
     `);
     const officeHash = await bcrypt.hash("phes1234", 10);
     await db.update(usersTable)
