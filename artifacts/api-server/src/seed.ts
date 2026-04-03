@@ -547,6 +547,13 @@ export async function seedIfNeeded() {
       console.log(`[seed] Jim Schultz: job_history already present (${jimHistCount} records) — skipping`);
     }
 
+    // Remove any phantom non-Thursday jobs for Jim (idempotent cleanup)
+    await db.execute(sql`
+      DELETE FROM jobs
+      WHERE client_id = 23 AND company_id = ${companyId}
+        AND EXTRACT(DOW FROM scheduled_date::date) != 4
+    `);
+
     // Thursday jobs Apr 2 → Dec 31 2026 (40 jobs) — insert only if none exist yet
     {
       const jimJobResult = await db.execute(sql`

@@ -1306,12 +1306,20 @@ router.patch("/:clientId/jobs/:jobId/reschedule", requireAuth, async (req, res) 
       UPDATE jobs SET scheduled_date = ${new_date}::date WHERE id = ${jobId}
     `);
 
-    await db.execute(sql`
-      INSERT INTO job_reschedule_log (job_id, company_id, old_date, new_date, reason, notes, changed_by)
-      VALUES (${jobId}, ${companyId}, ${oldDate}::date, ${new_date}::date, ${reason}, ${notes || null}, ${userId})
+    try {
+      await db.execute(sql`
+        INSERT INTO job_reschedule_log (job_id, company_id, old_date, new_date, reason, notes, changed_by)
+        VALUES (${jobId}, ${companyId}, ${oldDate}::date, ${new_date}::date, ${reason}, ${notes || null}, ${userId})
+      `);
+    } catch (logErr) {
+      console.warn("PATCH reschedule: audit log insert failed (non-fatal):", logErr);
+    }
+
+    const updated = await db.execute(sql`
+      SELECT id, scheduled_date, status, service_type, base_fee FROM jobs WHERE id = ${jobId}
     `);
 
-    return res.json({ ok: true, old_date: oldDate, new_date });
+    return res.json({ ok: true, old_date: oldDate, new_date, job: updated.rows[0] || null });
   } catch (err) {
     console.error("PATCH reschedule:", err);
     return res.status(500).json({ error: "Failed to reschedule job" });

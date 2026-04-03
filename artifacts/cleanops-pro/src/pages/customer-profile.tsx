@@ -764,13 +764,17 @@ function HomesTab({ clientId, homes, refetch, zoneColor, zoneName }: { clientId:
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                {zoneColor && <span title={zoneName || "Zone"} style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: zoneColor, display: "inline-block", flexShrink: 0 }} />}
                 <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 700, color: "#1A1917" }}>{home.name || "Home"}</h3>
                 {home.is_primary && <span style={{ background: "var(--brand-dim)", color: "var(--brand)", padding: "2px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 700, textTransform: "uppercase" }}>Default</span>}
-                {zoneName && <span style={{ fontSize: "10px", fontWeight: 600, color: zoneColor || "#6B7280" }}>{zoneName}</span>}
               </div>
               <p style={{ margin: "4px 0 0", fontSize: "14px", fontWeight: 600, color: "#1A1917" }}>{home.address}</p>
               <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#6B7280" }}>{[home.city, home.state, home.zip].filter(Boolean).join(", ")}</p>
+              {zoneColor && zoneName && (
+                <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 5 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: zoneColor, display: "inline-block", flexShrink: 0 }} />
+                  <span style={{ fontSize: "11px", fontWeight: 600, color: zoneColor }}>{zoneName}</span>
+                </div>
+              )}
             </div>
             <button onClick={() => deleteMut.mutate(home.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#9E9B94", padding: "4px" }}>
               <Trash2 size={14} />
@@ -868,7 +872,8 @@ function BillingTab({ invoices }: { invoices: any[] }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <div style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: "10px", overflow: "hidden" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 480 }}>
           <thead><tr style={{ backgroundColor: "#FAFAF8" }}>
             {["Date","Invoice #","Amount","Balance","Status",""].map(h => <th key={h} style={TH}>{h}</th>)}
           </tr></thead>
@@ -893,6 +898,7 @@ function BillingTab({ invoices }: { invoices: any[] }) {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
@@ -2724,9 +2730,9 @@ function ServiceDetailsSection({ client, onUpdate, refetch, recurringSchedule, o
       {/* Recurring Schedule */}
       {recurringSchedule && (
         <div style={{ border: "1px solid #E5E2DC", borderRadius: 10, padding: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#6B6860", textTransform: "uppercase" as const, letterSpacing: "0.07em", marginBottom: 12 }}>Recurring Schedule</div>
           {editing ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#6B6860", textTransform: "uppercase" as const, letterSpacing: "0.07em", marginBottom: 4 }}>Recurring Schedule</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div>
                   {lbl("Frequency")}
@@ -2748,17 +2754,23 @@ function ServiceDetailsSection({ client, onUpdate, refetch, recurringSchedule, o
                 <div>{lbl("Schedule Rate ($)")}<input value={form.rec_base_fee} onChange={upd("rec_base_fee")} type="number" min="0" step="0.01" style={inp} /></div>
               </div>
               <div>{lbl("Scope")}<input value={form.rec_service_type} onChange={upd("rec_service_type")} style={inp} /></div>
-              <div>{lbl("Schedule Notes")}<textarea value={form.rec_notes} onChange={upd("rec_notes")} rows={2} style={{ ...inp, resize: "vertical" as const }} /></div>
             </div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
-              <DL label="Frequency" value={FREQ_LABELS[recurringSchedule.frequency] || recurringSchedule.frequency} />
-              <DL label="Day of Week" value={DAY_LABELS[recurringSchedule.day_of_week] || recurringSchedule.day_of_week} />
+              {(recurringSchedule.frequency || recurringSchedule.day_of_week) && (
+                <DL label="Schedule" value={[
+                  FREQ_LABELS[recurringSchedule.frequency] || recurringSchedule.frequency,
+                  recurringSchedule.day_of_week ? `${DAY_LABELS[recurringSchedule.day_of_week] || recurringSchedule.day_of_week}s` : null,
+                ].filter(Boolean).join(" — ")} />
+              )}
               <DL label="Start Date" value={fmtDate(recurringSchedule.start_date)} />
-              {recurringSchedule.base_fee && <DL label="Schedule Rate" value={fmtCurrency(recurringSchedule.base_fee)} />}
-              {recurringSchedule.duration_minutes && <DL label="Duration" value={`${recurringSchedule.duration_minutes} min`} />}
-              {recurringSchedule.service_type && <DL label="Scope" value={recurringSchedule.service_type} />}
-              {recurringSchedule.notes && <DL label="Notes" value={recurringSchedule.notes} />}
+              {recurringSchedule.base_fee && <DL label="Rate" value={fmtCurrency(recurringSchedule.base_fee)} />}
+              {recurringSchedule.duration_minutes && (
+                <DL label="Duration" value={`${Math.round(recurringSchedule.duration_minutes / 60 * 10) / 10} hrs`} />
+              )}
+              {(recurringSchedule.tech_first || recurringSchedule.tech_last) && (
+                <DL label="Technician" value={[recurringSchedule.tech_first, recurringSchedule.tech_last].filter(Boolean).join(" ")} />
+              )}
             </div>
           )}
         </div>
@@ -3357,6 +3369,7 @@ function endOfMonth(d: Date)   { return new Date(d.getFullYear(), d.getMonth() +
 
 function JobCalendar({ clientId, clientName }: { clientId: number; clientName: string }) {
   const qc = useQueryClient();
+  const calIsMobile = useIsMobile();
   // anchor = first day of the first visible month
   const todayRef = useRef(startOfMonth(new Date()));
   const [anchor, setAnchor] = useState<Date>(todayRef.current);
@@ -3518,7 +3531,7 @@ function JobCalendar({ clientId, clientName }: { clientId: number; clientName: s
     }
 
     return (
-      <div key={`${y}-${m}`} style={{ flex: 1, minWidth: 200 }}>
+      <div key={`${y}-${m}`} style={{ flex: calIsMobile ? "none" : 1, width: calIsMobile ? "100%" : undefined, minWidth: calIsMobile ? 0 : 200 }}>
         <div style={{ fontWeight: 700, fontSize: 13, color: "#1A1917", marginBottom: 6, textAlign: "center" }}>
           {MONTH_NAMES[m]} {y}
         </div>
@@ -3539,20 +3552,22 @@ function JobCalendar({ clientId, clientName }: { clientId: number; clientName: s
   );
 
   return (
-    <div style={{ fontFamily: FF }}>
+    <div style={{ fontFamily: FF, overflow: "hidden" }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 16px", borderBottom: "1px solid #E5E2DC" }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#6B6860", textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 16px", borderBottom: "1px solid #E5E2DC", gap: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#6B6860", textTransform: "uppercase" as const, letterSpacing: "0.08em", flexShrink: 0 }}>
           Job Calendar
           {isLoading && <span style={{ marginLeft: 6, color: "#9E9B94", fontWeight: 400 }}>Loading…</span>}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {/* Legend */}
-          <div style={{ display: "flex", gap: 4, alignItems: "center", marginRight: 8 }}>
-            {statusLegend.map(([k, c]) => (
-              <span key={k} title={c.tooltip} style={{ background: c.bg, border: `1px solid ${c.border}`, color: c.text, borderRadius: 3, fontSize: 9, fontWeight: 700, padding: "1px 5px", whiteSpace: "nowrap" as const, cursor: "help" }}>{c.label}</span>
-            ))}
-          </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const, justifyContent: "flex-end" }}>
+          {/* Legend — hide on mobile to save space */}
+          {!calIsMobile && (
+            <div style={{ display: "flex", gap: 4, alignItems: "center", marginRight: 8 }}>
+              {statusLegend.map(([k, c]) => (
+                <span key={k} title={c.tooltip} style={{ background: c.bg, border: `1px solid ${c.border}`, color: c.text, borderRadius: 3, fontSize: 9, fontWeight: 700, padding: "1px 5px", whiteSpace: "nowrap" as const, cursor: "help" }}>{c.label}</span>
+              ))}
+            </div>
+          )}
           {/* Nav */}
           <button
             onClick={() => setAnchor(a => addMonths(a, -1))}
@@ -3569,8 +3584,8 @@ function JobCalendar({ clientId, clientName }: { clientId: number; clientName: s
         </div>
       </div>
 
-      {/* Three-month grid */}
-      <div style={{ padding: "12px 16px", display: "flex", gap: 16, flexWrap: "wrap" as const }}>
+      {/* Three-month grid — stacks vertically on mobile */}
+      <div style={{ padding: "12px 16px", display: "flex", flexDirection: calIsMobile ? "column" : "row", gap: 16 }}>
         {months.map(m => renderMonth(m))}
       </div>
 
@@ -4293,17 +4308,34 @@ export default function CustomerProfilePage() {
               <span style={{ color: "#D0CEC9" }}>/</span>
               <span style={{ fontSize: 13, fontWeight: 600, color: "#1A1917" }}>{profile.first_name} {profile.last_name}</span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
               <div style={{ width: 38, height: 38, borderRadius: "50%", background: "var(--brand-dim)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 <span style={{ fontSize: 14, fontWeight: 800, color: "var(--brand)" }}>{initials}</span>
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 16, fontWeight: 800, color: "#0A0E1A" }}>{profile.first_name} {profile.last_name}</div>
-                <div style={{ fontSize: 11, color: "#9E9B94", marginTop: 1 }}>CL-{String(profile.id).padStart(4, "0")}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
+                  <span style={{ fontSize: 11, color: "#9E9B94" }}>CL-{String(profile.id).padStart(4, "0")}</span>
+                  {profile.zone_color && profile.zone_name && (
+                    <>
+                      <span style={{ color: "#D0CEC9", fontSize: 11 }}>·</span>
+                      <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: profile.zone_color, display: "inline-block", flexShrink: 0 }} />
+                      <span style={{ fontSize: 11, fontWeight: 600, color: profile.zone_color }}>{profile.zone_name}</span>
+                    </>
+                  )}
+                </div>
               </div>
-              <div style={{ background: "#0A0E1A", borderRadius: 8, padding: "6px 10px", textAlign: "center" as const }}>
-                <div style={{ fontSize: 15, fontWeight: 900, color: "#00C9A0" }}>${ltv.toLocaleString("en-US", { maximumFractionDigits: 0 })}</div>
+              <div style={{ background: "#0A0E1A", borderRadius: 8, padding: "6px 10px", textAlign: "center" as const, minWidth: 72 }}>
+                <div style={{ fontSize: 14, fontWeight: 900, color: "#00C9A0", lineHeight: 1.2 }}>${ltv.toLocaleString("en-US", { maximumFractionDigits: 0 })}</div>
                 <div style={{ fontSize: 8, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>LTV</div>
+                {(jhStats?.ytd_revenue ?? 0) > 0 && (
+                  <>
+                    <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", marginTop: 4, paddingTop: 4 }}>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: "#60EFCE", lineHeight: 1.2 }}>${(jhStats?.ytd_revenue ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}</div>
+                      <div style={{ fontSize: 7, fontWeight: 700, color: "#6B7280", textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>2026</div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
             {/* Mobile compact summary row */}
