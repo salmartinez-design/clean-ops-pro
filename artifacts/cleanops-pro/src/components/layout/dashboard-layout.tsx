@@ -546,7 +546,7 @@ export function DashboardLayout({ children, title, fullBleed, onNewJob }: Dashbo
           </div>
         )}
 
-        <main style={{ padding: '0 0 80px', display: 'flex', flexDirection: 'column' }}>
+        <main style={{ padding: '0 0 calc(64px + max(8px, env(safe-area-inset-bottom)))', display: 'flex', flexDirection: 'column' }}>
           <CommsPausedBanner />
           <div style={{ padding: '16px 14px 0' }}>{children}</div>
         </main>
@@ -556,16 +556,17 @@ export function DashboardLayout({ children, title, fullBleed, onNewJob }: Dashbo
           position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 30,
           backgroundColor: '#FFFFFF', borderTop: '1px solid #E5E2DC',
           display: 'flex', alignItems: 'stretch',
-          height: 64, paddingBottom: 'env(safe-area-inset-bottom)',
+          paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
+          boxSizing: 'border-box' as const,
         }}>
           {bottomTabs.map(tab => {
             const isTab = tab.href === '/dashboard' ? location === tab.href : location.startsWith(tab.href);
             const Icon = tab.icon;
             return (
-              <Link key={tab.href} href={tab.href} style={{ flex: 1, textDecoration: 'none' }}>
+              <Link key={tab.href} href={tab.href} style={{ flex: '1 1 0', minWidth: 0, textDecoration: 'none' }}>
                 <div style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                  height: '100%', gap: 3, cursor: 'pointer',
+                  minHeight: 56, gap: 3, cursor: 'pointer',
                   color: isTab ? 'var(--brand)' : '#9E9B94',
                 }}>
                   <Icon size={22} strokeWidth={isTab ? 2.5 : 1.8} />
@@ -579,9 +580,11 @@ export function DashboardLayout({ children, title, fullBleed, onNewJob }: Dashbo
           <button
             onClick={() => setMoreOpen(p => !p)}
             style={{
-              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              flex: '1 1 0', minWidth: 0, minHeight: 56,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
               gap: 3, background: 'none', border: 'none', cursor: 'pointer',
               color: isMoreActive || moreOpen ? 'var(--brand)' : '#9E9B94',
+              padding: 0,
             }}
           >
             <MoreHorizontal size={22} strokeWidth={isMoreActive || moreOpen ? 2.5 : 1.8} />
