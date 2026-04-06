@@ -170,7 +170,7 @@ function ClientSidebar({ client, stats, jobs, onPortalInvite }: { client: any; s
             )}
             {client.zone_name && client.zone_color && (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: `${client.zone_color}18`, border: `1px solid ${client.zone_color}55`, color: client.zone_color, padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: client.zone_color, display: "inline-block" }} />
+                <span style={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: client.zone_color, display: "inline-block", boxShadow: `0 0 0 2px ${client.zone_color}40` }} />
                 {client.zone_name}
               </span>
             )}
@@ -3879,7 +3879,7 @@ export default function CustomerProfilePage() {
           <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
             <span style={{ fontSize: 19, fontWeight: 700, color: "#0A0E1A" }}>{profile.first_name} {profile.last_name}</span>
             {profile.zone_color && (
-              <span title={profile.zone_name || "Zone"} style={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: profile.zone_color, display: "inline-block", flexShrink: 0, cursor: "default" }} />
+              <span title={profile.zone_name || "Zone"} style={{ width: 14, height: 14, borderRadius: "50%", backgroundColor: profile.zone_color, display: "inline-block", flexShrink: 0, cursor: "default", boxShadow: `0 0 0 3px ${profile.zone_color}30, 0 0 0 1px ${profile.zone_color}80` }} />
             )}
             <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4, textTransform: "uppercase" as const, letterSpacing: "0.06em", background: profile.is_active !== false ? "#DCFCE7" : "#F3F4F6", color: profile.is_active !== false ? "#166534" : "#6B7280" }}>
               {profile.is_active !== false ? "Active" : "Inactive"}
@@ -4319,7 +4319,7 @@ export default function CustomerProfilePage() {
                   {profile.zone_color && profile.zone_name && (
                     <>
                       <span style={{ color: "#D0CEC9", fontSize: 11 }}>·</span>
-                      <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: profile.zone_color, display: "inline-block", flexShrink: 0 }} />
+                      <span style={{ width: 11, height: 11, borderRadius: "50%", backgroundColor: profile.zone_color, display: "inline-block", flexShrink: 0, boxShadow: `0 0 0 2px ${profile.zone_color}35` }} />
                       <span style={{ fontSize: 11, fontWeight: 600, color: profile.zone_color }}>{profile.zone_name}</span>
                     </>
                   )}
