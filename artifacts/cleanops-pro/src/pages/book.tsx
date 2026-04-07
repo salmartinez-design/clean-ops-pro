@@ -1528,9 +1528,9 @@ export default function BookPage() {
         }
       `}} />
       {/* Top bar */}
-      <div className="bw-topbar" style={{ background: "#fff", borderBottom: "1px solid #E5E2DC", padding: "14px 32px", display: "flex", alignItems: "center", gap: 16 }}>
+      <div className="bw-topbar" style={{ background: "#fff", borderBottom: "1px solid #E5E2DC", padding: "12px 32px", display: "flex", alignItems: "center", gap: 16 }}>
         {logoSrc ? (
-          <img src={logoSrc} alt={company.name} style={{ height: 32, objectFit: "contain" }} />
+          <img src={logoSrc} alt={company.name} style={{ height: 52, objectFit: "contain" }} />
         ) : (
           <span style={{ fontWeight: 800, fontSize: 18, color: brand }}>{company.name}</span>
         )}
