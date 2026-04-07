@@ -663,6 +663,11 @@ export default function BookPage() {
     })
       .then((res) => {
         if (!res.stripe_enabled) { setStripeEnabled(false); return; }
+        // NOTE: The publishable key is delivered from the server via this API response.
+        // It is NOT read from import.meta.env / VITE_ prefix vars — no Vite env var is needed.
+        // The Replit secret is stored as STRIPE_PUBLISHABLE_KEY (server-side only).
+        // Stripe's SDK masks keys as pk_live_****xxxx in its own console output — that is normal.
+        console.log("[Stripe] Setup API response received. pubKey prefix:", res.publishable_key?.slice(0, 12));
         setStripeEnabled(true);
         setStripePubKey(res.publishable_key);
         setStripeClientSecret(res.client_secret);
@@ -686,8 +691,8 @@ export default function BookPage() {
     const mountCard = () => {
       const w = window as any;
       if (!w.Stripe) return;
+      console.log("[Stripe] Calling w.Stripe() with pubKey prefix:", stripePubKey?.slice(0, 12), "| clientSecret prefix:", stripeClientSecret?.slice(0, 10));
       const stripe = w.Stripe(stripePubKey);
-      console.log("[Stripe] Initialising card element. clientSecret starts with:", stripeClientSecret?.slice(0, 10));
       const elements = stripe.elements(); // clientSecret passed to confirmCardSetup, not here
       cardEl = elements.create("card", {
         style: {
