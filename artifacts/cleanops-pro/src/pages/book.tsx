@@ -1076,6 +1076,20 @@ export default function BookPage() {
         "If we miss a spot, contact us within 24 hours. We will return to re-clean the area at no cost.",
       ],
     },
+    {
+      title: "Home Access",
+      items: [
+        "Be home: wait for our arrival during the scheduled window.",
+        "Keys or codes: provide a spare key or electronic entry code.",
+        "Secure lockbox: we can provide a master lockbox for $50.00, must be returned upon termination of service or a $75.00 fee applies.",
+      ],
+    },
+    {
+      title: "Non-Solicitation",
+      items: [
+        "By using our services, you agree not to solicit, hire, or contract any Phes staff member privately. Any breach results in immediate termination of your service agreement.",
+      ],
+    },
   ];
 
   const toggleCat = (idx: number, openSet: Set<number>, setOpenSet: (s: Set<number>) => void) => {
