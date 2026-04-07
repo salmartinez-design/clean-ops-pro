@@ -363,6 +363,8 @@ export default function BookPage() {
   const [displayScopeKey, setDisplayScopeKey] = useState<string | null>(null);
   // Maps frequency string → scope_id for split recurring scopes (weekly→4, biweekly→9, monthly→10)
   const [recurringFreqScopeMap, setRecurringFreqScopeMap] = useState<Record<string, number>>({});
+  // Tracks whether Windows/Basement add-on is "every_visit" or "this_visit_only" on recurring scope
+  const [addonRecurringPref, setAddonRecurringPref] = useState<Record<number, "every_visit" | "this_visit_only">>({});
 
   // Post-Construction form state
   const [pcConstructionType, setPcConstructionType] = useState("");
@@ -973,6 +975,7 @@ export default function BookPage() {
     setUpsellCadence(""); setUpsellAccepted(false); setUpsellDeclined(false);
     setUpsellTermsOpen(false); setUpsellCadenceError(false);
     setLastCleanedResponse(""); setLastCleanedOverride(false); setOverageAcknowledged(false);
+    setAddonRecurringPref({});
   }
 
   function selectPostConstruction() {
@@ -1728,7 +1731,7 @@ export default function BookPage() {
                     scopes: [
                       { key: "deep_clean",       displayName: "Deep Clean",              match: (n) => n === "deep clean" },
                       { key: "move_in_out",       displayName: "Move In / Move Out",      match: (n) => n === "move in / move out" },
-                      { key: "recurring",         displayName: "Recurring Cleaning",      match: (n) => n.includes("recurring cleaning") },
+                      { key: "recurring",         displayName: "Recurring Service",       match: (n) => n.includes("recurring cleaning") },
                       { key: "one_time_standard", displayName: "One-Time Standard Clean", match: (n) => n.includes("one-time standard") || n.includes("one time standard") },
                     ],
                   },
@@ -1787,7 +1790,7 @@ export default function BookPage() {
                         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={brand} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                       </div>
                       <p style={{ fontWeight: 700, fontSize: 18, color: "#1A1917", margin: "0 0 8px" }}>Request Received!</p>
-                      <p style={{ fontSize: 14, color: "#6B6860", margin: 0 }}>We'll reach out within 1 business day to discuss your post-construction cleaning. Check your email for confirmation.</p>
+                      <p style={{ fontSize: 14, color: "#6B6860", margin: 0 }}>We received your request and will reach out within 24 hours with a custom quote. Check your email for confirmation.</p>
                     </div>
                   ) : (
                     <>
@@ -2603,15 +2606,19 @@ export default function BookPage() {
                   : "Price varies by home size";
 
                 const toggle = (id: number) => {
-                  setSelectedAddonIds(prev =>
-                    prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-                  );
+                  setSelectedAddonIds(prev => {
+                    const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+                    if (!next.includes(id)) {
+                      setAddonRecurringPref(p => { const n = { ...p }; delete n[id]; return n; });
+                    }
+                    return next;
+                  });
                 };
 
-                // Scoped visibility: which hardcoded cards show per scope
-                const showDynCards = isDeepCleanScope || isMoveInOut; // Windows shows for deep + move
-                const showBasCard  = isDeepCleanScope || isMoveInOut;     // Basement for Deep Clean + Move In/Out
-                const showFlatCards = !isCommercial;                    // Oven/Fridge/Cabinet for all non-commercial
+                // All five add-ons are available for every non-commercial, non-post-construction service
+                const showFlatCards = !isCommercial && !isPostConstruction;
+                const showDynCards  = !isCommercial && !isPostConstruction;
+                const showBasCard   = !isCommercial && !isPostConstruction;
 
                 const hasAnyCard = showFlatCards || showDynCards || showBasCard;
 
@@ -2727,6 +2734,22 @@ export default function BookPage() {
                               </p>
                             </div>
                           </div>
+                          {winSel && isRecurringScope && winDb && (
+                            <div style={{ padding: "10px 12px", background: "#F7F6F4", borderRadius: 8, border: "1px solid #E5E2DC" }}>
+                              <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 600, color: "#1A1917" }}>Include on every visit or just this cleaning?</p>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                {(["every_visit", "this_visit_only"] as const).map(opt => {
+                                  const sel = addonRecurringPref[winDb.id] === opt || (!addonRecurringPref[winDb.id] && opt === "every_visit");
+                                  return (
+                                    <button key={opt} onClick={e => { e.stopPropagation(); setAddonRecurringPref(p => ({ ...p, [winDb.id]: opt })); }}
+                                      style={{ flex: 1, padding: "7px 4px", borderRadius: 6, border: `1.5px solid ${sel ? brand : "#C4C1BA"}`, background: sel ? `${brand}12` : "#fff", fontWeight: sel ? 700 : 500, fontSize: 11, color: sel ? brand : "#6B6860", cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                                      {opt === "every_visit" ? "Every Visit" : "This Visit Only"}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -2751,6 +2774,22 @@ export default function BookPage() {
                               </div>
                             </div>
                           </div>
+                          {basSel && isRecurringScope && basDb && (
+                            <div style={{ padding: "10px 12px", background: "#F7F6F4", borderRadius: 8, border: "1px solid #E5E2DC" }}>
+                              <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 600, color: "#1A1917" }}>Include on every visit or just this cleaning?</p>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                {(["every_visit", "this_visit_only"] as const).map(opt => {
+                                  const sel = addonRecurringPref[basDb.id] === opt || (!addonRecurringPref[basDb.id] && opt === "every_visit");
+                                  return (
+                                    <button key={opt} onClick={e => { e.stopPropagation(); setAddonRecurringPref(p => ({ ...p, [basDb.id]: opt })); }}
+                                      style={{ flex: 1, padding: "7px 4px", borderRadius: 6, border: `1.5px solid ${sel ? brand : "#C4C1BA"}`, background: sel ? `${brand}12` : "#fff", fontWeight: sel ? 700 : 500, fontSize: 11, color: sel ? brand : "#6B6860", cursor: "pointer", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                                      {opt === "every_visit" ? "Every Visit" : "This Visit Only"}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
 
