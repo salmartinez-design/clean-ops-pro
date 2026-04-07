@@ -761,7 +761,7 @@ export default function BookPage() {
             recurring_arrival_window: upsellAccepted ? recurringArrivalWindow || null : null,
             arrival_window: arrivalWindow || null,
             property_vacant: isMoveInOut,
-            move_in_notes: (isMoveInOut || isDeepClean || isOneTimeStandard) && moveInNotes.trim() ? moveInNotes.trim() : null,
+            move_in_notes: moveInNotes.trim() ? moveInNotes.trim() : null,
             address: addressComponents?.formatted ?? address,
             address_street: addressComponents?.street ?? null,
             address_city: addressComponents?.city ?? null,
@@ -1257,12 +1257,7 @@ export default function BookPage() {
 
         {/* Section 2 — Price Summary */}
         {step >= 1 && (
-          step === 2 ? (
-            <div style={s.card}>
-              <p style={sectionLabel}>Price Summary</p>
-              <p style={{ margin: 0, fontSize: 13, color: "#9E9B94", lineHeight: 1.5 }}>Your price will appear after you select any add-ons.</p>
-            </div>
-          ) : calcResult ? (
+          calcResult ? (
           <div style={s.card}>
             <p style={sectionLabel}>Price Summary</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1773,53 +1768,26 @@ export default function BookPage() {
                 </div>
               )}
 
-              {/* ── Special notes (Deep Clean, Move In/Out, One-Time Standard) ── */}
-              {(isMoveInOut || isDeepClean || isOneTimeStandard) && scopeId && (
+              {/* ── Acknowledgment checkbox — Move In/Out only (notes moved to Step 3) ── */}
+              {isMoveInOut && scopeId && (
                 <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 24, marginTop: 8, marginBottom: 8 }}>
-
-                  {/* Notes textarea */}
-                  <div style={{ marginBottom: isMoveInOut ? 20 : 0 }}>
-                    <label style={{ display: "block", fontWeight: 600, fontSize: 13, color: "#1A1917", marginBottom: 6 }}>
-                      Special notes or anything you'd like us to know
-                    </label>
-                    <textarea
-                      value={moveInNotes}
-                      onChange={e => setMoveInNotes(e.target.value)}
-                      placeholder="e.g. garage access code, fragile items in cabinets, areas to avoid…"
-                      rows={3}
-                      style={{
-                        width: "100%", boxSizing: "border-box",
-                        border: "1.5px solid #E5E2DC", borderRadius: 8,
-                        padding: "10px 12px", fontSize: 13, color: "#1A1917",
-                        fontFamily: "'Plus Jakarta Sans', sans-serif",
-                        resize: "vertical", outline: "none",
-                        background: "#fff", lineHeight: 1.5,
-                      }}
+                  <p style={{ fontWeight: 600, fontSize: 15, color: "#1A1917", marginBottom: 12, marginTop: 0 }}>Before we confirm your booking</p>
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={moveInAck}
+                      onChange={e => setMoveInAck(e.target.checked)}
+                      style={{ marginTop: 2, accentColor: brand, width: 16, height: 16, flexShrink: 0 }}
                     />
-                  </div>
-
-                  {/* Acknowledgment checkbox — Move In/Out only */}
-                  {isMoveInOut && (
-                    <>
-                      <p style={{ fontWeight: 600, fontSize: 15, color: "#1A1917", marginBottom: 12, marginTop: 20 }}>Before we confirm your booking</p>
-                      <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
-                        <input
-                          type="checkbox"
-                          checked={moveInAck}
-                          onChange={e => setMoveInAck(e.target.checked)}
-                          style={{ marginTop: 2, accentColor: brand, width: 16, height: 16, flexShrink: 0 }}
-                        />
-                        <span style={{ fontSize: 13, color: "#1A1917", lineHeight: 1.5 }}>
-                          I confirm the property will be completely empty of furniture and personal belongings, no other contractors will be present, and the property will have running water and working electricity on the day of cleaning.
-                        </span>
-                      </label>
-                    </>
-                  )}
+                    <span style={{ fontSize: 13, color: "#1A1917", lineHeight: 1.5 }}>
+                      I confirm the property will be completely empty of furniture and personal belongings, no other contractors will be present, and the property will have running water and working electricity on the day of cleaning.
+                    </span>
+                  </label>
                 </div>
               )}
 
               {scopeId && !isCommercial && (
-                <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 24, marginTop: (isMoveInOut || isDeepClean || isOneTimeStandard) ? 0 : (isRecurringScope ? 16 : 8) }}>
+                <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 24, marginTop: isMoveInOut ? 0 : (isRecurringScope ? 16 : 8) }}>
                   <p style={{ fontWeight: 700, fontSize: 15, color: "#1A1917", marginBottom: 16 }}>Home Details</p>
 
                   <FieldWrap label="Square Footage">
@@ -2531,6 +2499,29 @@ export default function BookPage() {
               <p style={{ fontSize: 12, color: "#6B6860", marginBottom: 16, marginTop: 4, lineHeight: 1.5, textAlign: "center" }}>
                 Add extras now — requesting them later may require a separate visit.
               </p>
+
+              {/* Special notes — all scopes */}
+              {scopeId && (
+                <div style={{ marginBottom: 16, paddingTop: 16, borderTop: "1px solid #E5E2DC" }}>
+                  <label style={{ display: "block", fontWeight: 600, fontSize: 13, color: "#1A1917", marginBottom: 6 }}>
+                    Special notes or anything you'd like us to know
+                  </label>
+                  <textarea
+                    value={moveInNotes}
+                    onChange={e => setMoveInNotes(e.target.value)}
+                    placeholder="e.g. garage access code, fragile items in cabinets, areas to avoid..."
+                    rows={3}
+                    style={{
+                      width: "100%", boxSizing: "border-box",
+                      border: "1.5px solid #E5E2DC", borderRadius: 8,
+                      padding: "10px 12px", fontSize: 13, color: "#1A1917",
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
+                      resize: "vertical", outline: "none",
+                      background: "#fff", lineHeight: 1.5,
+                    }}
+                  />
+                </div>
+              )}
 
               {/* Running total */}
               {calcResult && selectedAddonIds.length > 0 && (
