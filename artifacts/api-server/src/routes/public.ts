@@ -9,6 +9,8 @@ import {
 } from "@workspace/db/schema";
 import { companiesTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
+import { getBranchByZip } from "../lib/branchRouter";
+import { buildClientConfirmationEmail, buildOfficeNotificationEmail } from "../lib/emailTemplates";
 
 const router = Router();
 
@@ -679,6 +681,8 @@ router.post("/book/confirm", rateLimit, async (req, res) => {
     const addrLng = address_lng ? parseFloat(String(address_lng)) : null;
     const addrVerified = address_verified === true || address_verified === "true" ? true : false;
 
+    const branchConfig = getBranchByZip(zip || address_zip || "");
+
     const jobResult = await db.execute(
       drizzleSql`
         INSERT INTO jobs (
@@ -694,6 +698,7 @@ router.post("/book/confirm", rateLimit, async (req, res) => {
           booking_location,
           address_street, address_city, address_state, address_zip,
           address_lat, address_lng, address_verified,
+          branch, reminder_72h_sent, reminder_24h_sent,
           notes, created_at
         ) VALUES (
           ${company_id}, ${clientId}, ${serviceTypeEnum}, 'unassigned',
@@ -709,6 +714,7 @@ router.post("/book/confirm", rateLimit, async (req, res) => {
           ${bookLocVal},
           ${addrStreet}, ${addrCity}, ${addrState}, ${addrZip},
           ${addrLat}, ${addrLng}, ${addrVerified},
+          ${branchConfig.branch}, false, false,
           ${jobNotes}, NOW()
         ) RETURNING id
       `
@@ -817,78 +823,64 @@ router.post("/book/confirm", rateLimit, async (req, res) => {
 
     // ── Confirmation emails ───────────────────────────────────────────────────
     const resendKey = process.env.RESEND_API_KEY;
+    const emailDateStr = preferred_date
+      ? new Date(preferred_date + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })
+      : "To be scheduled";
+    const emailWindowLabel = arrivalWindowVal === "morning" ? "9:00 AM – 12:00 PM" : arrivalWindowVal === "afternoon" ? "12:00 PM – 2:00 PM" : "To be confirmed";
+    const emailAddonBreakdown: Array<{ name: string; amount: number }> = (pricing.addon_breakdown || []).map((a: any) => ({ name: a.name, amount: parseFloat(String(a.amount || 0)) }));
+    const emailBundleDiscount = bundleDiscount ? Math.abs(parseFloat(String(bundleDiscount))) : 0;
+    const emailParams = {
+      firstName: first_name,
+      lastName: last_name,
+      email,
+      phone,
+      serviceType: scopeName,
+      scheduledDate: emailDateStr,
+      arrivalWindow: emailWindowLabel,
+      serviceAddress: address || addrStreet || "",
+      addressLine2: address_line2 || null,
+      preferredContactMethod: preferred_contact_method || "Phone",
+      basePrice: pricing.base_price || 0,
+      addons: emailAddonBreakdown,
+      bundleDiscount: emailBundleDiscount,
+      firstVisitTotal: adjustedTotal,
+      specialNotes: move_in_notes || null,
+      sqft: sqft ? parseInt(String(sqft)) : null,
+      branchConfig,
+      jobId,
+      clientId,
+      stripeCustomerId: stripe_customer_id || null,
+      stripePaymentMethodId: payment_method_id || null,
+      bedrooms: bedrooms ? parseInt(String(bedrooms)) : null,
+      fullBathrooms: bathrooms ? parseInt(String(bathrooms)) : null,
+      halfBathrooms: half_baths ? parseInt(String(half_baths)) : null,
+      floors: floors ? parseInt(String(floors)) : null,
+      people: people ? parseInt(String(people)) : null,
+      pets: pets ? parseInt(String(pets)) : null,
+      cleanlinessRating: cleanliness ? parseInt(String(cleanliness)) : null,
+      acquisitionSource: referral_source || null,
+    };
     if (process.env.COMMS_ENABLED !== "true") {
-      console.log("[COMMS BLOCKED] Booking confirmation email suppressed:", { to: email, name: `${first_name} ${last_name}` });
+      console.log("[COMMS BLOCKED] Booking confirmation email suppressed:", { to: email, name: `${first_name} ${last_name}`, branch: branchConfig.branch, jobId });
     } else if (resendKey) {
       try {
         const { Resend } = await import("resend");
         const resend = new Resend(resendKey);
-        const dateStr = preferred_date
-          ? new Date(preferred_date + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })
-          : "To be scheduled";
-        const recurDateStr = recurring_date
-          ? new Date(recurring_date + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })
-          : null;
-        const recurCadenceLabel = upsellCadenceVal === "weekly" ? "week" : upsellCadenceVal === "biweekly" ? "2 weeks" : "4 weeks";
-        const arrivalWindowLabel = arrivalWindowVal === "morning" ? "9 AM – 12 PM" : arrivalWindowVal === "afternoon" ? "12 PM – 2 PM" : null;
-        const recurLockedRate = upsell_locked_rate ? parseFloat(String(upsell_locked_rate)).toFixed(2) : null;
-        const cardStr = cardLast4 ? `${(cardBrand || "Card").charAt(0).toUpperCase() + (cardBrand || "card").slice(1)} ending in ${cardLast4}` : "Card on file";
-        const freqStr = frequency ? frequency.charAt(0).toUpperCase() + frequency.slice(1) : "";
-
-        // Customer confirmation
+        const { subject: clientSubject, html: clientHtml } = buildClientConfirmationEmail(emailParams);
         await resend.emails.send({
-          from: "PHES Cleaning <noreply@phes.io>",
+          from: `Phes <${branchConfig.officeEmail}>`,
+          replyTo: branchConfig.officeEmail,
           to: [email],
-          subject: "Your Cleaning Appointment is Confirmed",
-          html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:32px;background:#F7F6F3;">
-<div style="background:#fff;border:1px solid #E5E2DC;border-radius:8px;padding:32px;">
-<div style="background:#5B9BD5;padding:16px 24px;border-radius:4px;margin-bottom:24px;">
-  <span style="color:#fff;font-size:18px;font-weight:bold;">You're all set, ${first_name}!</span>
-</div>
-<p style="color:#1A1917;font-size:15px;margin:0 0 20px;">Your cleaning appointment has been confirmed. Here's a summary:</p>
-<table style="width:100%;border-collapse:collapse;font-size:14px;color:#1A1917;">
-  <tr><td style="padding:8px 0;color:#6B6860;width:160px;">Service</td><td style="padding:8px 0;font-weight:600;">${scopeName}${upsellAcceptedVal ? " + Recurring" : ""}</td></tr>
-  <tr><td style="padding:8px 0;color:#6B6860;">Date</td><td style="padding:8px 0;font-weight:600;">${dateStr}</td></tr>
-  ${arrivalWindowLabel ? `<tr><td style="padding:8px 0;color:#6B6860;">Arrival Window</td><td style="padding:8px 0;">${arrivalWindowLabel}</td></tr>` : ""}
-  ${upsellAcceptedVal && recurDateStr ? `<tr><td style="padding:8px 0;color:#6B6860;">First Recurring Date</td><td style="padding:8px 0;font-weight:600;">${recurDateStr}</td></tr>` : ""}
-  ${upsellAcceptedVal && recurDateStr && recurLockedRate ? `<tr><td style="padding:8px 0;color:#6B6860;vertical-align:top;">Rate Lock</td><td style="padding:8px 0;">$${recurLockedRate}/visit every ${recurCadenceLabel} — locked for 24 months</td></tr>` : ""}
-  ${!upsellAcceptedVal ? `<tr><td style="padding:8px 0;color:#6B6860;">Frequency</td><td style="padding:8px 0;">${freqStr}</td></tr>` : ""}
-  <tr><td style="padding:8px 0;color:#6B6860;">Address</td><td style="padding:8px 0;">${address || "On file"}</td></tr>
-  <tr><td style="padding:8px 0;color:#6B6860;">First Visit Total</td><td style="padding:8px 0;font-weight:600;">$${adjustedTotal.toFixed(2)}</td></tr>
-  <tr><td style="padding:8px 0;color:#6B6860;">Payment</td><td style="padding:8px 0;">${cardStr}</td></tr>
-</table>
-${upsellAcceptedVal && recurDateStr ? `<p style="background:#F0F7FF;border-left:3px solid #5B9BD5;padding:10px 14px;font-size:13px;color:#1A1917;margin:20px 0 0;">Your first visit is scheduled for <strong>${dateStr}</strong>. Your first recurring cleaning is scheduled for <strong>${recurDateStr}</strong>, then every ${recurCadenceLabel} from there — your rate is locked at $${recurLockedRate}/visit for 24 months.</p>` : ""}
-<p style="color:#6B6860;font-size:13px;margin:24px 0 0;">Questions? Call us at (773) 706-6000 or reply to this email. We look forward to seeing you!</p>
-</div></div>`,
+          subject: clientSubject,
+          html: clientHtml,
         });
-
-        // Internal notification
+        const { subject: officeSubject, html: officeHtml } = buildOfficeNotificationEmail(emailParams);
         await resend.emails.send({
-          from: "Qleno <noreply@phes.io>",
-          to: ["info@phes.io"],
-          subject: `New Online Booking — ${first_name} ${last_name} — Job #${jobId}${recurringJobId ? ` + #${recurringJobId}` : ""}`,
-          html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:32px;background:#F7F6F3;">
-<div style="background:#fff;border:1px solid #E5E2DC;border-radius:8px;padding:32px;">
-<div style="background:#5B9BD5;padding:16px 24px;border-radius:4px;margin-bottom:24px;">
-  <span style="color:#fff;font-size:18px;font-weight:bold;">New Online Booking — Job #${jobId}${recurringJobId ? ` + Recurring #${recurringJobId}` : ""}</span>
-</div>
-<table style="width:100%;border-collapse:collapse;font-size:14px;color:#1A1917;">
-  <tr><td style="padding:8px 0;color:#6B6860;width:160px;">Customer</td><td style="padding:8px 0;font-weight:600;">${first_name} ${last_name}</td></tr>
-  <tr><td style="padding:8px 0;color:#6B6860;">Phone</td><td style="padding:8px 0;">${phone}</td></tr>
-  <tr><td style="padding:8px 0;color:#6B6860;">Email</td><td style="padding:8px 0;">${email}</td></tr>
-  <tr><td style="padding:8px 0;color:#6B6860;">Address</td><td style="padding:8px 0;">${address || "Not provided"}</td></tr>
-  <tr><td style="padding:8px 0;color:#6B6860;">Service</td><td style="padding:8px 0;">${scopeName}${upsellAcceptedVal ? " + Recurring (upsell)" : ""} — ${sqft} sqft</td></tr>
-  <tr><td style="padding:8px 0;color:#6B6860;">Date</td><td style="padding:8px 0;font-weight:600;">${dateStr}</td></tr>
-  ${arrivalWindowLabel ? `<tr><td style="padding:8px 0;color:#6B6860;">Arrival Window</td><td style="padding:8px 0;">${arrivalWindowLabel}</td></tr>` : ""}
-  ${recurDateStr ? `<tr><td style="padding:8px 0;color:#6B6860;">First Recurring</td><td style="padding:8px 0;font-weight:600;">${recurDateStr}</td></tr>` : ""}
-  ${recurLockedRate ? `<tr><td style="padding:8px 0;color:#6B6860;">Locked Rate</td><td style="padding:8px 0;">$${recurLockedRate}/visit every ${recurCadenceLabel} for 24 months</td></tr>` : ""}
-  <tr><td style="padding:8px 0;color:#6B6860;">First Visit Total</td><td style="padding:8px 0;font-weight:600;">$${adjustedTotal.toFixed(2)}</td></tr>
-  <tr><td style="padding:8px 0;color:#6B6860;">Payment</td><td style="padding:8px 0;">${cardStr}</td></tr>
-  <tr><td style="padding:8px 0;color:#6B6860;">Client ID</td><td style="padding:8px 0;">#${clientId}</td></tr>
-  <tr><td style="padding:8px 0;color:#6B6860;">Job #1 (Deep Clean)</td><td style="padding:8px 0;">#${jobId} — UNASSIGNED</td></tr>
-  ${recurringJobId ? `<tr><td style="padding:8px 0;color:#6B6860;">Job #2 (Recurring)</td><td style="padding:8px 0;">#${recurringJobId} — UNASSIGNED</td></tr>` : ""}
-</table>
-</div></div>`,
+          from: `Phes <${branchConfig.officeEmail}>`,
+          replyTo: branchConfig.officeEmail,
+          to: [branchConfig.officeEmail],
+          subject: officeSubject,
+          html: officeHtml,
         });
       } catch (emailErr) {
         console.error("[confirm] Resend error:", emailErr);
@@ -916,7 +908,7 @@ ${upsellAcceptedVal && recurDateStr ? `<p style="background:#F0F7FF;border-left:
               Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
               "Content-Type": "application/x-www-form-urlencoded",
             },
-            body: new URLSearchParams({ To: "+17737869902", From: fromNum, Body: smsBody }).toString(),
+            body: new URLSearchParams({ To: "+17737869902", From: branchConfig.twilioFrom || fromNum, Body: smsBody }).toString(),
           }
         );
         if (!smsRes.ok) console.error("[confirm] Twilio SMS failed:", await smsRes.text());
@@ -925,7 +917,7 @@ ${upsellAcceptedVal && recurDateStr ? `<p style="background:#F0F7FF;border-left:
       console.error("[confirm] Office SMS error:", smsErr);
     }
 
-    console.log(`[STRIPE] Booking confirmed — client_id=${clientId} job_id=${jobId}${recurringJobId ? ` recurring_job_id=${recurringJobId}` : ""} PM=${payment_method_id} card=${cardBrand} *${cardLast4}`);
+    console.log(`[STRIPE] Booking confirmed — client_id=${clientId} job_id=${jobId}${recurringJobId ? ` recurring_job_id=${recurringJobId}` : ""} PM=${payment_method_id} card=${cardBrand} *${cardLast4} branch=${branchConfig.branch}`);
     return res.status(201).json({
       ok: true,
       client_id: clientId,
@@ -935,6 +927,9 @@ ${upsellAcceptedVal && recurDateStr ? `<p style="background:#F0F7FF;border-left:
       pricing,
       card_last4: cardLast4,
       card_brand: cardBrand,
+      branch: branchConfig.branch,
+      branch_phone: branchConfig.clientPhoneFormatted,
+      branch_email: branchConfig.officeEmail,
     });
   } catch (err: any) {
     if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });

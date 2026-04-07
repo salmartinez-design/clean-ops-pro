@@ -2877,13 +2877,28 @@ export default function BookPage() {
 
           {step === 5 && bookResult && !(isCommercial && commercialOption === "walkthrough") && (
             <div style={s.card}>
-              <div style={{ textAlign: "center", marginBottom: 32 }}>
+              <div style={{ textAlign: "center", marginBottom: 28 }}>
                 <div style={{ width: 64, height: 64, borderRadius: "50%", background: `${brand}20`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
                   <CheckCircle2 size={32} color={brand} />
                 </div>
-                <p style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800, color: "#1A1917" }}>You're all set!</p>
-                <p style={{ margin: 0, fontSize: 14, color: "#6B6860" }}>Your booking has been confirmed. We'll reach out with additional details.</p>
+                <p style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800, color: "#1A1917" }}>Your booking is confirmed!</p>
+                <p style={{ margin: "0 0 6px", fontSize: 14, color: "#6B6860" }}>
+                  Thank you, {firstName}. {selectedScope?.name} is scheduled
+                  {selectedDate ? ` for ${new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}` : ""}
+                  {arrivalWindow ? ` with a ${arrivalWindow === "morning" ? "9 AM – 12 PM" : "12 PM – 2 PM"} arrival window` : ""}.
+                </p>
+                <p style={{ margin: "0 0 6px", fontSize: 14, color: "#6B6860" }}>A confirmation email has been sent to <strong>{email}</strong>.</p>
+                <p style={{ margin: 0, fontSize: 14, color: "#6B6860" }}>
+                  Our office will reach out via <strong>{contactMethod || "your preferred method"}</strong> to confirm your exact arrival time. You will also receive SMS and email reminders 72 hours and 24 hours before your appointment.
+                </p>
               </div>
+
+              {(bookResult.branch_phone || bookResult.branch_email) && (
+                <div style={{ background: "#EBF4FF", borderLeft: `4px solid ${brand}`, borderRadius: "0 6px 6px 0", padding: "14px 16px", marginBottom: 24, fontSize: 14, color: "#1A1917" }}>
+                  <strong>Questions?</strong> Call us at <strong>{bookResult.branch_phone}</strong> or email{" "}
+                  <a href={`mailto:${bookResult.branch_email}`} style={{ color: brand }}>{bookResult.branch_email}</a>
+                </div>
+              )}
 
               <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 24, marginBottom: 24 }}>
                 <p style={{ margin: "0 0 16px", fontWeight: 700, fontSize: 15, color: "#1A1917" }}>Booking Details</p>

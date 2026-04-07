@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { quotesTable, clientsTable, quoteScopesTable } from "@workspace/db/schema";
 import { eq, and, desc, count, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
+import { getBranchByZip } from "../lib/branchRouter";
 
 const router = Router();
 
@@ -150,6 +151,15 @@ router.post("/", requireAuth, requireRole("owner", "admin", "office"), async (re
 
     const scope = scope_id ? await db.select().from(quoteScopesTable).where(eq(quoteScopesTable.id, scope_id)).limit(1) : null;
 
+    // Resolve branch from client zip for branch tagging
+    let quoteBranch = "oak_lawn";
+    if (client_id) {
+      try {
+        const [cl] = await db.select({ zip: clientsTable.zip }).from(clientsTable).where(eq(clientsTable.id, client_id)).limit(1);
+        if (cl?.zip) quoteBranch = getBranchByZip(cl.zip).branch;
+      } catch {}
+    }
+
     const [q] = await db.insert(quotesTable).values({
       company_id: req.auth!.companyId,
       client_id: client_id || null,
@@ -170,7 +180,8 @@ router.post("/", requireAuth, requireRole("owner", "admin", "office"), async (re
       special_instructions, internal_memo, client_notes, notes,
       status: status || "draft",
       created_by: req.auth!.userId,
-    }).returning();
+      branch: quoteBranch,
+    } as any).returning();
 
     return res.status(201).json(q);
   } catch (err) {

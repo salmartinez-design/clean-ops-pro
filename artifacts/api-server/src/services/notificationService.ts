@@ -1,6 +1,8 @@
 import { db } from "@workspace/db";
 import { notificationTemplatesTable, notificationLogTable, clientsTable, companiesTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
+import { getBranchByZip } from "../lib/branchRouter";
+import { buildReminderEmail } from "../lib/emailTemplates";
 import { Resend } from "resend";
 
 // ── Email brand constants ────────────────────────────────────────────────────
@@ -198,49 +200,135 @@ async function logNotification(
 
 // ── Job reminder cron ────────────────────────────────────────────────────────
 export async function runReminderCron(daysAhead: number): Promise<void> {
+  const hoursAhead = daysAhead === 3 ? 72 : 24;
+  const sentCol = hoursAhead === 72 ? "reminder_72h_sent" : "reminder_24h_sent";
+  const label = hoursAhead === 72 ? "72h" : "24h";
+
   if (process.env.COMMS_ENABLED !== "true") {
-    console.log("[COMMS BLOCKED] runReminderCron suppressed — COMMS_ENABLED=false");
+    console.log(`[COMMS BLOCKED] runReminderCron (${label}) suppressed — COMMS_ENABLED=false`);
+    // Still mark reminders as sent so we don't accumulate a backlog when comms re-enable
+    // Actually: do NOT mark sent when blocked — retry on next run instead (per spec: "log and skip")
     return;
   }
+
   try {
     const target = new Date();
     target.setDate(target.getDate() + daysAhead);
     const targetStr = target.toISOString().slice(0, 10);
-    const templateKey = daysAhead === 3 ? "reminder_3day" : "reminder_1day";
+    const { sql: drizzleSql } = await import("drizzle-orm");
 
     const rows = await db.execute(
-      (await import("drizzle-orm")).sql`
-        SELECT j.id, j.scheduled_date, j.scheduled_time, j.service_type, j.company_id,
-               c.first_name, c.last_name, c.email, c.phone,
-               c.address, c.city, c.state, c.zip,
-               co.name AS company_name, co.phone AS company_phone, co.email AS company_email
-          FROM jobs j
-          JOIN clients c ON c.id = j.client_id
-          JOIN companies co ON co.id = j.company_id
-         WHERE j.scheduled_date = ${targetStr}
-           AND j.status NOT IN ('cancelled', 'complete')
-      `
+      hoursAhead === 72
+        ? drizzleSql`
+            SELECT j.id, j.scheduled_date, j.service_type, j.arrival_window,
+                   j.address_street, j.address_city, j.address_state, j.address_zip,
+                   c.first_name, c.last_name, c.email, c.phone, c.zip
+              FROM jobs j
+              JOIN clients c ON c.id = j.client_id
+             WHERE j.scheduled_date = ${targetStr}
+               AND j.status NOT IN ('cancelled', 'void', 'done', 'complete')
+               AND j.reminder_72h_sent = false
+          `
+        : drizzleSql`
+            SELECT j.id, j.scheduled_date, j.service_type, j.arrival_window,
+                   j.address_street, j.address_city, j.address_state, j.address_zip,
+                   c.first_name, c.last_name, c.email, c.phone, c.zip
+              FROM jobs j
+              JOIN clients c ON c.id = j.client_id
+             WHERE j.scheduled_date = ${targetStr}
+               AND j.status NOT IN ('cancelled', 'void', 'done', 'complete')
+               AND j.reminder_24h_sent = false
+          `
     );
     const jobs: any[] = (rows as any).rows ?? [];
+
+    const resendKey = process.env.RESEND_API_KEY;
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken  = process.env.TWILIO_AUTH_TOKEN;
+
     for (const job of jobs) {
-      const addr = [job.address, job.city, job.state].filter(Boolean).join(", ");
-      const window = job.scheduled_time
-        ? `${formatTime(job.scheduled_time)} \u2013 ${formatTimeOffset(job.scheduled_time, 2)}`
+      const jobZip = job.address_zip || job.zip || "";
+      const branchConfig = getBranchByZip(jobZip);
+      const serviceAddress = [job.address_street, job.address_city, job.address_state].filter(Boolean).join(", ") || "On file";
+      const arrivalWindowLabel = job.arrival_window === "morning"
+        ? "9:00 AM – 12:00 PM"
+        : job.arrival_window === "afternoon"
+        ? "12:00 PM – 2:00 PM"
         : "scheduled window";
-      const mergeVars = {
-        first_name:          job.first_name || "",
-        last_name:           job.last_name  || "",
-        appointment_date:    formatDate(job.scheduled_date),
-        appointment_window:  window,
-        service_address:     addr,
-        scope:               labelServiceType(job.service_type),
-      };
-      await sendNotification(templateKey, "email", job.company_id, job.email, null, mergeVars);
-      await sendNotification(templateKey, "sms",   job.company_id, null, job.phone, mergeVars);
+      const scheduledDate = formatDate(job.scheduled_date);
+      const serviceType = labelServiceType(job.service_type);
+
+      let emailSent = false;
+      let smsSent = false;
+
+      // Email reminder
+      if (resendKey) {
+        try {
+          const { subject, html } = buildReminderEmail({
+            firstName: job.first_name || "",
+            email: job.email,
+            serviceType,
+            scheduledDate,
+            arrivalWindow: arrivalWindowLabel,
+            serviceAddress,
+            branchConfig,
+            hoursAhead: hoursAhead as 72 | 24,
+          });
+          const resend = new Resend(resendKey);
+          await resend.emails.send({
+            from: `Phes <${branchConfig.officeEmail}>`,
+            replyTo: branchConfig.officeEmail,
+            to: [job.email],
+            subject,
+            html,
+          });
+          emailSent = true;
+        } catch (emailErr) {
+          console.error(`[reminder-${label}] Email failed for job ${job.id}:`, emailErr);
+        }
+      }
+
+      // SMS reminder
+      if (accountSid && authToken && job.phone) {
+        try {
+          const smsBody = hoursAhead === 72
+            ? `Hi ${job.first_name || "there"}, this is Phes confirming your cleaning appointment on ${scheduledDate} with a ${arrivalWindowLabel} arrival window at ${serviceAddress}. Questions? Call us at ${branchConfig.clientPhone}. Reply STOP to unsubscribe.`
+            : `Hi ${job.first_name || "there"}, your Phes cleaning is tomorrow with a ${arrivalWindowLabel} arrival window at ${serviceAddress}. Please ensure access to your home is available. Questions? Call ${branchConfig.clientPhone}. Reply STOP to unsubscribe.`;
+          const smsRes = await fetch(
+            `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+              body: new URLSearchParams({ To: job.phone, From: branchConfig.twilioFrom, Body: smsBody }).toString(),
+            }
+          );
+          if (smsRes.ok) smsSent = true;
+          else console.error(`[reminder-${label}] Twilio failed for job ${job.id}:`, await smsRes.text());
+        } catch (smsErr) {
+          console.error(`[reminder-${label}] SMS error for job ${job.id}:`, smsErr);
+        }
+      }
+
+      // Mark sent if at least one channel succeeded
+      if (emailSent || smsSent) {
+        try {
+          await db.execute(
+            hoursAhead === 72
+              ? drizzleSql`UPDATE jobs SET reminder_72h_sent = true WHERE id = ${job.id}`
+              : drizzleSql`UPDATE jobs SET reminder_24h_sent = true WHERE id = ${job.id}`
+          );
+        } catch (markErr) {
+          console.error(`[reminder-${label}] Failed to mark ${sentCol} for job ${job.id}:`, markErr);
+        }
+      }
     }
-    console.log(`[notifications] ${templateKey} cron: processed ${jobs.length} jobs`);
+
+    console.log(`[notifications] reminder-${label} cron: processed ${jobs.length} jobs`);
   } catch (err) {
-    console.error(`[notifications] reminder cron error:`, err);
+    console.error(`[notifications] reminder-${label} cron error:`, err);
   }
 }
 
