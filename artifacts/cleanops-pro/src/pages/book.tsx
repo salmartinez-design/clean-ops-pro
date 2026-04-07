@@ -401,6 +401,8 @@ export default function BookPage() {
   // Step 3: Arrival window (time range)
   const [arrivalWindow, setArrivalWindow] = useState<"morning" | "afternoon" | "">("");
   const [recurringArrivalWindow, setRecurringArrivalWindow] = useState<"morning" | "afternoon" | "">("");
+  const [contactMethod, setContactMethod] = useState<"sms" | "call" | "email" | "">("");
+  const [contactMethodError, setContactMethodError] = useState(false);
 
   // Step 2: Frequency + Add-ons
   const [frequencyStr, setFrequencyStr] = useState("");
@@ -763,6 +765,7 @@ export default function BookPage() {
             recurring_date: upsellAccepted ? recurringDate : null,
             recurring_arrival_window: upsellAccepted ? recurringArrivalWindow || null : null,
             arrival_window: arrivalWindow || null,
+            preferred_contact_method: contactMethod || null,
             property_vacant: isMoveInOut,
             move_in_notes: moveInNotes.trim() ? moveInNotes.trim() : null,
             address: addressComponents?.formatted ?? address,
@@ -804,6 +807,7 @@ export default function BookPage() {
           address_verified: addressComponents?.verified ?? false,
           booking_location: bookingLocation,
           preferred_date: selectedDate,
+          preferred_contact_method: contactMethod || null,
         }),
       });
       setBookResult(result);
@@ -2688,6 +2692,37 @@ export default function BookPage() {
                 </div>
               )}
 
+              {/* ── Preferred contact method ── */}
+              {selectedDate && arrivalWindow && (
+                <div style={{ marginTop: 20 }}>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#6B6860", marginBottom: 6 }}>
+                    Preferred contact method for appointment confirmation
+                  </label>
+                  <select
+                    value={contactMethod}
+                    onChange={e => { setContactMethod(e.target.value as any); setContactMethodError(false); }}
+                    style={{
+                      width: "100%", padding: "10px 12px", borderRadius: 10,
+                      border: `1.5px solid ${contactMethodError ? "#DC2626" : "#E5E2DC"}`,
+                      background: "#fff", fontFamily: "'Plus Jakarta Sans', sans-serif",
+                      fontSize: 14, color: contactMethod ? "#1A1917" : "#9CA3AF",
+                      appearance: "auto", cursor: "pointer", outline: "none",
+                    }}
+                  >
+                    <option value="" disabled>Select a contact method…</option>
+                    <option value="sms">SMS / Text Message</option>
+                    <option value="call">Phone Call</option>
+                    <option value="email">Email</option>
+                  </select>
+                  {contactMethodError && (
+                    <p style={{ margin: "4px 0 0", fontSize: 12, color: "#DC2626" }}>Please select a preferred contact method to continue.</p>
+                  )}
+                  <p style={{ margin: "8px 0 0", fontSize: 11, color: "#6B6860", lineHeight: 1.55 }}>
+                    Our office will reach out via your preferred method to confirm your exact appointment time within your selected arrival window. Appointment times are subject to availability and will be confirmed before your scheduled date.
+                  </p>
+                </div>
+              )}
+
               {bookError && (
                 <div style={{ marginTop: 16, padding: "12px 16px", background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#DC2626" }}>
                   <AlertCircle size={14} /> {bookError}
@@ -2697,9 +2732,10 @@ export default function BookPage() {
               <div className="bw-nav" style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
                 <button style={s.btn(false)} onClick={() => isCommercial ? setStep(1) : setStep(2)}>Back</button>
                 <button
-                  style={{ ...s.btn(), opacity: (!selectedDate || !arrivalWindow || (upsellAccepted && !recurringDate) || (upsellAccepted && recurringDate && !recurringArrivalWindow) || walkthroughBooking) ? 0.5 : 1 }}
+                  style={{ ...s.btn(), opacity: (!selectedDate || !arrivalWindow || !contactMethod || (upsellAccepted && !recurringDate) || (upsellAccepted && recurringDate && !recurringArrivalWindow) || walkthroughBooking) ? 0.5 : 1 }}
                   disabled={!selectedDate || !arrivalWindow || (upsellAccepted && !recurringDate) || (upsellAccepted && recurringDate && !recurringArrivalWindow) || walkthroughBooking}
                   onClick={() => {
+                    if (!contactMethod) { setContactMethodError(true); return; }
                     if (isCommercial && commercialOption === "walkthrough") {
                       submitWalkthroughBooking();
                     } else {

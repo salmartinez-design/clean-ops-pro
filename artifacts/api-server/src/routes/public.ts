@@ -538,6 +538,7 @@ router.post("/book/confirm", rateLimit, async (req, res) => {
       upsell_cadence_selected, upsell_locked_rate, upsell_first_visit_rate,
       recurring_date,
       arrival_window,
+      preferred_contact_method,
       property_vacant, move_in_notes,
       address, preferred_date,
       payment_method_id, stripe_customer_id,
@@ -687,7 +688,7 @@ router.post("/book/confirm", rateLimit, async (req, res) => {
           last_cleaned_response, last_cleaned_flag,
           overage_disclaimer_acknowledged, overage_rate,
           upsell_shown, upsell_accepted, upsell_declined, upsell_deferred, upsell_cadence_selected,
-          property_vacant, arrival_window,
+          property_vacant, arrival_window, preferred_contact_method,
           booking_location,
           address_street, address_city, address_state, address_zip,
           address_lat, address_lng, address_verified,
@@ -701,7 +702,7 @@ router.post("/book/confirm", rateLimit, async (req, res) => {
           ${lastCleanedResp}, ${lastCleanedFl},
           ${overageAck}, ${overageRateVal},
           ${upsellShownVal}, ${upsellAcceptedVal}, ${upsellDeclinedVal}, ${upsellDeferredVal}, ${upsellCadenceVal},
-          ${propertyVacantVal}, ${arrivalWindowVal},
+          ${propertyVacantVal}, ${arrivalWindowVal}, ${preferred_contact_method || null},
           ${bookLocVal},
           ${addrStreet}, ${addrCity}, ${addrState}, ${addrZip},
           ${addrLat}, ${addrLng}, ${addrVerified},
@@ -949,6 +950,7 @@ router.post("/book", rateLimit, async (req, res) => {
       scope_id, sqft, frequency, addon_ids, discount_code,
       bedrooms, bathrooms, half_baths, floors, people, pets, cleanliness,
       address, preferred_date,
+      preferred_contact_method,
       booking_location,
       address_street, address_city, address_state, address_zip,
       address_lat, address_lng, address_verified,
@@ -1020,12 +1022,14 @@ router.post("/book", rateLimit, async (req, res) => {
         INSERT INTO jobs (
           company_id, client_id, service_type, status,
           scheduled_date, frequency, base_fee, estimated_hours, hourly_rate,
+          preferred_contact_method,
           booking_location, address_street, address_city, address_state, address_zip,
           address_lat, address_lng, address_verified,
           notes, created_at
         ) VALUES (
           ${company_id}, ${clientId}, ${scopeName}, 'unassigned',
           ${preferred_date || null}, ${legNormFreq}, ${pricing.final_total}, ${pricing.base_hours}, ${pricing.hourly_rate},
+          ${preferred_contact_method || null},
           ${legBookLoc}, ${legAddrStreet}, ${legAddrCity}, ${legAddrState}, ${legAddrZip},
           ${legAddrLat}, ${legAddrLng}, ${legAddrVerified},
           ${jobNotes}, NOW()
