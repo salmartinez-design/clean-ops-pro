@@ -672,15 +672,24 @@ export default function BookPage() {
       .finally(() => setStripeSetupLoading(false));
   }, [step, company]);
 
-  // ── Mount Stripe card element once we have client_secret + publishable_key ─
+  // ── Mount Stripe card element — runs whenever step becomes 4 ────────────
   useEffect(() => {
-    if (!stripeEnabled || !stripeClientSecret || !stripePubKey) return;
+    if (step !== 4 || !stripeEnabled || !stripeClientSecret || !stripePubKey) return;
+
+    // Reset card state so the button stays disabled until the new element is ready
+    setStripeCardReady(false);
+    setStripeInstance(null);
+    setStripeCardElement(null);
+
+    let cardEl: any = null;
+
     const mountCard = () => {
       const w = window as any;
       if (!w.Stripe) return;
       const stripe = w.Stripe(stripePubKey);
-      const elements = stripe.elements(); // clientSecret goes to confirmCardSetup, not here
-      const cardEl = elements.create("card", {
+      console.log("[Stripe] Initialising card element. clientSecret starts with:", stripeClientSecret?.slice(0, 10));
+      const elements = stripe.elements(); // clientSecret passed to confirmCardSetup, not here
+      cardEl = elements.create("card", {
         style: {
           base: {
             fontFamily: "'Plus Jakarta Sans', Arial, sans-serif",
@@ -691,7 +700,8 @@ export default function BookPage() {
         },
       });
       const container = document.getElementById("stripe-card-element-book");
-      if (container && !container.hasChildNodes()) {
+      if (container) {
+        container.innerHTML = ""; // clear any stale content from a previous mount
         cardEl.mount("#stripe-card-element-book");
         cardEl.on("ready", () => setStripeCardReady(true));
         setStripeInstance(stripe);
@@ -700,13 +710,30 @@ export default function BookPage() {
     };
 
     const existing = document.getElementById("stripe-js-book");
-    if (existing) { mountCard(); return; }
+    if (existing) {
+      const w = window as any;
+      if (w.Stripe) {
+        mountCard();
+      } else {
+        // Script tag exists but hasn't finished executing yet — poll until ready
+        const poll = setInterval(() => {
+          if ((window as any).Stripe) { clearInterval(poll); mountCard(); }
+        }, 50);
+        return () => clearInterval(poll);
+      }
+      return;
+    }
     const script = document.createElement("script");
     script.id = "stripe-js-book";
     script.src = "https://js.stripe.com/v3/";
     script.onload = mountCard;
     document.head.appendChild(script);
-  }, [stripeEnabled, stripeClientSecret, stripePubKey]);
+
+    return () => {
+      // Unmount the card element when step changes away from 4
+      if (cardEl) { try { cardEl.unmount(); } catch (_) {} }
+    };
+  }, [stripeEnabled, stripeClientSecret, stripePubKey, step]);
 
   // ── Pre-populate billing zip from service zip when entering Step 4 ────────
   useEffect(() => {
@@ -722,6 +749,7 @@ export default function BookPage() {
     try {
       // If Stripe is enabled, confirm the SetupIntent first
       if (stripeEnabled && stripeInstance && stripeCardElement && stripeClientSecret) {
+        console.log("[Stripe] confirmCardSetup — clientSecret prefix:", stripeClientSecret.slice(0, 10), "| cardElement:", stripeCardElement ? "present" : "NULL");
         const { setupIntent, error } = await stripeInstance.confirmCardSetup(stripeClientSecret, {
           payment_method: {
             card: stripeCardElement,
@@ -734,7 +762,10 @@ export default function BookPage() {
           },
         });
         if (error) {
-          setBookError("We were unable to verify your card. Please check your details or use a different card.");
+          console.error("[Stripe] confirmCardSetup error:", JSON.stringify(error));
+          setBookError(error.type === "validation_error"
+            ? (error.message ?? "Please check your card details and try again.")
+            : "We were unable to verify your card. Please check your details or use a different card.");
           setBooking(false);
           return;
         }
