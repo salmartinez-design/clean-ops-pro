@@ -12,33 +12,26 @@ const router = Router();
 router.get("/", requireAuth, requireRole("owner", "admin"), async (req, res) => {
   try {
     const companyId = req.auth!.companyId;
+    const { branch_id } = req.query;
+    const branchFilter = branch_id && branch_id !== "all" ? parseInt(branch_id as string) : null;
     const todayStr = new Date().toISOString().split("T")[0];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
+    const jobBase = [eq(jobsTable.company_id, companyId), eq(jobsTable.scheduled_date, todayStr)];
+    if (branchFilter) jobBase.push(eq(jobsTable.branch_id, branchFilter) as any);
+    const tcBase = [eq(timeclockTable.company_id, companyId), eq(timeclockTable.flagged, true), sql`${timeclockTable.clock_in_at} >= ${today.toISOString()}`, sql`${timeclockTable.clock_in_at} < ${tomorrow.toISOString()}`];
+    if (branchFilter) tcBase.push(eq(timeclockTable.branch_id, branchFilter) as any);
+
     const [todayJobs, completedJobs, inProgressJobs, scheduledJobs, flaggedEntries] = await Promise.all([
       db.select({ id: jobsTable.id, status: jobsTable.status, client_id: jobsTable.client_id })
-        .from(jobsTable)
-        .where(and(eq(jobsTable.company_id, companyId), eq(jobsTable.scheduled_date, todayStr))),
-      db.select({ cnt: count() })
-        .from(jobsTable)
-        .where(and(eq(jobsTable.company_id, companyId), eq(jobsTable.scheduled_date, todayStr), eq(jobsTable.status, "complete"))),
-      db.select({ cnt: count() })
-        .from(jobsTable)
-        .where(and(eq(jobsTable.company_id, companyId), eq(jobsTable.scheduled_date, todayStr), eq(jobsTable.status, "in_progress"))),
-      db.select({ cnt: count() })
-        .from(jobsTable)
-        .where(and(eq(jobsTable.company_id, companyId), eq(jobsTable.scheduled_date, todayStr), eq(jobsTable.status, "scheduled"))),
-      db.select({ cnt: count() })
-        .from(timeclockTable)
-        .where(and(
-          eq(timeclockTable.company_id, companyId),
-          eq(timeclockTable.flagged, true),
-          sql`${timeclockTable.clock_in_at} >= ${today.toISOString()}`,
-          sql`${timeclockTable.clock_in_at} < ${tomorrow.toISOString()}`
-        )),
+        .from(jobsTable).where(and(...jobBase)),
+      db.select({ cnt: count() }).from(jobsTable).where(and(...jobBase, eq(jobsTable.status, "complete"))),
+      db.select({ cnt: count() }).from(jobsTable).where(and(...jobBase, eq(jobsTable.status, "in_progress"))),
+      db.select({ cnt: count() }).from(jobsTable).where(and(...jobBase, eq(jobsTable.status, "scheduled"))),
+      db.select({ cnt: count() }).from(timeclockTable).where(and(...tcBase)),
     ]);
 
     const todayJobIds = todayJobs.map(j => j.id);

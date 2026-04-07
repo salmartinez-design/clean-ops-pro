@@ -687,9 +687,15 @@ export default function InvoicesPage() {
                     </button>
                   </>
                 )}
-                <button onClick={() => setShowNewInvoice(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 13px", backgroundColor: "var(--brand)", color: "#FFFFFF", borderRadius: 8, fontSize: 13, fontWeight: 700, border: "none", cursor: "pointer", fontFamily: FF }}>
+                <button
+                  onClick={() => {
+                    if (activeBranchId === "all") { toast({ title: "Select a location first", description: "Choose Oak Lawn or Schaumburg to create an invoice.", variant: "destructive" }); return; }
+                    setShowNewInvoice(true);
+                  }}
+                  title={activeBranchId === "all" ? "Select a location to create invoices" : undefined}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 13px", backgroundColor: activeBranchId === "all" ? "#9E9B94" : "var(--brand)", color: "#FFFFFF", borderRadius: 8, fontSize: 13, fontWeight: 700, border: "none", cursor: activeBranchId === "all" ? "not-allowed" : "pointer", fontFamily: FF, opacity: activeBranchId === "all" ? 0.7 : 1 }}>
                   <Plus size={14} strokeWidth={2} /> {isMobile ? "New" : "New Invoice"}
-                  {!isMobile && <kbd style={{ fontSize: 10, border: '1px solid rgba(255,255,255,0.45)', borderRadius: 3, padding: '1px 5px', color: 'rgba(255,255,255,0.8)', fontFamily: 'inherit' }}>⇧I</kbd>}
+                  {!isMobile && activeBranchId !== "all" && <kbd style={{ fontSize: 10, border: '1px solid rgba(255,255,255,0.45)', borderRadius: 3, padding: '1px 5px', color: 'rgba(255,255,255,0.8)', fontFamily: 'inherit' }}>⇧I</kbd>}
                 </button>
               </div>
             </div>

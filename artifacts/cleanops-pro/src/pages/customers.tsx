@@ -5,6 +5,7 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { getAuthHeaders } from "@/lib/auth";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useBranch } from "@/contexts/branch-context";
+import { toast } from "sonner";
 import { Plus, Search, Phone, Mail, MapPin, Download, MessageSquare, UserPlus, ChevronDown, X, Loader2 } from "lucide-react";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -138,11 +139,15 @@ export default function CustomersPage() {
             </p>
           </div>
           <button
-            onClick={() => navigate("/customers/new")}
-            style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px", backgroundColor: "var(--brand)", color: "#FFFFFF", borderRadius: "8px", fontSize: "13px", fontWeight: 600, border: "none", cursor: "pointer" }}
+            onClick={() => {
+              if (activeBranchId === "all") { toast({ title: "Select a location first", description: "Choose Oak Lawn or Schaumburg to add a client.", variant: "destructive" }); return; }
+              navigate("/customers/new");
+            }}
+            title={activeBranchId === "all" ? "Select a location to add clients" : undefined}
+            style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px", backgroundColor: activeBranchId === "all" ? "#9E9B94" : "var(--brand)", color: "#FFFFFF", borderRadius: "8px", fontSize: "13px", fontWeight: 600, border: "none", cursor: activeBranchId === "all" ? "not-allowed" : "pointer", opacity: activeBranchId === "all" ? 0.7 : 1 }}
           >
             <Plus size={14} strokeWidth={2} /> Add Client
-            <kbd style={{ fontSize: 10, border: '1px solid rgba(255,255,255,0.45)', borderRadius: 3, padding: '1px 5px', color: 'rgba(255,255,255,0.8)', fontFamily: 'inherit' }}>⇧C</kbd>
+            {activeBranchId !== "all" && <kbd style={{ fontSize: 10, border: '1px solid rgba(255,255,255,0.45)', borderRadius: 3, padding: '1px 5px', color: 'rgba(255,255,255,0.8)', fontFamily: 'inherit' }}>⇧C</kbd>}
           </button>
         </div>
 

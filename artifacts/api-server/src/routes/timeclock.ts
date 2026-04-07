@@ -20,7 +20,7 @@ function calculateDistanceFt(lat1: number, lon1: number, lat2: number, lon2: num
 
 router.get("/", requireAuth, async (req, res) => {
   try {
-    const { user_id, job_id, flagged, date_from, date_to } = req.query;
+    const { user_id, job_id, flagged, date_from, date_to, branch_id } = req.query;
 
     const conditions: any[] = [eq(timeclockTable.company_id, req.auth!.companyId)];
     if (user_id) conditions.push(eq(timeclockTable.user_id, parseInt(user_id as string)));
@@ -28,6 +28,7 @@ router.get("/", requireAuth, async (req, res) => {
     if (flagged !== undefined) conditions.push(eq(timeclockTable.flagged, flagged === "true"));
     if (date_from) conditions.push(gte(timeclockTable.clock_in_at, new Date(date_from as string)));
     if (date_to) conditions.push(lte(timeclockTable.clock_in_at, new Date(date_to as string)));
+    if (branch_id && branch_id !== "all") conditions.push(eq(timeclockTable.branch_id, parseInt(branch_id as string)));
 
     const entries = await db
       .select({

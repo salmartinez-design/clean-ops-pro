@@ -66,10 +66,13 @@ router.get("/stats", requireAuth, async (req, res) => {
   try {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const { branch_id } = req.query;
+    const statsConds: any[] = [eq(quotesTable.company_id, req.auth!.companyId)];
+    if (branch_id && branch_id !== "all") statsConds.push(eq(quotesTable.branch_id, parseInt(branch_id as string)));
 
     const allQuotes = await db.select({ status: quotesTable.status, accepted_at: quotesTable.accepted_at, booked_job_id: quotesTable.booked_job_id })
       .from(quotesTable)
-      .where(eq(quotesTable.company_id, req.auth!.companyId));
+      .where(and(...statsConds));
 
     const total = allQuotes.length;
     const pending = allQuotes.filter(q => q.status === "sent" || q.status === "viewed").length;
@@ -85,10 +88,11 @@ router.get("/stats", requireAuth, async (req, res) => {
 
 router.get("/", requireAuth, async (req, res) => {
   try {
-    const { status, client_id } = req.query;
+    const { status, client_id, branch_id } = req.query;
     const conditions: any[] = [eq(quotesTable.company_id, req.auth!.companyId)];
     if (status && status !== "all") conditions.push(eq(quotesTable.status, status as string));
     if (client_id) conditions.push(eq(quotesTable.client_id, parseInt(client_id as string)));
+    if (branch_id && branch_id !== "all") conditions.push(eq(quotesTable.branch_id, parseInt(branch_id as string)));
 
     const quotes = await db
       .select({

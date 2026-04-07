@@ -3,6 +3,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { getAuthHeaders } from "@/lib/auth";
+import { useBranch } from "@/contexts/branch-context";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -114,18 +115,23 @@ export default function QuotesPage() {
   const [, navigate] = useLocation();
   const isMobile = useIsMobile();
   const qc = useQueryClient();
+  const { activeBranchId } = useBranch();
   const [activeTab, setActiveTab] = useState("all");
   const [search, setSearch] = useState("");
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
   const { data: quotes = [], isLoading } = useQuery<Quote[]>({
-    queryKey: ["quotes", activeTab],
-    queryFn: () => apiFetch(`/api/quotes${activeTab !== "all" ? `?status=${activeTab}` : ""}`),
+    queryKey: ["quotes", activeTab, activeBranchId],
+    queryFn: () => {
+      const statusQ = activeTab !== "all" ? `status=${activeTab}` : "";
+      const qs = [statusQ, activeBranchId !== "all" ? `branch_id=${activeBranchId}` : ""].filter(Boolean).join("&");
+      return apiFetch(`/api/quotes${qs ? `?${qs}` : ""}`);
+    },
   });
 
   const { data: stats } = useQuery<Stats>({
-    queryKey: ["quote-stats"],
-    queryFn: () => apiFetch("/api/quotes/stats"),
+    queryKey: ["quote-stats", activeBranchId],
+    queryFn: () => apiFetch(`/api/quotes/stats${activeBranchId !== "all" ? `?branch_id=${activeBranchId}` : ""}`),
   });
 
   const sendMutation = useMutation({
@@ -174,8 +180,9 @@ export default function QuotesPage() {
           <div style={{ padding: "16px 16px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <h1 style={{ fontSize: 18, fontWeight: 700, color: "#1A1917", margin: 0 }}>Quotes</h1>
             <button
-              onClick={() => navigate("/quotes/new")}
-              style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--brand)", color: "#FFF", border: "none", borderRadius: 8, padding: "10px 16px", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: FF, minHeight: 44 }}
+              onClick={() => { if (activeBranchId === "all") { toast.error("Select a location first — choose Oak Lawn or Schaumburg to create a quote."); return; } navigate("/quotes/new"); }}
+              title={activeBranchId === "all" ? "Select a location to create quotes" : undefined}
+              style={{ display: "flex", alignItems: "center", gap: 6, background: activeBranchId === "all" ? "#9E9B94" : "var(--brand)", color: "#FFF", border: "none", borderRadius: 8, padding: "10px 16px", fontSize: 14, fontWeight: 600, cursor: activeBranchId === "all" ? "not-allowed" : "pointer", fontFamily: FF, minHeight: 44, opacity: activeBranchId === "all" ? 0.75 : 1 }}
             >
               <Plus size={16} /> New Quote
             </button>
@@ -220,8 +227,8 @@ export default function QuotesPage() {
                 <FileText size={36} style={{ color: "#9E9B94", margin: "0 auto 12px" }} />
                 <p style={{ fontSize: 14, color: "#6B6860", margin: "0 0 16px", fontFamily: FF }}>No quotes found.</p>
                 <button
-                  onClick={() => navigate("/quotes/new")}
-                  style={{ background: "var(--brand)", color: "#FFF", border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: FF }}
+                  onClick={() => { if (activeBranchId === "all") { toast.error("Select a location first."); return; } navigate("/quotes/new"); }}
+                  style={{ background: activeBranchId === "all" ? "#9E9B94" : "var(--brand)", color: "#FFF", border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 14, fontWeight: 600, cursor: activeBranchId === "all" ? "not-allowed" : "pointer", fontFamily: FF }}
                 >
                   <Plus size={14} style={{ verticalAlign: "middle", marginRight: 4 }} /> Create your first quote
                 </button>
@@ -281,10 +288,14 @@ export default function QuotesPage() {
             <h1 className="text-2xl font-bold text-[#1A1917]">Quotes</h1>
             <p className="text-sm text-[#6B7280] mt-1">Manage and track client quotes.</p>
           </div>
-          <Button className="gap-2 bg-[#5B9BD5] hover:bg-[#4a8ac4] text-white" onClick={() => navigate("/quotes/new")}>
+          <Button
+            className={`gap-2 text-white ${activeBranchId === "all" ? "bg-gray-400 cursor-not-allowed hover:bg-gray-400" : "bg-[#5B9BD5] hover:bg-[#4a8ac4]"}`}
+            title={activeBranchId === "all" ? "Select a location to create quotes" : undefined}
+            onClick={() => { if (activeBranchId === "all") { toast.error("Select a location first — choose Oak Lawn or Schaumburg."); return; } navigate("/quotes/new"); }}
+          >
             <Plus className="w-4 h-4" />
             New Quote
-            <kbd style={{ fontSize: 10, border: "1px solid rgba(255,255,255,0.45)", borderRadius: 3, padding: "1px 5px", color: "rgba(255,255,255,0.8)", marginLeft: 2, fontFamily: "inherit" }}>⇧Q</kbd>
+            {activeBranchId !== "all" && <kbd style={{ fontSize: 10, border: "1px solid rgba(255,255,255,0.45)", borderRadius: 3, padding: "1px 5px", color: "rgba(255,255,255,0.8)", marginLeft: 2, fontFamily: "inherit" }}>⇧Q</kbd>}
           </Button>
         </div>
 
@@ -322,7 +333,11 @@ export default function QuotesPage() {
             <div className="p-12 text-center space-y-3">
               <FileText className="w-10 h-10 text-[#9E9B94] mx-auto" />
               <p className="text-[#6B7280]">No quotes found.</p>
-              <Button size="sm" className="bg-[#5B9BD5] hover:bg-[#4a8ac4] text-white gap-1.5" onClick={() => navigate("/quotes/new")}>
+              <Button
+                size="sm"
+                className={`text-white gap-1.5 ${activeBranchId === "all" ? "bg-gray-400 cursor-not-allowed hover:bg-gray-400" : "bg-[#5B9BD5] hover:bg-[#4a8ac4]"}`}
+                onClick={() => { if (activeBranchId === "all") { toast.error("Select a location first."); return; } navigate("/quotes/new"); }}
+              >
                 <Plus className="w-3.5 h-3.5" /> Create your first quote
               </Button>
             </div>

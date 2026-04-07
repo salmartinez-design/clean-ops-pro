@@ -73,14 +73,17 @@ export async function resolveZoneForZip(companyId: number, zip: string | null | 
 router.get("/", requireAuth, requireRole("owner", "admin", "office"), async (req, res) => {
   try {
     const companyId = req.auth!.companyId;
+    const { branch_id } = req.query;
 
     // Auto-seed PHES
     if (companyId === 1) await autoSeedPhes(companyId);
 
+    const zoneConds: any[] = [eq(serviceZonesTable.company_id, companyId)];
+    if (branch_id && branch_id !== "all") zoneConds.push(eq(serviceZonesTable.branch_id, parseInt(branch_id as string)));
     const zones = await db
       .select()
       .from(serviceZonesTable)
-      .where(eq(serviceZonesTable.company_id, companyId))
+      .where(and(...zoneConds))
       .orderBy(serviceZonesTable.sort_order);
 
     if (zones.length === 0) return res.json([]);

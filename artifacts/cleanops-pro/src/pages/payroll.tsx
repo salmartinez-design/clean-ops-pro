@@ -3,6 +3,7 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { useListUsers } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getAuthHeaders, getTokenRole } from "@/lib/auth";
+import { useBranch } from "@/contexts/branch-context";
 import { Download, Calendar, Plus, X, Zap, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -54,10 +55,12 @@ function WeeklyDetailView() {
   const [period, setPeriod] = useState(getDefaultPeriod());
   const [expanded, setExpanded] = useState<number[]>([]);
   const FF = "inherit";
+  const { activeBranchId } = useBranch();
+  const branchQ = activeBranchId !== "all" ? `&branch_id=${activeBranchId}` : "";
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['payroll-detail', period.start, period.end],
-    queryFn: () => apiFetch(`/payroll/detail?pay_period_start=${period.start}&pay_period_end=${period.end}`),
+    queryKey: ['payroll-detail', period.start, period.end, activeBranchId],
+    queryFn: () => apiFetch(`/payroll/detail?pay_period_start=${period.start}&pay_period_end=${period.end}${branchQ}`),
     enabled: !!period.start && !!period.end,
   });
 
@@ -186,7 +189,9 @@ function WeeklyDetailView() {
 
 export default function PayrollPage() {
   const qc = useQueryClient();
-  const { data, isLoading } = useListUsers({}, { request: { headers: getAuthHeaders() } });
+  const { activeBranchId } = useBranch();
+  const branchQuery = activeBranchId !== "all" ? { branch_id: String(activeBranchId) } : {};
+  const { data, isLoading } = useListUsers(branchQuery, { request: { headers: getAuthHeaders() } });
   const employees = data?.data || [];
   const billableEmployees = employees.filter((e: any) => e.role !== 'owner');
 

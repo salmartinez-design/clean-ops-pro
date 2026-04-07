@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { useListUsers } from "@workspace/api-client-react";
 import { getAuthHeaders, getTokenRole } from "@/lib/auth";
+import { useBranch } from "@/contexts/branch-context";
 import { Plus, Search, Mail, ExternalLink, Check, Eye } from "lucide-react";
 import { useEmployeeView } from "@/contexts/employee-view-context";
 
@@ -48,7 +49,9 @@ export default function EmployeesPage() {
   const [newEmp, setNewEmp] = useState({ first_name: '', last_name: '', email: '', role: 'technician', pay_type: 'hourly', pay_rate: '' });
   const [creating, setCreating] = useState(false);
 
-  const { data, isLoading, refetch } = useListUsers({}, { request: { headers: getAuthHeaders() } });
+  const { activeBranchId } = useBranch();
+  const branchQuery = activeBranchId !== "all" ? { branch_id: String(activeBranchId) } : {};
+  const { data, isLoading, refetch } = useListUsers(branchQuery, { request: { headers: getAuthHeaders() } });
 
   const employees = (data?.data || []).filter(u =>
     !search || `${u.first_name} ${u.last_name} ${u.email}`.toLowerCase().includes(search.toLowerCase())

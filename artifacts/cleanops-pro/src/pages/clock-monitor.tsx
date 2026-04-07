@@ -4,6 +4,7 @@ import { useAuthStore } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { AlertTriangle, MapPin } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { useBranch } from "@/contexts/branch-context";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -143,14 +144,16 @@ function FlagModal({ entry, onClose, onDismiss }: { entry: Entry; onClose: () =>
 export default function ClockMonitorPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const { activeBranchId } = useBranch();
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
 
   const today = new Date().toISOString().split("T")[0];
+  const branchSuffix = activeBranchId !== "all" ? `&branch_id=${activeBranchId}` : "";
 
   const { data, isLoading } = useQuery({
-    queryKey: ["clock-monitor", today],
+    queryKey: ["clock-monitor", today, activeBranchId],
     queryFn: async () => {
-      const res = await apiFetch(`/timeclock?date_from=${today}T00:00:00&date_to=${today}T23:59:59`);
+      const res = await apiFetch(`/timeclock?date_from=${today}T00:00:00&date_to=${today}T23:59:59${branchSuffix}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
@@ -158,7 +161,7 @@ export default function ClockMonitorPage() {
   });
 
   const { data: violationsData } = useQuery({
-    queryKey: ["clock-violations", today],
+    queryKey: ["clock-violations", today, activeBranchId],
     queryFn: async () => {
       const res = await apiFetch(`/timeclock/violations`);
       if (!res.ok) return { data: [] };

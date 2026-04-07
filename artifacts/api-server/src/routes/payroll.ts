@@ -8,19 +8,16 @@ const router = Router();
 
 router.get("/summary", requireAuth, requireRole("owner", "admin", "office"), async (req, res) => {
   try {
-    const { pay_period_start, pay_period_end } = req.query;
+    const { pay_period_start, pay_period_end, branch_id } = req.query;
+    const branchFilter = branch_id && branch_id !== "all" ? parseInt(branch_id as string) : null;
 
     if (!pay_period_start || !pay_period_end) {
       return res.status(400).json({ error: "Bad Request", message: "pay_period_start and pay_period_end are required" });
     }
 
-    const employees = await db
-      .select()
-      .from(usersTable)
-      .where(and(
-        eq(usersTable.company_id, req.auth!.companyId),
-        eq(usersTable.is_active, true)
-      ));
+    const empConds: any[] = [eq(usersTable.company_id, req.auth!.companyId), eq(usersTable.is_active, true)];
+    if (branchFilter) empConds.push(eq(usersTable.branch_id, branchFilter));
+    const employees = await db.select().from(usersTable).where(and(...empConds));
 
     const timeclockData = await db
       .select({
@@ -34,20 +31,16 @@ router.get("/summary", requireAuth, requireRole("owner", "admin", "office"), asy
         lte(timeclockTable.clock_in_at, new Date(pay_period_end as string))
       ));
 
+    const jobSumConds: any[] = [
+      eq(jobsTable.company_id, req.auth!.companyId),
+      eq(jobsTable.status, "complete"),
+      gte(jobsTable.scheduled_date, pay_period_start as string),
+      lte(jobsTable.scheduled_date, pay_period_end as string),
+    ];
+    if (branchFilter) jobSumConds.push(eq(jobsTable.branch_id, branchFilter));
     const jobsData = await db
-      .select({
-        user_id: jobsTable.assigned_user_id,
-        cnt: count(),
-        total_fee: sum(jobsTable.base_fee),
-      })
-      .from(jobsTable)
-      .where(and(
-        eq(jobsTable.company_id, req.auth!.companyId),
-        eq(jobsTable.status, "complete"),
-        gte(jobsTable.scheduled_date, pay_period_start as string),
-        lte(jobsTable.scheduled_date, pay_period_end as string)
-      ))
-      .groupBy(jobsTable.assigned_user_id);
+      .select({ user_id: jobsTable.assigned_user_id, cnt: count(), total_fee: sum(jobsTable.base_fee) })
+      .from(jobsTable).where(and(...jobSumConds)).groupBy(jobsTable.assigned_user_id);
 
     const additionalPayData = await db
       .select({

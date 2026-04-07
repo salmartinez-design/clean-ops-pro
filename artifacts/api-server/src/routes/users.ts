@@ -9,12 +9,13 @@ const router = Router();
 
 router.get("/", requireAuth, async (req, res) => {
   try {
-    const { role, is_active, page = "1", limit = "25" } = req.query;
+    const { role, is_active, page = "1", limit = "25", branch_id } = req.query;
     const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
 
-    const conditions = [eq(usersTable.company_id, req.auth!.companyId)];
+    const conditions: any[] = [eq(usersTable.company_id, req.auth!.companyId)];
     if (role) conditions.push(eq(usersTable.role, role as any));
     if (is_active !== undefined) conditions.push(eq(usersTable.is_active, is_active === "true"));
+    if (branch_id && branch_id !== "all") conditions.push(eq(usersTable.branch_id, parseInt(branch_id as string)));
 
     const users = await db
       .select({

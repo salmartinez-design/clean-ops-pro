@@ -4,6 +4,8 @@ import { useGetMyCompany, useUpdateMyCompany } from "@workspace/api-client-react
 import { getAuthHeaders, getTokenRole } from "@/lib/auth";
 import { applyTenantColor } from "@/lib/tenant-brand";
 import { useToast } from "@/hooks/use-toast";
+import { useBranch } from "@/contexts/branch-context";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Upload, X, ImageIcon, CheckCircle, AlertCircle, RefreshCw, Link, Unlink, Clock, BarChart2, Mail, MessageSquare, ChevronDown, ChevronUp, Edit2, Save, Lock } from "lucide-react";
 import { HRPoliciesTab } from "./company/hr-policies";
 import { DocumentsTab } from "./company/documents";
@@ -31,6 +33,9 @@ const TABS: { id: Tab; label: string }[] = [
 
 export default function CompanyPage() {
   const [activeTab, setActiveTab] = useState<Tab>('branding');
+  const { activeBranchId, activeBranch } = useBranch();
+
+  const branchName = activeBranchId === "all" ? null : activeBranch?.name ?? null;
 
   return (
     <DashboardLayout>
@@ -38,6 +43,12 @@ export default function CompanyPage() {
         <div>
           <h1 style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: '42px', color: '#1A1917', margin: 0, lineHeight: 1.1 }}>Company Settings</h1>
           <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 300, fontSize: '13px', color: '#6B7280', marginTop: '6px' }}>Manage your company profile, branding, and integrations.</p>
+          {branchName && (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 10, backgroundColor: 'var(--brand-dim)', border: '1px solid rgba(91,155,213,0.3)', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: 'var(--brand)', fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: 'var(--brand)', display: 'inline-block' }} />
+              Viewing: {branchName} Branch Settings
+            </div>
+          )}
         </div>
 
         {/* Tabs */}
@@ -348,10 +359,74 @@ const HOUR_OPTIONS = Array.from({ length: 19 }, (_, i) => {
   return { value: h, label };
 });
 
+function BranchContactCard({ branchId }: { branchId: number }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const FF = "'Plus Jakarta Sans', sans-serif";
+  const { data: bco, isLoading } = useQuery({
+    queryKey: ['branch-company', branchId],
+    queryFn: async () => {
+      const r = await fetch(`${API}/api/branches/${branchId}/company`, { headers: getAuthHeaders() });
+      if (!r.ok) throw new Error('Failed');
+      return r.json();
+    },
+  });
+  const [bName, setBName] = useState('');
+  const [bPhone, setBPhone] = useState('');
+  const [bEmail, setBEmail] = useState('');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (bco) { setBName(bco.name || ''); setBPhone(bco.phone || ''); setBEmail(bco.email || ''); }
+  }, [bco]);
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const r = await fetch(`${API}/api/branches/${branchId}/company`, {
+        method: 'PATCH', headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: bName, phone: bPhone, email: bEmail }),
+      });
+      if (!r.ok) throw new Error();
+      qc.invalidateQueries({ queryKey: ['branch-company', branchId] });
+      toast({ title: 'Branch contact info saved' });
+    } catch { toast({ variant: 'destructive', title: 'Failed to save' }); }
+    setSaving(false);
+  };
+  const inputStyle: React.CSSProperties = { width: '100%', fontFamily: FF, fontSize: '13px', color: '#1A1917', backgroundColor: '#FFFFFF', border: '1px solid #E5E2DC', borderRadius: '6px', padding: '10px 14px', outline: 'none', boxSizing: 'border-box' as any };
+  return (
+    <div style={{ backgroundColor: 'var(--brand-dim)', border: '1px solid rgba(91,155,213,0.25)', borderRadius: 10, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div>
+        <p style={{ fontFamily: FF, fontWeight: 700, fontSize: 14, color: 'var(--brand)', margin: '0 0 4px' }}>Branch Contact Info</p>
+        <p style={{ fontFamily: FF, fontSize: 12, color: '#6B7280', margin: 0 }}>Name, phone, and email shown on invoices, emails, and booking pages for this branch.</p>
+      </div>
+      {isLoading ? <div style={{ fontSize: 13, color: '#9E9B94' }}>Loading…</div> : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <label style={{ fontFamily: FF, fontSize: 12, fontWeight: 600, color: '#6B7280', display: 'block', marginBottom: 4 }}>Branch Name</label>
+            <input value={bName} onChange={e => setBName(e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <label style={{ fontFamily: FF, fontSize: 12, fontWeight: 600, color: '#6B7280', display: 'block', marginBottom: 4 }}>Phone</label>
+            <input value={bPhone} onChange={e => setBPhone(e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <label style={{ fontFamily: FF, fontSize: 12, fontWeight: 600, color: '#6B7280', display: 'block', marginBottom: 4 }}>Email</label>
+            <input value={bEmail} onChange={e => setBEmail(e.target.value)} type="email" style={inputStyle} />
+          </div>
+          <button onClick={handleSave} disabled={saving}
+            style={{ alignSelf: 'flex-start', padding: '8px 20px', backgroundColor: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: FF, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Saving…' : 'Save Contact Info'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GeneralTab() {
   const { data: company } = useGetMyCompany({ request: { headers: getAuthHeaders() } });
   const updateCompany = useUpdateMyCompany({ request: { headers: getAuthHeaders() } });
   const { toast } = useToast();
+  const { activeBranchId } = useBranch();
   const [name, setName] = useState('');
   const [payCadence, setPayCadence] = useState('biweekly');
   const [paymentTermsDays, setPaymentTermsDays] = useState(0);
@@ -393,6 +468,7 @@ function GeneralTab() {
 
   return (
     <div style={{ maxWidth: '560px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      {activeBranchId !== "all" && <BranchContactCard branchId={activeBranchId as number} />}
       <Section title="Company Name" desc="">
         <input
           value={name}

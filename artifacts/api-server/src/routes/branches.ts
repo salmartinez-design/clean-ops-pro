@@ -1,8 +1,14 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { branchesTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { branchesTable, companiesTable } from "@workspace/db/schema";
+import { eq, and, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
+
+// Map branch_id → linked company_id for multi-company branches (e.g. Schaumburg satellite)
+const BRANCH_COMPANY_MAP: Record<number, number> = {
+  1: 1, // Oak Lawn → PHES (company_id=1)
+  2: 4, // Schaumburg → PHES Schaumburg (company_id=4)
+};
 
 const router = Router();
 
@@ -76,6 +82,54 @@ router.patch("/:id", requireAuth, requireRole("owner", "admin"), async (req, res
   } catch (err) {
     console.error("PATCH /branches/:id error:", err);
     res.status(500).json({ error: "Failed to update branch" });
+  }
+});
+
+// ── GET /branches/:id/company — returns company record for a branch ────────────
+router.get("/:id/company", requireAuth, requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const branchId = parseInt(req.params.id);
+    const companyId = BRANCH_COMPANY_MAP[branchId];
+    if (!companyId) return res.status(404).json({ error: "No linked company for this branch" });
+
+    const rows = await db.execute(sql`SELECT * FROM companies WHERE id = ${companyId} LIMIT 1`);
+    const company = ((rows as any).rows ?? [])[0];
+    if (!company) return res.status(404).json({ error: "Company not found" });
+    return res.json(company);
+  } catch (err) {
+    console.error("GET /branches/:id/company error:", err);
+    return res.status(500).json({ error: "Failed to fetch branch company" });
+  }
+});
+
+// ── PATCH /branches/:id/company — update contact info for a branch's company ──
+router.patch("/:id/company", requireAuth, requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const branchId = parseInt(req.params.id);
+    const companyId = BRANCH_COMPANY_MAP[branchId];
+    if (!companyId) return res.status(404).json({ error: "No linked company for this branch" });
+
+    const { name, phone, email } = req.body;
+    const updates: any = {};
+    if (name !== undefined) updates.name = name;
+    if (phone !== undefined) updates.phone = phone;
+    if (email !== undefined) updates.email = email;
+
+    if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No fields to update" });
+
+    await db.execute(sql`
+      UPDATE companies SET
+        name = COALESCE(${updates.name ?? null}, name),
+        phone = COALESCE(${updates.phone ?? null}, phone),
+        email = COALESCE(${updates.email ?? null}, email)
+      WHERE id = ${companyId}
+    `);
+
+    const rows = await db.execute(sql`SELECT * FROM companies WHERE id = ${companyId} LIMIT 1`);
+    return res.json(((rows as any).rows ?? [])[0]);
+  } catch (err) {
+    console.error("PATCH /branches/:id/company error:", err);
+    return res.status(500).json({ error: "Failed to update branch company" });
   }
 });
 
