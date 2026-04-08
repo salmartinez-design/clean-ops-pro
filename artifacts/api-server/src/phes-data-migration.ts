@@ -45,6 +45,11 @@ async function runBookingSchemaGuard(): Promise<void> {
     { label: "jobs.booking_state",             stmt: "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS booking_state TEXT" },
     { label: "jobs.booking_zip",               stmt: "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS booking_zip TEXT" },
     { label: "jobs.booking_apt",               stmt: "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS booking_apt TEXT" },
+    { label: "jobs.preferred_contact_method",  stmt: "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS preferred_contact_method TEXT" },
+    { label: "jobs.address_line2",             stmt: "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS address_line2 TEXT" },
+    { label: "jobs.branch",                    stmt: "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS branch TEXT" },
+    { label: "jobs.reminder_72h_sent",         stmt: "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS reminder_72h_sent BOOLEAN DEFAULT false" },
+    { label: "jobs.reminder_24h_sent",         stmt: "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS reminder_24h_sent BOOLEAN DEFAULT false" },
     // ── service_zones extra columns ─────────────────────────────────────────
     { label: "service_zones.location",         stmt: "ALTER TABLE service_zones ADD COLUMN IF NOT EXISTS location TEXT NOT NULL DEFAULT 'oak_lawn'" },
     // ── rate_locks table ────────────────────────────────────────────────────

@@ -814,7 +814,7 @@ router.post("/book/confirm", rateLimit, async (req, res) => {
           estimated_hours, addons, status, booked_job_id,
           bedrooms, bathrooms, pets, notes, created_at
         ) VALUES (
-          ${company_id}, ${clientId}, ${scope_id}, ${sqft}, ${frequency},
+          ${company_id}, ${clientId}, NULL, ${sqft}, ${frequency},
           ${pricing.base_price}, ${pricing.discount_amount}, ${discount_code || null}, ${pricing.final_total},
           ${pricing.base_hours}, ${addonBreakdownJson}::jsonb, 'booked', ${jobId},
           ${bedrooms || null}, ${bathrooms || null}, ${pets || null},
@@ -957,13 +957,18 @@ router.post("/book/confirm", rateLimit, async (req, res) => {
     });
   } catch (err: any) {
     if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
-    console.error("POST /public/book/confirm ERROR:", {
-      message: err?.message,
-      code: err?.code,
-      detail: err?.detail,
-      hint: err?.hint,
-      query: err?.query,
-      stack: err?.stack,
+    const cause = err?.cause ?? {};
+    console.error("POST /public/book/confirm CRASH:", {
+      outerMsg: String(err?.message ?? "").substring(0, 300),
+      pgCode: cause?.code,
+      pgMsg: cause?.message,
+      pgDetail: cause?.detail,
+      pgHint: cause?.hint,
+      pgSchema: cause?.schema,
+      pgTable: cause?.table,
+      pgColumn: cause?.column,
+      pgConstraint: cause?.constraint,
+      stack: String(err?.stack ?? "").split("\n").slice(0, 8).join(" | "),
     });
     return res.status(500).json({ error: "Internal Server Error" });
   }
@@ -1078,7 +1083,7 @@ router.post("/book", rateLimit, async (req, res) => {
           estimated_hours, addons, status, booked_job_id,
           bedrooms, bathrooms, pets, notes, created_at
         ) VALUES (
-          ${company_id}, ${clientId}, ${scope_id}, ${sqft}, ${frequency},
+          ${company_id}, ${clientId}, NULL, ${sqft}, ${frequency},
           ${pricing.base_price}, ${pricing.discount_amount}, ${discount_code || null}, ${pricing.final_total},
           ${pricing.base_hours}, ${addonBreakdownJson}::jsonb, 'booked', ${jobId},
           ${bedrooms || null}, ${bathrooms || null}, ${pets || null},
