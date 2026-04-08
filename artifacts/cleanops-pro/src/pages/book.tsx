@@ -1288,13 +1288,7 @@ export default function BookPage() {
         <p style={{ fontSize: 11, color: "#F59E0B", margin: "2px 0 0" }}>Minimum applied</p>
       )}
       {calcResult.base_hours > 0 && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 2 }}>
-          <span style={{ fontSize: 12, color: "#9E9B94", display: "flex", alignItems: "center", gap: 4 }}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#9E9B94" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            Est. time
-          </span>
-          <span style={{ fontSize: 12, color: "#9E9B94" }}>{(calcResult.total_hours ?? calcResult.base_hours).toFixed(1)} hrs</span>
-        </div>
+        <Row label="Estimated Time" value={`${(calcResult.total_hours ?? calcResult.base_hours).toFixed(1)} hrs`} />
       )}
     </>
   ) : null;

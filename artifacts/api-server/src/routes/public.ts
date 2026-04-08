@@ -413,13 +413,6 @@ export async function runCalculate(params: {
           let disc = 0;
           if (bundle.discount_type === "flat_per_item") {
             disc = dv * matched.length;
-            // Update addon_breakdown to show net prices for bundled items
-            for (const matchedId of matched) {
-              const abEntry = addon_breakdown.find(x => x.id === matchedId);
-              if (abEntry) {
-                abEntry.amount = Math.round((abEntry.amount - dv) * 100) / 100;
-              }
-            }
           } else if (bundle.discount_type === "flat") {
             disc = dv;
           } else if (bundle.discount_type === "percentage") {
