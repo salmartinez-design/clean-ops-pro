@@ -44,6 +44,7 @@ async function getQuoteWithDetails(id: number, companyId: number) {
       special_instructions: quotesTable.special_instructions,
       internal_memo: quotesTable.internal_memo,
       client_notes: quotesTable.client_notes,
+      call_notes: quotesTable.call_notes,
       manual_hours: quotesTable.manual_hours,
       expires_at: quotesTable.expires_at,
       sign_token: quotesTable.sign_token,
@@ -199,7 +200,7 @@ router.patch("/:id", requireAuth, requireRole("owner", "admin", "office"), async
     const id = parseInt(req.params.id);
     const allowed = [
       "status", "base_price", "total_price", "estimated_hours", "manual_hours",
-      "notes", "client_notes", "internal_memo", "special_instructions",
+      "notes", "client_notes", "internal_memo", "special_instructions", "call_notes",
       "frequency", "scope_id", "pricing_method", "addons",
       "discount_code", "discount_amount", "bedrooms", "bathrooms", "half_baths",
       "sqft", "dirt_level", "pets", "sent_at", "viewed_at", "accepted_at",

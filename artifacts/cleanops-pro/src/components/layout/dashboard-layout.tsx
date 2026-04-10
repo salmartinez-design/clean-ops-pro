@@ -17,7 +17,7 @@ import {
   BookOpen, Star, Settings, Clock,
   MoreHorizontal, Search, MessageSquare, X, ChevronRight,
   ChevronDown, Eye, LogOut, CircleHelp, Lock, KeyRound, Bell,
-  CalendarX2, UserMinus, AlertTriangle,
+  CalendarX2, UserMinus, AlertTriangle, Plus, Receipt, Briefcase, UserPlus,
 } from "lucide-react";
 import { useEmployeeView } from "@/contexts/employee-view-context";
 
@@ -416,8 +416,10 @@ export function DashboardLayout({ children, title, fullBleed, onNewJob }: Dashbo
   const [userDropOpen, setUserDropOpen] = useState(false);
   const [changePwOpen, setChangePwOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const userDropRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+  const quickCreateRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -437,6 +439,15 @@ export function DashboardLayout({ children, title, fullBleed, onNewJob }: Dashbo
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [notifOpen]);
+
+  useEffect(() => {
+    if (!quickCreateOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (quickCreateRef.current && !quickCreateRef.current.contains(e.target as Node)) setQuickCreateOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [quickCreateOpen]);
 
   useEffect(() => {
     if (!token) setLocation("/login");
@@ -564,6 +575,51 @@ export function DashboardLayout({ children, title, fullBleed, onNewJob }: Dashbo
               <MessageSquare size={19} />
               {unreadCount > 0 && <span style={{ position: 'absolute', top: 2, right: 2, width: 8, height: 8, borderRadius: 4, background: '#EF4444', border: '1px solid #fff' }} />}
             </button>
+
+            {/* ── Mobile Quick Create ─────────────────────────────────────── */}
+            <div ref={quickCreateRef} style={{ position: 'relative' }}>
+              <button
+                onClick={() => setQuickCreateOpen(p => !p)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 28, height: 28, borderRadius: 7, cursor: 'pointer',
+                  background: '#1A1917', border: 'none', color: '#FFF',
+                }}
+              >
+                <Plus size={16} strokeWidth={2.5} />
+              </button>
+
+              {quickCreateOpen && (
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+                  background: '#FFF', borderRadius: 12, border: '1px solid #E5E2DC',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.14)', width: 185, zIndex: 300,
+                  overflow: 'hidden',
+                }}>
+                  {([
+                    { label: 'Quote',  Icon: Receipt,   href: '/quotes/new' },
+                    { label: 'Job',    Icon: Briefcase, href: '/dispatch' },
+                    { label: 'Client', Icon: UserPlus,  href: '/customers' },
+                  ] as const).map((item, i, arr) => (
+                    <button
+                      key={item.label}
+                      onClick={() => { setLocation(item.href); setQuickCreateOpen(false); }}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '12px 16px', border: 'none',
+                        borderBottom: i < arr.length - 1 ? '1px solid #F0EDEA' : 'none',
+                        background: 'none', cursor: 'pointer', textAlign: 'left' as const,
+                      }}
+                    >
+                      <item.Icon size={16} color="var(--brand)" />
+                      <span style={{ fontSize: 14, fontWeight: 500, color: '#1A1917', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                        {item.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
@@ -683,6 +739,58 @@ export function DashboardLayout({ children, title, fullBleed, onNewJob }: Dashbo
                 </span>
               )}
             </button>
+
+            {/* ── Quick Create "New" dropdown ─────────────────────────────── */}
+            <div ref={quickCreateRef} style={{ position: 'relative' }}>
+              <button
+                onClick={() => setQuickCreateOpen(p => !p)}
+                title="Quick Create"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  padding: '5px 11px', borderRadius: 8, cursor: 'pointer',
+                  background: '#1A1917', border: 'none', color: '#FFF',
+                  fontSize: 13, fontWeight: 600,
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                }}
+              >
+                <Plus size={14} strokeWidth={2.5} />
+                <span>New</span>
+              </button>
+
+              {quickCreateOpen && (
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+                  background: '#FFF', borderRadius: 12, border: '1px solid #E5E2DC',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.12)', width: 190, zIndex: 300,
+                  overflow: 'hidden',
+                }}>
+                  {([
+                    { label: 'Quote',  Icon: Receipt,   href: '/quotes/new' },
+                    { label: 'Job',    Icon: Briefcase, href: '/dispatch' },
+                    { label: 'Client', Icon: UserPlus,  href: '/customers' },
+                  ] as const).map((item, i, arr) => (
+                    <button
+                      key={item.label}
+                      onClick={() => { setLocation(item.href); setQuickCreateOpen(false); }}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '11px 16px', border: 'none',
+                        borderBottom: i < arr.length - 1 ? '1px solid #F0EDEA' : 'none',
+                        background: 'none', cursor: 'pointer', textAlign: 'left' as const,
+                        transition: 'background 0.1s',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#F7F6F3')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                    >
+                      <item.Icon size={16} color="var(--brand)" />
+                      <span style={{ fontSize: 14, fontWeight: 500, color: '#1A1917', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                        {item.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             <button onClick={() => setShortcutsOpen(true)} title="Keyboard Shortcuts"
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9E9B94', padding: 6, borderRadius: 8, display: 'flex', alignItems: 'center' }}>

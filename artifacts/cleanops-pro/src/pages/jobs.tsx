@@ -46,7 +46,7 @@ const STATUS: Record<string, { bg: string; border: string; text: string; dot: st
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 interface ClockEntry { id: number; clock_in_at: string | null; clock_out_at: string | null; distance_from_job_ft: number | null; is_flagged: boolean; }
 interface JobTechCommission { user_id: number; name: string; is_primary: boolean; est_hours: number; calc_pay: number; final_pay: number; pay_override: number | null; }
-interface DispatchJob { id: number; client_id: number; client_name: string; client_phone?: string | null; address: string | null; assigned_user_id: number | null; assigned_user_name?: string; service_type: string; status: string; scheduled_date: string; scheduled_time: string | null; frequency: string; amount: number; duration_minutes: number; notes: string | null; before_photo_count: number; after_photo_count: number; clock_entry: ClockEntry | null; zone_id?: number | null; zone_color?: string | null; zone_name?: string | null; account_id?: number | null; account_name?: string | null; billing_method?: string | null; hourly_rate?: number | null; estimated_hours?: number | null; billed_hours?: number | null; billed_amount?: number | null; charge_failed_at?: string | null; charge_succeeded_at?: string | null; property_access_notes?: string | null; booking_location?: string | null; technicians?: JobTechCommission[]; est_hours_per_tech?: number | null; est_pay_per_tech?: number | null; company_res_pct?: number | null; }
+interface DispatchJob { id: number; client_id: number; client_name: string; client_phone?: string | null; address: string | null; assigned_user_id: number | null; assigned_user_name?: string; service_type: string; status: string; scheduled_date: string; scheduled_time: string | null; frequency: string; amount: number; duration_minutes: number; notes: string | null; office_notes?: string | null; before_photo_count: number; after_photo_count: number; clock_entry: ClockEntry | null; zone_id?: number | null; zone_color?: string | null; zone_name?: string | null; account_id?: number | null; account_name?: string | null; billing_method?: string | null; hourly_rate?: number | null; estimated_hours?: number | null; billed_hours?: number | null; billed_amount?: number | null; charge_failed_at?: string | null; charge_succeeded_at?: string | null; property_access_notes?: string | null; booking_location?: string | null; technicians?: JobTechCommission[]; est_hours_per_tech?: number | null; est_pay_per_tech?: number | null; company_res_pct?: number | null; }
 interface Employee { id: number; name: string; role: string; jobs: DispatchJob[]; zone?: { zone_id: number; zone_color: string; zone_name: string } | null; time_off?: 'pto' | 'sick' | 'absent' | null; commission_rate?: number | null; }
 interface DispatchData { employees: Employee[]; unassigned_jobs: DispatchJob[]; }
 
@@ -170,6 +170,32 @@ function JobPanel({ job, employees, onClose, onUpdate, mobile }: {
   const [overrideVal, setOverrideVal] = useState<Record<number, string>>({});
   const [overrideBusy, setOverrideBusy] = useState(false);
   const canManageCommission = (userRole === "owner" || userRole === "admin" || userRole === "office");
+  const canEditOfficeNotes  = (userRole === "owner" || userRole === "admin" || userRole === "office");
+
+  // Office Notes state
+  const [officeNotes, setOfficeNotes] = useState(job.office_notes || "");
+  const [officeNotesSaving, setOfficeNotesSaving] = useState(false);
+  const [officeNotesSaved, setOfficeNotesSaved] = useState(false);
+
+  // Debounced auto-save for office notes
+  useEffect(() => {
+    const delay = setTimeout(async () => {
+      if (officeNotes === (job.office_notes || "")) return; // no change
+      setOfficeNotesSaving(true);
+      setOfficeNotesSaved(false);
+      try {
+        await fetch(`${_API3}/api/jobs/${job.id}`, {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ office_notes: officeNotes || null }),
+        });
+        setOfficeNotesSaved(true);
+        setTimeout(() => setOfficeNotesSaved(false), 3000);
+      } catch {}
+      finally { setOfficeNotesSaving(false); }
+    }, 2000);
+    return () => clearTimeout(delay);
+  }, [officeNotes, job.id, job.office_notes, token]);
 
   async function saveOverride(techId: number) {
     setOverrideBusy(true);
@@ -399,6 +425,35 @@ function JobPanel({ job, employees, onClose, onUpdate, mobile }: {
 
           {job.notes && (
             <PS label="Notes"><p style={{ margin: 0, fontSize: 13, color: "#6B7280", lineHeight: 1.6 }}>{job.notes}</p></PS>
+          )}
+
+          {/* Office Notes — editable, office/owner/admin only */}
+          {canEditOfficeNotes && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <Phone size={11} style={{ color: "var(--brand)" }} />
+                  <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.08em", color: "#9E9B94" }}>Office Notes</span>
+                </div>
+                {officeNotesSaving && <span style={{ fontSize: 10, color: "#9E9B94" }}>Saving...</span>}
+                {!officeNotesSaving && officeNotesSaved && <span style={{ fontSize: 10, color: "#16A34A", fontWeight: 600 }}>✓ Saved</span>}
+              </div>
+              <textarea
+                value={officeNotes}
+                onChange={e => { setOfficeNotes(e.target.value); setOfficeNotesSaved(false); }}
+                placeholder="Internal office notes — not visible to clients or technicians..."
+                rows={4}
+                style={{
+                  width: "100%", boxSizing: "border-box" as const, resize: "vertical" as const,
+                  border: "1px solid #E5E2DC", borderRadius: 8, padding: "8px 10px",
+                  fontSize: 12, fontFamily: FF, color: "#1A1917", lineHeight: 1.6,
+                  outline: "none", background: "#FAFAF8",
+                }}
+                onFocus={e => (e.target.style.borderColor = "var(--brand)")}
+                onBlur={e => (e.target.style.borderColor = "#E5E2DC")}
+              />
+              <p style={{ fontSize: 10, color: "#C0BDB8", marginTop: 4, fontFamily: FF }}>Auto-saves 2 s after you stop typing</p>
+            </div>
           )}
 
           {job.clock_entry && (

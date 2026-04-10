@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getAuthHeaders } from "@/lib/auth";
+import { getAuthHeaders, useAuthStore } from "@/lib/auth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Pencil, SendHorizonal, Briefcase, CheckCircle, Trash2, Clock, User, MapPin, Calendar, FileText, ChevronDown, ChevronUp, X } from "lucide-react";
+import { ArrowLeft, Pencil, SendHorizonal, Briefcase, CheckCircle, Trash2, User, MapPin, FileText, ChevronDown, ChevronUp, X, Phone } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -53,12 +53,19 @@ export default function QuoteDetailPage() {
   const qc = useQueryClient();
   const isMobile = useIsMobile();
 
+  // Role check
+  const token = useAuthStore(s => s.token) ?? "";
+  const userRole = (() => { try { return JSON.parse(atob(token.split(".")[1])).role || "office"; } catch { return "office"; } })();
+  const isOfficeOrOwner = userRole === "owner" || userRole === "office" || userRole === "admin";
+
   const [sendSheetOpen, setSendSheetOpen] = useState(false);
   const [sendEmail, setSendEmail] = useState("");
   const [sendPhone, setSendPhone] = useState("");
   const [sendViaEmail, setSendViaEmail] = useState(true);
   const [sendViaSms, setSendViaSms] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [pushJobOpen, setPushJobOpen] = useState(false);
+  const [pushJobBusy, setPushJobBusy] = useState(false);
 
   const { data: quote, isLoading } = useQuery({
     queryKey: ["quote", id],
@@ -314,8 +321,64 @@ export default function QuoteDetailPage() {
                 )}
               </div>
             )}
+
+            {/* Call Notes — office/owner only */}
+            {isOfficeOrOwner && quote.call_notes && (
+              <div style={{ background: "#FFF", border: "1px solid #E5E2DC", borderRadius: 10, padding: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                    <Phone size={14} color="var(--brand)" />
+                    <span style={{ fontSize: 14, fontWeight: 600, color: "#1A1917", fontFamily: FF }}>Call Notes</span>
+                  </div>
+                  {quote.booked_job_id && (
+                    <button
+                      onClick={() => setPushJobOpen(true)}
+                      style={{ fontSize: 11, fontWeight: 600, color: "#1A1917", border: "1px solid #E5E2DC", borderRadius: 6, padding: "5px 10px", background: "#FFF", cursor: "pointer", fontFamily: FF, display: "flex", alignItems: "center", gap: 5 }}
+                    >
+                      <Briefcase size={11} /> Push to Job
+                    </button>
+                  )}
+                </div>
+                <p style={{ fontSize: 13, color: "#6B7280", fontFamily: FF, whiteSpace: "pre-wrap", lineHeight: 1.6, margin: 0 }}>{quote.call_notes}</p>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Push to Job — mobile confirmation sheet */}
+        {pushJobOpen && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+            <div onClick={() => !pushJobBusy && setPushJobOpen(false)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.45)" }} />
+            <div style={{ position: "relative", background: "#FFF", borderRadius: "16px 16px 0 0", padding: "24px 20px 44px", zIndex: 1 }}>
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: "#D1D5DB", margin: "0 auto 20px" }} />
+              <p style={{ fontSize: 16, fontWeight: 700, color: "#1A1917", fontFamily: FF, marginBottom: 8 }}>Push Call Notes to Job?</p>
+              <p style={{ fontSize: 13, color: "#6B7280", fontFamily: FF, lineHeight: 1.6, marginBottom: 24 }}>
+                This will overwrite Office Notes on Job #{quote.booked_job_id}. This cannot be undone.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <button
+                  onClick={async () => {
+                    if (!quote?.booked_job_id || !quote?.call_notes) return;
+                    setPushJobBusy(true);
+                    try {
+                      await apiFetch(`/api/jobs/${quote.booked_job_id}`, { method: "PUT", body: { office_notes: quote.call_notes } });
+                      toast.success("Call notes pushed to job.");
+                      setPushJobOpen(false);
+                    } catch { toast.error("Failed to push notes."); }
+                    finally { setPushJobBusy(false); }
+                  }}
+                  disabled={pushJobBusy}
+                  style={{ width: "100%", height: 52, background: "#1A1917", color: "#FFF", border: "none", borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: FF }}
+                >
+                  {pushJobBusy ? "Pushing..." : "Yes, Push Notes"}
+                </button>
+                <button onClick={() => setPushJobOpen(false)} style={{ width: "100%", height: 48, background: "#FFF", color: "#6B7280", border: "1px solid #E5E2DC", borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: FF }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Send to Client — bottom sheet */}
         {sendSheetOpen && (
@@ -488,6 +551,67 @@ export default function QuoteDetailPage() {
           <div className="bg-white border border-[#E5E2DC] rounded-lg p-5 space-y-4">
             {quote.notes && <div><p className="text-sm font-semibold text-[#1A1917] mb-1">Client Notes</p><p className="text-sm text-[#6B7280] whitespace-pre-wrap">{quote.notes}</p></div>}
             {quote.internal_memo && <div><p className="text-sm font-semibold text-[#1A1917] mb-1">Internal Memo</p><p className="text-sm text-[#6B7280] whitespace-pre-wrap">{quote.internal_memo}</p></div>}
+          </div>
+        )}
+
+        {/* Call Notes — office/owner only */}
+        {isOfficeOrOwner && quote.call_notes && (
+          <div className="bg-white border border-[#E5E2DC] rounded-lg p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-[#1A1917] flex items-center gap-2">
+                <Phone className="w-4 h-4" style={{ color: "var(--brand)" }} />
+                Call Notes
+              </h2>
+              {quote.booked_job_id && (
+                <Button
+                  size="sm" variant="outline"
+                  className="gap-1.5 text-xs"
+                  onClick={() => setPushJobOpen(true)}
+                >
+                  <Briefcase className="w-3.5 h-3.5" />
+                  Push to Job Notes
+                </Button>
+              )}
+            </div>
+            <p className="text-sm text-[#6B7280] whitespace-pre-wrap leading-relaxed">{quote.call_notes}</p>
+          </div>
+        )}
+
+        {/* Push to Job Notes — confirmation dialog */}
+        {pushJobOpen && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div onClick={() => !pushJobBusy && setPushJobOpen(false)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.4)" }} />
+            <div style={{ position: "relative", background: "#FFF", borderRadius: 14, padding: 28, maxWidth: 420, width: "90%", zIndex: 1, boxShadow: "0 16px 48px rgba(0,0,0,0.18)" }}>
+              <p style={{ fontSize: 16, fontWeight: 700, color: "#1A1917", fontFamily: FF, marginBottom: 10 }}>Push Call Notes to Job?</p>
+              <p style={{ fontSize: 14, color: "#6B7280", fontFamily: FF, lineHeight: 1.6, marginBottom: 22 }}>
+                This will overwrite the Office Notes on Job #{quote.booked_job_id} with the call notes from this quote. This cannot be undone.
+              </p>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button
+                  onClick={() => setPushJobOpen(false)}
+                  disabled={pushJobBusy}
+                  style={{ padding: "9px 18px", borderRadius: 8, border: "1px solid #E5E2DC", background: "#FFF", fontSize: 14, fontWeight: 500, cursor: "pointer", fontFamily: FF }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!quote?.booked_job_id || !quote?.call_notes) return;
+                    setPushJobBusy(true);
+                    try {
+                      await apiFetch(`/api/jobs/${quote.booked_job_id}`, { method: "PUT", body: { office_notes: quote.call_notes } });
+                      toast.success("Call notes pushed to job office notes.");
+                      setPushJobOpen(false);
+                    } catch { toast.error("Failed to push notes."); }
+                    finally { setPushJobBusy(false); }
+                  }}
+                  disabled={pushJobBusy}
+                  style={{ padding: "9px 18px", borderRadius: 8, border: "none", background: "#1A1917", color: "#FFF", fontSize: 14, fontWeight: 600, cursor: pushJobBusy ? "not-allowed" : "pointer", fontFamily: FF, opacity: pushJobBusy ? 0.7 : 1 }}
+                >
+                  {pushJobBusy ? "Pushing..." : "Yes, Push Notes"}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

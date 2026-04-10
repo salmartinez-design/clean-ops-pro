@@ -631,7 +631,7 @@ router.get("/:id", requireAuth, async (req, res) => {
 router.put("/:id", requireAuth, async (req, res) => {
   try {
     const jobId = parseInt(req.params.id);
-    const { assigned_user_id, service_type, status, scheduled_date, scheduled_time, frequency, base_fee, allowed_hours, notes } = req.body;
+    const { assigned_user_id, service_type, status, scheduled_date, scheduled_time, frequency, base_fee, allowed_hours, notes, office_notes } = req.body;
 
     const updated = await db
       .update(jobsTable)
@@ -645,6 +645,7 @@ router.put("/:id", requireAuth, async (req, res) => {
         ...(base_fee !== undefined && { base_fee }),
         ...(allowed_hours !== undefined && { allowed_hours }),
         ...(notes !== undefined && { notes }),
+        ...(office_notes !== undefined && { office_notes }),
       })
       .where(and(
         eq(jobsTable.id, jobId),

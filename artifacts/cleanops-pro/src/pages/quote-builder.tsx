@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
-import { getAuthHeaders } from "@/lib/auth";
+import { getAuthHeaders, useAuthStore } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,7 +20,7 @@ import {
 import {
   ArrowLeft, Save, SendHorizonal, ArrowRight, ChevronDown,
   User, Home, Calculator, PlusSquare, AlertCircle, CheckCircle2,
-  Clock, Ruler, X,
+  Clock, Ruler, X, Phone, Check,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -124,6 +124,11 @@ export default function QuoteBuilderPage() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
   const isEdit = Boolean(id && id !== "new");
+  const token = useAuthStore(s => s.token);
+
+  // Role check — call notes visible to owner/office only
+  const userRole = (() => { try { return JSON.parse(atob((token || "").split(".")[1])).role || "office"; } catch { return "office"; } })();
+  const isOfficeOrOwner = userRole === "owner" || userRole === "office" || userRole === "admin";
 
   const [activeSection, setActiveSection] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -159,6 +164,12 @@ export default function QuoteBuilderPage() {
   const [discountInput, setDiscountInput] = useState("");
   const [notes, setNotes] = useState("");
   const [internalMemo, setInternalMemo] = useState("");
+
+  // Call Notes (office-only sticky panel)
+  const [callNotes, setCallNotes] = useState("");
+  const [callNotesSaving, setCallNotesSaving] = useState(false);
+  const [callNotesSaved, setCallNotesSaved] = useState(false);
+  const [callNotesMobileOpen, setCallNotesMobileOpen] = useState(false);
 
   const [calcResult, setCalcResult] = useState<CalcResult | null>(null);
   const [calcLoading, setCalcLoading] = useState(false);
@@ -227,6 +238,7 @@ export default function QuoteBuilderPage() {
       setDiscountInput(existingQuote.discount_code || "");
       setNotes(existingQuote.notes || "");
       setInternalMemo(existingQuote.internal_memo || "");
+      setCallNotes(existingQuote.call_notes || "");
       setFrequencyStr(existingQuote.frequency || "");
       setHoursInput(existingQuote.estimated_hours ? parseFloat(existingQuote.estimated_hours) : 0);
       if (Array.isArray(existingQuote.addons)) {
@@ -254,6 +266,19 @@ export default function QuoteBuilderPage() {
       setFrequencyStr(oneTime?.frequency ?? frequencies[0].frequency);
     }
   }, [scopeId, frequencies, frequencyStr]);
+
+  // ── Call Notes auto-save (debounced 2s) ──────────────────────────────────────
+  useEffect(() => {
+    if (!isEdit || !id) return;
+    const timer = setTimeout(() => {
+      setCallNotesSaving(true);
+      apiFetch(`/api/quotes/${id}`, { method: "PATCH", body: { call_notes: callNotes || null } })
+        .then(() => { setCallNotesSaved(true); setTimeout(() => setCallNotesSaved(false), 2000); })
+        .catch(() => {})
+        .finally(() => setCallNotesSaving(false));
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [callNotes, isEdit, id]);
 
   const selectedScope = scopes.find(s => s.id === scopeId);
   const pricingMethod = selectedScope?.pricing_method ?? "sqft";
@@ -358,6 +383,7 @@ export default function QuoteBuilderPage() {
       hourly_rate: cr ? String(cr.hourly_rate) : null,
       notes: notes || null,
       internal_memo: internalMemo || null,
+      call_notes: callNotes || null,
       status,
     };
   }
@@ -725,6 +751,50 @@ export default function QuoteBuilderPage() {
           </div>
 
         </div>
+
+        {/* ── Call Notes FAB (mobile) ───────────────────────────────────── */}
+        <button
+          onClick={() => setCallNotesMobileOpen(true)}
+          style={{
+            position: "fixed", bottom: 82, right: 16, zIndex: 45,
+            width: 52, height: 52, borderRadius: "50%",
+            background: callNotes ? "#1A1917" : "#F7F6F3",
+            border: callNotes ? "none" : "1.5px solid #E5E2DC",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 2px 12px rgba(0,0,0,0.18)", cursor: "pointer",
+          }}
+          title="Call Notes"
+        >
+          <Phone size={20} color={callNotes ? "#FFF" : "#6B6860"} />
+        </button>
+
+        {/* ── Call Notes Modal (mobile) ─────────────────────────────────── */}
+        {callNotesMobileOpen && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", flexDirection: "column" }}>
+            <div onClick={() => setCallNotesMobileOpen(false)} style={{ flex: 1, background: "rgba(0,0,0,0.45)" }} />
+            <div style={{ background: "#FFF", borderRadius: "16px 16px 0 0", padding: 24, paddingBottom: 40 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Phone size={16} color="#1A1917" />
+                  <span style={{ fontSize: 16, fontWeight: 700, color: "#1A1917", fontFamily: MFF }}>Call Notes</span>
+                </div>
+                <button onClick={() => setCallNotesMobileOpen(false)} style={{ background: "none", border: "none", cursor: "pointer" }}>
+                  <X size={20} color="#6B6860" />
+                </button>
+              </div>
+              <textarea
+                value={callNotes}
+                onChange={e => setCallNotes(e.target.value)}
+                placeholder="Notes from this call — not visible to client..."
+                rows={6}
+                style={{ width: "100%", boxSizing: "border-box" as const, border: "1px solid #E5E2DC", borderRadius: 8, fontSize: 14, padding: "10px 12px", fontFamily: MFF, color: "#1A1917", resize: "none" as const, outline: "none" }}
+              />
+              <p style={{ fontSize: 11, color: "#9E9B94", fontFamily: MFF, marginTop: 8 }}>
+                {callNotesSaving ? "Saving..." : callNotesSaved ? "✓ Saved" : isEdit ? "Auto-saves 2s after you stop typing" : "Saves with quote"}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* ── Sticky bottom price bar ──────────────────────────────────── */}
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#FFF", borderTop: "1px solid #E5E2DC", padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, zIndex: 40, boxShadow: "0 -2px 12px rgba(0,0,0,0.07)" }}>
@@ -1264,6 +1334,39 @@ export default function QuoteBuilderPage() {
             </SectionCard>
           )}
         </div>
+
+        {/* ── Call Notes Panel (office/owner only) ─────────────────────────── */}
+        {isOfficeOrOwner && (
+          <div className="w-64 shrink-0">
+            <div className="bg-white border border-[#E5E2DC] rounded-lg p-4 sticky top-6 space-y-3">
+              <div className="flex items-center justify-between border-b border-[#E5E2DC] pb-2.5">
+                <div className="flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-[var(--brand)]" />
+                  <h3 className="font-semibold text-[#1A1917] text-sm">Call Notes</h3>
+                </div>
+                {callNotesSaving && (
+                  <span className="text-[10px] text-[#9E9B94] font-medium animate-pulse">Saving...</span>
+                )}
+                {!callNotesSaving && callNotesSaved && (
+                  <span className="flex items-center gap-0.5 text-[10px] text-green-600 font-medium">
+                    <Check className="w-3 h-3" /> Saved
+                  </span>
+                )}
+              </div>
+              <Textarea
+                value={callNotes}
+                onChange={e => { setCallNotes(e.target.value); setCallNotesSaved(false); }}
+                placeholder="Notes from the call — not visible to the client..."
+                rows={8}
+                className="text-xs resize-none"
+                style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+              />
+              <p className="text-[10px] text-[#9E9B94] leading-snug">
+                {isEdit ? "Auto-saves 2 s after you stop typing." : "Saves with the quote."}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* ── Live Price Panel ─────────────────────────────────────────────── */}
         <div className="w-72 shrink-0">

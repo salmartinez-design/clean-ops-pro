@@ -83,6 +83,8 @@ export const jobsTable = pgTable("jobs", {
   address_lng: numeric("address_lng", { precision: 10, scale: 7 }),
   // ── Location routing ────────────────────────────────────────────────────────
   booking_location: text("booking_location"),
+  // ── Office notes (pushed from quote call notes) ─────────────────────────────
+  office_notes: text("office_notes"),
 });
 
 export const insertJobSchema = createInsertSchema(jobsTable).omit({ id: true, created_at: true });

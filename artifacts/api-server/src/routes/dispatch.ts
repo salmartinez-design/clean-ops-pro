@@ -68,6 +68,7 @@ router.get("/", requireAuth, async (req, res) => {
         property_address: accountPropertiesTable.address,
         property_city: accountPropertiesTable.city,
         property_access_notes: accountPropertiesTable.access_notes,
+        office_notes: jobsTable.office_notes,
       })
       .from(jobsTable)
       .leftJoin(clientsTable, eq(jobsTable.client_id, clientsTable.id))
@@ -265,6 +266,7 @@ router.get("/", requireAuth, async (req, res) => {
         charge_succeeded_at: j.charge_succeeded_at ?? null,
         property_address: displayAddress,
         property_access_notes: j.property_access_notes ?? null,
+        office_notes: j.office_notes ?? null,
         clock_entry: clock ? {
           id: clock.id,
           clock_in_at: clock.clock_in_at,
