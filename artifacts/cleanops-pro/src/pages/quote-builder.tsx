@@ -109,7 +109,9 @@ export default function QuoteBuilderPage() {
   const [leadEmail, setLeadEmail] = useState("");
   const [leadPhone, setLeadPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [unitSuite, setUnitSuite] = useState("");
   const [zipCode, setZipCode] = useState("");
+  const [referralSource, setReferralSource] = useState("");
   const [zipZone, setZipZone] = useState<{ name: string; color: string } | null | "uncovered">(null);
   const [checkingZip, setCheckingZip] = useState(false);
   const [zoneOverride, setZoneOverride] = useState(false);
@@ -209,6 +211,8 @@ export default function QuoteBuilderPage() {
     setInternalMemo(existingQuote.internal_memo || "");
     setCallNotes(existingQuote.call_notes || "");
     setZoneOverride(existingQuote.zone_override || false);
+    setUnitSuite(existingQuote.unit_suite || "");
+    setReferralSource(existingQuote.referral_source || "");
     // Restore single scope from existing quote (backward compat)
     if (existingQuote.scope_id && scopes.length > 0) {
       const scope = scopes.find((s: PricingScope) => s.id === existingQuote.scope_id);
@@ -386,6 +390,8 @@ export default function QuoteBuilderPage() {
       notes: notes || null,
       internal_memo: internalMemo || null,
       call_notes: callNotes || null,
+      unit_suite: unitSuite || null,
+      referral_source: referralSource || null,
       alternate_options: alternateOptions.length > 0 ? alternateOptions : null,
       zone_override: zoneOverride || null,
       status,
@@ -772,6 +778,12 @@ export default function QuoteBuilderPage() {
                   </div>
                 </div>
 
+                {/* Unit / Suite / Access Instructions */}
+                <div>
+                  <Label className="text-xs">Unit, Suite, or Additional Access Instructions</Label>
+                  <Input value={unitSuite} onChange={e => setUnitSuite(e.target.value)} placeholder="e.g. Apt 2B, gate code #1234, leave key under mat…" className="mt-1" />
+                </div>
+
                 {/* Zip zone banners */}
                 {checkingZip && <div style={{ fontSize: 12, color: "#9E9B94" }}>Checking service area...</div>}
                 {!checkingZip && zipZone && zipZone !== "uncovered" && (
@@ -822,6 +834,30 @@ export default function QuoteBuilderPage() {
                     No techs assigned to this zone — job will be unassigned.
                   </div>
                 )}
+
+                {/* How did you hear about us? */}
+                <div>
+                  <Label className="text-xs">How did you hear about us?</Label>
+                  <select
+                    value={referralSource}
+                    onChange={e => setReferralSource(e.target.value)}
+                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                    style={{ height: 36 }}
+                  >
+                    <option value="">Select…</option>
+                    <option value="Google">Google</option>
+                    <option value="Facebook">Facebook</option>
+                    <option value="Instagram">Instagram</option>
+                    <option value="Nextdoor">Nextdoor</option>
+                    <option value="Yelp">Yelp</option>
+                    <option value="Referral - Friend/Family">Referral — Friend / Family</option>
+                    <option value="Referral - Previous Client">Referral — Previous Client</option>
+                    <option value="Door Hanger / Flyer">Door Hanger / Flyer</option>
+                    <option value="Yard Sign">Yard Sign</option>
+                    <option value="Online Booking">Online Booking</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
 
                 <div className="flex justify-end">
                   <Button size="sm" style={{ background: "var(--brand)", color: "#FFF" }} className="gap-1.5 hover:opacity-90" onClick={() => setActiveSection(1)}>
