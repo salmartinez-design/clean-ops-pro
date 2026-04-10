@@ -74,7 +74,14 @@ interface SelectedScopeState {
   scope_id: number;
   frequency: string;
   hours: number;
+  hoursOverrideSet: boolean;
   addon_ids: number[];
+  addonQtys: Record<number, number>;
+  addonRecurring: Record<number, boolean>;
+  adjPlus: number;
+  adjPlusReason: string;
+  adjMinus: number;
+  adjMinusReason: string;
   frequencies: PricingFrequency[];
   addons: PricingAddon[];
   calc: CalcResult | null;
@@ -144,6 +151,7 @@ export default function QuoteBuilderPage() {
   // ── Section 3: Notes + discount + photos ─────────────────────────────────
   const [notes, setNotes] = useState("");
   const [internalMemo, setInternalMemo] = useState("");
+  const [officeMemo, setOfficeMemo] = useState("");
   const [manualAdjValue, setManualAdjValue] = useState("");
   const [discountCode, setDiscountCode] = useState("");
   const [discountInput, setDiscountInput] = useState("");
@@ -270,6 +278,7 @@ export default function QuoteBuilderPage() {
     setDiscountInput(existingQuote.discount_code || "");
     setNotes(existingQuote.notes || "");
     setInternalMemo(existingQuote.internal_memo || "");
+    setOfficeMemo(existingQuote.office_notes || "");
     setCallNotes(existingQuote.call_notes || "");
     setZoneOverride(existingQuote.zone_override || false);
     if (Array.isArray(existingQuote.photo_urls) && existingQuote.photo_urls.length > 0) {
@@ -413,9 +422,20 @@ export default function QuoteBuilderPage() {
       }
       setSelectedScopes(prev => prev.map(s => s.scope_id === scopeId ? { ...s, calcLoading: true } : s));
       try {
-        const body: Record<string, unknown> = { scope_id: scopeId, frequency: state.frequency || undefined, addon_ids: state.addon_ids };
+        const counterAddonIds = Object.keys(state.addonQtys).filter(k => (state.addonQtys[Number(k)] ?? 0) > 0).map(Number);
+        const allAddonIds = [...new Set([...state.addon_ids, ...counterAddonIds])];
+        const addonQtysFiltered: Record<string, number> = {};
+        for (const id of counterAddonIds) {
+          addonQtysFiltered[String(id)] = state.addonQtys[id];
+        }
+        const body: Record<string, unknown> = { scope_id: scopeId, frequency: state.frequency || undefined, addon_ids: allAddonIds };
+        if (Object.keys(addonQtysFiltered).length > 0) body.addon_quantities = addonQtysFiltered;
         if (method === "sqft") { body.sqft = currentSqft; }
-        else { body.hours = state.hours; if (currentSqft > 0) body.sqft = currentSqft; }
+        else {
+          const hoursToUse = state.hoursOverrideSet ? state.hours : state.hours;
+          body.hours = hoursToUse;
+          if (currentSqft > 0) body.sqft = currentSqft;
+        }
         if (discountCodeRef.current) body.discount_code = discountCodeRef.current;
         const result = await apiFetch("/api/pricing/calculate", { method: "POST", body });
         setSelectedScopes(prev => prev.map(s => s.scope_id === scopeId ? { ...s, calc: result, calcLoading: false } : s));
@@ -446,7 +466,14 @@ export default function QuoteBuilderPage() {
         scope_id: scope.id,
         frequency: initialState?.frequency ?? defaultFreq?.frequency ?? "",
         hours: initialState?.hours ?? 0,
+        hoursOverrideSet: false,
         addon_ids: initialState?.addon_ids ?? [],
+        addonQtys: {},
+        addonRecurring: {},
+        adjPlus: 0,
+        adjPlusReason: "",
+        adjMinus: 0,
+        adjMinusReason: "",
         frequencies: freqs as PricingFrequency[],
         addons: addons as PricingAddon[],
         calc: null,
@@ -458,7 +485,9 @@ export default function QuoteBuilderPage() {
     } catch {
       setSelectedScopes(prev => [...prev, {
         scope_id: scope.id, frequency: initialState?.frequency ?? "", hours: initialState?.hours ?? 0,
-        addon_ids: initialState?.addon_ids ?? [], frequencies: [], addons: [],
+        hoursOverrideSet: false, addon_ids: initialState?.addon_ids ?? [],
+        addonQtys: {}, addonRecurring: {}, adjPlus: 0, adjPlusReason: "", adjMinus: 0, adjMinusReason: "",
+        frequencies: [], addons: [],
         calc: null, calcLoading: false, expanded: true,
       }]);
     }
@@ -472,6 +501,39 @@ export default function QuoteBuilderPage() {
   function updateScopeHours(scopeId: number, hours: number) {
     setSelectedScopes(prev => prev.map(s => s.scope_id === scopeId ? { ...s, hours } : s));
     recalcScopeById(scopeId);
+  }
+
+  function updateScopeHoursManual(scopeId: number, hours: number) {
+    setSelectedScopes(prev => prev.map(s => s.scope_id === scopeId ? { ...s, hours: Math.max(0.5, hours), hoursOverrideSet: true } : s));
+    setTimeout(() => recalcScopeById(scopeId), 50);
+  }
+
+  function resetScopeHours(scopeId: number) {
+    const s = selectedScopes.find(sc => sc.scope_id === scopeId);
+    const calcHours = s?.calc?.base_hours ?? 0;
+    setSelectedScopes(prev => prev.map(sc => sc.scope_id === scopeId ? { ...sc, hours: calcHours, hoursOverrideSet: false } : sc));
+    setTimeout(() => recalcScopeById(scopeId), 50);
+  }
+
+  function updateScopeAddonQty(scopeId: number, addonId: number, qty: number) {
+    setSelectedScopes(prev => prev.map(s => {
+      if (s.scope_id !== scopeId) return s;
+      const newQtys = { ...s.addonQtys, [addonId]: Math.max(0, qty) };
+      if (newQtys[addonId] === 0) delete newQtys[addonId];
+      return { ...s, addonQtys: newQtys };
+    }));
+    setTimeout(() => recalcScopeById(scopeId), 50);
+  }
+
+  function updateScopeAddonRecurring(scopeId: number, addonId: number, recurring: boolean) {
+    setSelectedScopes(prev => prev.map(s => {
+      if (s.scope_id !== scopeId) return s;
+      return { ...s, addonRecurring: { ...s.addonRecurring, [addonId]: recurring } };
+    }));
+  }
+
+  function updateScopeAdj(scopeId: number, field: "adjPlus" | "adjMinus" | "adjPlusReason" | "adjMinusReason", val: number | string) {
+    setSelectedScopes(prev => prev.map(s => s.scope_id === scopeId ? { ...s, [field]: val } : s));
   }
 
   function updateScopeAddon(scopeId: number, addonId: number, checked: boolean) {
@@ -529,6 +591,7 @@ export default function QuoteBuilderPage() {
       hourly_rate: cr ? String(cr.hourly_rate) : null,
       notes: notes || null,
       internal_memo: internalMemo || null,
+      office_notes: officeMemo || null,
       call_notes: callNotes || null,
       unit_suite: unitSuite || null,
       referral_source: referralSource || null,
@@ -536,6 +599,12 @@ export default function QuoteBuilderPage() {
       zone_override: zoneOverride || null,
       address_verified: addressVerified === true,
       photo_urls: photoUploads.filter(p => !p.uploading && p.objectPath).map(p => p.objectPath),
+      manual_adjustments: selectedScopes.flatMap(s => {
+        const items: Array<{ scope_id: number; type: string; amount: number; reason: string }> = [];
+        if (s.adjPlus > 0) items.push({ scope_id: s.scope_id, type: "add", amount: s.adjPlus, reason: s.adjPlusReason || "" });
+        if (s.adjMinus > 0) items.push({ scope_id: s.scope_id, type: "subtract", amount: s.adjMinus, reason: s.adjMinusReason || "" });
+        return items;
+      }),
       status,
     };
   }
@@ -781,7 +850,8 @@ export default function QuoteBuilderPage() {
 
   const selectedClient = clientLoaded;
   const selectedScopeIds = selectedScopes.map(s => s.scope_id);
-  const canConvert = selectedScopes.length > 0 && (finalScopeId !== null || selectedScopes.length === 1);
+  const hasCustomerInfo = Boolean(selectedClientId || leadFirstName || leadEmail || address);
+  const canConvert = hasCustomerInfo && selectedScopes.length > 0 && (finalScopeId !== null || selectedScopes.length === 1);
 
   // ── Mobile helpers ────────────────────────────────────────────────────────
   const mobileFilteredClients = mobileClientSearch.trim().length > 0
@@ -1552,17 +1622,37 @@ export default function QuoteBuilderPage() {
                               </div>
                             )}
 
-                            {/* Hours input */}
+                            {/* Hours input — stepper with override */}
                             {isHourly && (
                               <div style={{ marginBottom: 14 }}>
-                                <div style={{ fontSize: 11, fontWeight: 600, color: "#6B6860", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Estimated Hours</div>
-                                <input
-                                  type="number" min="0.5" step="0.5"
-                                  value={s.hours || ""}
-                                  onChange={e => updateScopeHours(s.scope_id, parseFloat(e.target.value) || 0)}
-                                  placeholder="e.g. 3.0"
-                                  style={{ width: 120, height: 36, border: "1px solid #E5E2DC", borderRadius: 8, padding: "0 12px", fontSize: 14, fontFamily: FF, outline: "none" }}
-                                />
+                                <div style={{ fontSize: 11, fontWeight: 600, color: "#6B6860", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+                                  Estimated Hours
+                                  {s.hoursOverrideSet && s.calc?.base_hours != null && (
+                                    <span
+                                      onClick={() => resetScopeHours(s.scope_id)}
+                                      style={{ marginLeft: 10, fontSize: 11, color: "#5B9BD5", fontWeight: 400, cursor: "pointer", textTransform: "none", letterSpacing: 0 }}
+                                    >
+                                      Reset to calculated ({s.calc.base_hours}h)
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <button
+                                    onClick={() => updateScopeHoursManual(s.scope_id, (s.hours || s.calc?.base_hours || 1) - 0.5)}
+                                    style={{ width: 32, height: 32, border: "1px solid #E5E2DC", borderRadius: 6, background: "#F7F6F3", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}
+                                  >−</button>
+                                  <input
+                                    type="number" min="0.5" step="0.5"
+                                    value={s.hours || s.calc?.base_hours || ""}
+                                    onChange={e => updateScopeHoursManual(s.scope_id, parseFloat(e.target.value) || 0.5)}
+                                    style={{ width: 80, height: 32, border: `1px solid ${s.hoursOverrideSet ? "#5B9BD5" : "#E5E2DC"}`, borderRadius: 6, padding: "0 10px", fontSize: 14, fontFamily: FF, outline: "none", textAlign: "center", background: s.hoursOverrideSet ? "#EBF4FF" : "#FFF" }}
+                                  />
+                                  <button
+                                    onClick={() => updateScopeHoursManual(s.scope_id, (s.hours || s.calc?.base_hours || 0) + 0.5)}
+                                    style={{ width: 32, height: 32, border: "1px solid #E5E2DC", borderRadius: 6, background: "#F7F6F3", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}
+                                  >+</button>
+                                  <span style={{ fontSize: 12, color: "#9E9B94", fontFamily: FF }}>hrs</span>
+                                </div>
                               </div>
                             )}
 
@@ -1570,26 +1660,97 @@ export default function QuoteBuilderPage() {
                             {activeAddons.length > 0 && (
                               <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
                                 {activeAddons.map(addon => {
-                                  const isSel = s.addon_ids.includes(addon.id);
+                                  const addonNameLc = addon.name.toLowerCase();
+                                  const isCounter = addonNameLc.includes("oven") || addonNameLc.includes("refrigerator") || addonNameLc.includes("cabinet");
                                   const fromCalc = s.calc?.addon_breakdown.find(b => b.id === addon.id);
                                   const priceText = fromCalc
                                     ? (fromCalc.amount < 0 ? `-$${Math.abs(fromCalc.amount).toFixed(2)}` : `$${fromCalc.amount.toFixed(2)}`)
                                     : addonDisplayPrice(addon);
+                                  const qty = s.addonQtys[addon.id] ?? 0;
+                                  const isSel = isCounter ? qty > 0 : s.addon_ids.includes(addon.id);
+                                  const isRecurring = s.addonRecurring[addon.id] ?? false;
                                   return (
-                                    <label key={addon.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", border: isSel ? "1px solid #5B9BD5" : "1px solid #E5E2DC", background: isSel ? "#EBF4FF" : "#FFF", borderRadius: 6, cursor: "pointer" }}>
-                                      <Checkbox checked={isSel} onCheckedChange={checked => updateScopeAddon(s.scope_id, addon.id, Boolean(checked))} />
-                                      <span style={{ flex: 1, fontSize: 13, color: "#1A1917", fontFamily: FF }}>{addon.name}</span>
-                                      <span style={{ fontSize: 12, color: fromCalc && fromCalc.amount < 0 ? "#DC2626" : "#9E9B94", flexShrink: 0, fontFamily: FF }}>{priceText}</span>
-                                    </label>
+                                    <div key={addon.id} style={{ border: isSel ? "1px solid #5B9BD5" : "1px solid #E5E2DC", background: isSel ? "#EBF4FF" : "#FFF", borderRadius: 6, overflow: "hidden" }}>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px" }}>
+                                        {isCounter ? (
+                                          <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                                            <button
+                                              onClick={() => updateScopeAddonQty(s.scope_id, addon.id, qty - 1)}
+                                              disabled={qty === 0}
+                                              style={{ width: 26, height: 26, border: "1px solid #E5E2DC", borderRadius: 5, background: qty === 0 ? "#F7F6F3" : "#FFF", cursor: qty === 0 ? "not-allowed" : "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", color: qty === 0 ? "#C4C2BB" : "#1A1917" }}
+                                            >−</button>
+                                            <span style={{ width: 22, textAlign: "center", fontSize: 13, fontWeight: 600, fontFamily: FF, color: "#1A1917" }}>{qty}</span>
+                                            <button
+                                              onClick={() => updateScopeAddonQty(s.scope_id, addon.id, qty + 1)}
+                                              style={{ width: 26, height: 26, border: "1px solid #E5E2DC", borderRadius: 5, background: "#FFF", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", color: "#1A1917" }}
+                                            >+</button>
+                                          </div>
+                                        ) : (
+                                          <Checkbox checked={isSel} onCheckedChange={checked => updateScopeAddon(s.scope_id, addon.id, Boolean(checked))} />
+                                        )}
+                                        <span style={{ flex: 1, fontSize: 13, color: "#1A1917", fontFamily: FF }}>{addon.name}</span>
+                                        <span style={{ fontSize: 12, color: fromCalc && fromCalc.amount < 0 ? "#DC2626" : "#9E9B94", flexShrink: 0, fontFamily: FF }}>{priceText}</span>
+                                      </div>
+                                      {isSel && (
+                                        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px 8px 10px", borderTop: "1px solid #DBF0FF" }}>
+                                          <span style={{ fontSize: 11, color: "#6B6860", fontFamily: FF }}>Apply to:</span>
+                                          <button
+                                            onClick={() => updateScopeAddonRecurring(s.scope_id, addon.id, false)}
+                                            style={{ fontSize: 11, padding: "2px 10px", borderRadius: 12, border: `1px solid ${!isRecurring ? "#5B9BD5" : "#E5E2DC"}`, background: !isRecurring ? "#5B9BD5" : "#FFF", color: !isRecurring ? "#FFF" : "#6B6860", cursor: "pointer", fontFamily: FF }}
+                                          >This visit only</button>
+                                          <button
+                                            onClick={() => updateScopeAddonRecurring(s.scope_id, addon.id, true)}
+                                            style={{ fontSize: 11, padding: "2px 10px", borderRadius: 12, border: `1px solid ${isRecurring ? "#5B9BD5" : "#E5E2DC"}`, background: isRecurring ? "#5B9BD5" : "#FFF", color: isRecurring ? "#FFF" : "#6B6860", cursor: "pointer", fontFamily: FF }}
+                                          >Every visit</button>
+                                        </div>
+                                      )}
+                                    </div>
                                   );
                                 })}
                               </div>
                             )}
 
+                            {/* Manual price adjustments */}
+                            <div style={{ marginBottom: 12 }}>
+                              <div style={{ fontSize: 11, fontWeight: 600, color: "#6B6860", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Price Adjustments</div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ fontSize: 12, color: "#22C55E", fontWeight: 700, width: 14, flexShrink: 0, fontFamily: FF }}>+</span>
+                                  <input
+                                    type="number" min="0" step="1" placeholder="$0.00"
+                                    value={s.adjPlus || ""}
+                                    onChange={e => updateScopeAdj(s.scope_id, "adjPlus", parseFloat(e.target.value) || 0)}
+                                    style={{ width: 90, height: 30, border: "1px solid #E5E2DC", borderRadius: 6, padding: "0 8px", fontSize: 13, fontFamily: FF, outline: "none" }}
+                                  />
+                                  <input
+                                    type="text" placeholder="Reason (e.g. extra floors)"
+                                    value={s.adjPlusReason}
+                                    onChange={e => updateScopeAdj(s.scope_id, "adjPlusReason", e.target.value)}
+                                    style={{ flex: 1, height: 30, border: "1px solid #E5E2DC", borderRadius: 6, padding: "0 8px", fontSize: 13, fontFamily: FF, outline: "none" }}
+                                  />
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ fontSize: 12, color: "#DC2626", fontWeight: 700, width: 14, flexShrink: 0, fontFamily: FF }}>−</span>
+                                  <input
+                                    type="number" min="0" step="1" placeholder="$0.00"
+                                    value={s.adjMinus || ""}
+                                    onChange={e => updateScopeAdj(s.scope_id, "adjMinus", parseFloat(e.target.value) || 0)}
+                                    style={{ width: 90, height: 30, border: "1px solid #E5E2DC", borderRadius: 6, padding: "0 8px", fontSize: 13, fontFamily: FF, outline: "none" }}
+                                  />
+                                  <input
+                                    type="text" placeholder="Reason (e.g. loyalty discount)"
+                                    value={s.adjMinusReason}
+                                    onChange={e => updateScopeAdj(s.scope_id, "adjMinusReason", e.target.value)}
+                                    style={{ flex: 1, height: 30, border: "1px solid #E5E2DC", borderRadius: 6, padding: "0 8px", fontSize: 13, fontFamily: FF, outline: "none" }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
                             {/* Running subtotal */}
                             {s.calc && (
                               <div style={{ fontSize: 13, color: "#9E9B94", textAlign: "right", fontFamily: FF }}>
-                                Subtotal: ${(s.calc.base_price + s.calc.addons_total).toFixed(2)}
+                                Subtotal: ${(s.calc.base_price + s.calc.addons_total + (s.adjPlus || 0) - (s.adjMinus || 0)).toFixed(2)}
                               </div>
                             )}
                           </div>
@@ -1620,6 +1781,11 @@ export default function QuoteBuilderPage() {
                   <div style={{ fontSize: 12, fontWeight: 500, color: "#1A1917", marginBottom: 2, fontFamily: FF }}>Client-Facing Notes</div>
                   <div style={{ fontSize: 11, color: "#9E9B94", marginBottom: 6, fontFamily: FF }}>Visible to client on the quote.</div>
                   <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes visible to the client..." rows={3} className="mt-1 text-sm" />
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: "#1A1917", marginBottom: 2, fontFamily: FF }}>Internal Office Memo</div>
+                  <div style={{ fontSize: 11, color: "#9E9B94", marginBottom: 6, fontFamily: FF }}>Internal only — never shown to clients or technicians.</div>
+                  <Textarea value={officeMemo} onChange={e => setOfficeMemo(e.target.value)} placeholder="Office-only notes..." rows={3} className="mt-1 text-sm" />
                 </div>
 
                 {/* Photo upload section */}
@@ -1833,9 +1999,19 @@ export default function QuoteBuilderPage() {
                           <span>Discount</span><span>-${s.calc.discount_amount.toFixed(2)}</span>
                         </div>
                       )}
+                      {s.adjPlus > 0 && (
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#22C55E" }}>
+                          <span>+{s.adjPlusReason || "Adjustment"}</span><span>+${s.adjPlus.toFixed(2)}</span>
+                        </div>
+                      )}
+                      {s.adjMinus > 0 && (
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#DC2626" }}>
+                          <span>−{s.adjMinusReason || "Adjustment"}</span><span>-${s.adjMinus.toFixed(2)}</span>
+                        </div>
+                      )}
                       <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 8, borderTop: "1px solid #E5E2DC", marginTop: 4 }}>
                         <span style={{ fontSize: 14, fontWeight: 700, color: "#1A1917", fontFamily: FF }}>Total</span>
-                        <span style={{ fontSize: 22, fontWeight: 700, color: "#1A1917", fontFamily: FF }}>${s.calc.final_total.toFixed(2)}</span>
+                        <span style={{ fontSize: 22, fontWeight: 700, color: "#1A1917", fontFamily: FF }}>${(s.calc.final_total + (s.adjPlus || 0) - (s.adjMinus || 0)).toFixed(2)}</span>
                       </div>
                     </div>
                   ) : !s.calcLoading && (

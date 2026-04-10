@@ -46,6 +46,8 @@ async function getQuoteWithDetails(id: number, companyId: number) {
       client_notes: quotesTable.client_notes,
       call_notes: quotesTable.call_notes,
       manual_hours: quotesTable.manual_hours,
+      office_notes: quotesTable.office_notes,
+      manual_adjustments: quotesTable.manual_adjustments,
       expires_at: quotesTable.expires_at,
       sign_token: quotesTable.sign_token,
       client_first: clientsTable.first_name,
@@ -152,7 +154,7 @@ router.post("/", requireAuth, requireRole("owner", "admin", "office"), async (re
       base_price, total_price, discount_amount, discount_code, addons,
       bedrooms, bathrooms, half_baths, sqft, dirt_level, pets,
       special_instructions, internal_memo, client_notes, notes, status,
-      unit_suite, referral_source,
+      unit_suite, referral_source, office_notes, manual_adjustments,
     } = req.body;
 
     const scope = scope_id ? await db.select().from(quoteScopesTable).where(eq(quoteScopesTable.id, scope_id)).limit(1) : null;
@@ -184,6 +186,8 @@ router.post("/", requireAuth, requireRole("owner", "admin", "office"), async (re
       dirt_level: dirt_level || "standard",
       pets: pets || 0,
       special_instructions, internal_memo, client_notes, notes,
+      office_notes: office_notes || null,
+      manual_adjustments: manual_adjustments || [],
       unit_suite: unit_suite || null,
       referral_source: referral_source || null,
       address_verified: req.body.address_verified === true,
@@ -211,7 +215,7 @@ router.patch("/:id", requireAuth, requireRole("owner", "admin", "office"), async
       "sqft", "dirt_level", "pets", "sent_at", "viewed_at", "accepted_at",
       "lead_name", "lead_email", "lead_phone", "address", "client_id",
       "alternate_options", "zone_override", "unit_suite", "referral_source", "address_verified",
-      "photo_urls",
+      "photo_urls", "office_notes", "manual_adjustments",
     ];
     const updates: any = {};
     for (const k of allowed) {

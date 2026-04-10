@@ -46,6 +46,8 @@ export const quotesTable = pgTable("quotes", {
   expires_at: timestamp("expires_at"),
   sign_token: text("sign_token"),
   call_notes: text("call_notes"),
+  office_notes: text("office_notes"),
+  manual_adjustments: jsonb("manual_adjustments").default([]),
 });
 
 export const insertQuoteSchema = createInsertSchema(quotesTable).omit({ id: true, created_at: true });

@@ -505,7 +505,7 @@ export function calcAddonAmount(addon: any, base_price: number, sqft: number | n
 router.post("/calculate", requireAuth, async (req, res) => {
   try {
     const companyId = req.auth!.companyId;
-    const { scope_id, sqft, hours, frequency, addon_ids, discount_code, manual_adjustment } = req.body;
+    const { scope_id, sqft, hours, frequency, addon_ids, discount_code, manual_adjustment, addon_quantities } = req.body;
 
     if (!scope_id) return res.status(400).json({ error: "scope_id is required" });
 
@@ -568,9 +568,11 @@ router.post("/calculate", requireAuth, async (req, res) => {
         `);
         const addons = (result as any).rows ?? [];
         for (const addon of addons) {
-          addon_minutes += parseInt(String(addon.time_add_minutes ?? 0)) || 0;
+          const qty = (addon_quantities && addon_quantities[String(addon.id)]) ? Math.max(1, parseInt(String(addon_quantities[String(addon.id)]))) : 1;
+          addon_minutes += (parseInt(String(addon.time_add_minutes ?? 0)) || 0) * qty;
           if (addon.price_type === "time_only") continue;
-          const amount = calcAddonAmount(addon, base_price, used_sqft);
+          const unitAmount = calcAddonAmount(addon, base_price, used_sqft);
+          const amount = unitAmount * qty;
           addons_total += amount;
           addon_breakdown.push({ id: addon.id, name: addon.name, amount: Math.round(amount * 100) / 100, price_type: addon.price_type });
         }
