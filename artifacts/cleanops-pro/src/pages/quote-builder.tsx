@@ -158,6 +158,13 @@ export default function QuoteBuilderPage() {
   const [callNotesMobileOpen, setCallNotesMobileOpen] = useState(false);
   const callNotesRef = useRef<HTMLTextAreaElement>(null);
   const autoSavedIdRef = useRef<string | null>(null);
+  const addressInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Google Maps Places ───────────────────────────────────────────────────
+  const [mapsReady, setMapsReady] = useState(false);
+  const [inputMounted, setInputMounted] = useState(false);
+  const [addressVerified, setAddressVerified] = useState<boolean | null>(null);
+  const [addressFormatted, setAddressFormatted] = useState("");
   const [callNoteTooltip, setCallNoteTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
   const [pushConfirmed, setPushConfirmed] = useState(false);
 
@@ -304,6 +311,77 @@ export default function QuoteBuilderPage() {
     });
   }, [sqft]);
 
+  // ── Load Google Maps Places API ──────────────────────────────────────────
+  useEffect(() => {
+    const key = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY ?? "";
+    if ((window as any).google?.maps?.places) { setMapsReady(true); return; }
+    const scriptId = "gmap-places-script";
+    if (document.getElementById(scriptId)) {
+      const existing = document.getElementById(scriptId) as HTMLScriptElement;
+      if (existing) { existing.addEventListener("load", () => setMapsReady(true)); }
+      return;
+    }
+    if (!key) return;
+    const s = document.createElement("script");
+    s.id = scriptId;
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`;
+    s.async = true;
+    s.defer = true;
+    s.onload = () => setMapsReady(true);
+    document.head.appendChild(s);
+  }, []);
+
+  // ── Wire autocomplete after Maps ready + input mounted ──────────────────
+  useEffect(() => {
+    if (!mapsReady || !inputMounted || !addressInputRef.current) return;
+    const g = (window as any).google;
+    if (!g?.maps?.places?.Autocomplete) return;
+    const ac = new g.maps.places.Autocomplete(addressInputRef.current, {
+      componentRestrictions: { country: "us" },
+      fields: ["address_components", "formatted_address", "geometry"],
+      types: ["address"],
+    });
+    const listener = ac.addListener("place_changed", () => {
+      const place = ac.getPlace();
+      if (!place?.address_components) return;
+      const get = (type: string) =>
+        place.address_components.find((c: any) => c.types.includes(type))?.long_name ?? "";
+      const shortGet = (type: string) =>
+        place.address_components.find((c: any) => c.types.includes(type))?.short_name ?? "";
+      const street = `${get("street_number")} ${get("route")}`.trim();
+      const zip = get("postal_code");
+      const formatted = place.formatted_address ?? "";
+      setAddress(street || formatted);
+      if (zip) { setZipCode(zip); checkZip(zip); }
+      setAddressVerified(true);
+      setAddressFormatted(formatted);
+    });
+    return () => { g.maps.event.removeListener(listener); };
+  }, [mapsReady, inputMounted]);
+
+  // ── Geocode helper for client-loaded addresses ───────────────────────────
+  async function geocodeVerify(addressStr: string) {
+    const key = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY ?? "";
+    if (!key || !addressStr.trim()) { setAddressVerified(false); return; }
+    try {
+      const r = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addressStr)}&key=${key}`
+      );
+      const data = await r.json();
+      const result = data?.results?.[0];
+      if (result && ["ROOFTOP", "RANGE_INTERPOLATED"].includes(result.geometry?.location_type)) {
+        setAddressVerified(true);
+        setAddressFormatted(result.formatted_address ?? addressStr);
+      } else {
+        setAddressVerified(false);
+        setAddressFormatted("");
+      }
+    } catch {
+      setAddressVerified(false);
+      setAddressFormatted("");
+    }
+  }
+
   // ── Recalc function (uses refs to avoid stale closures) ─────────────────
   function recalcScopeById(scopeId: number, delay = 300) {
     if (recalcTimers.current[scopeId]) clearTimeout(recalcTimers.current[scopeId]);
@@ -443,6 +521,7 @@ export default function QuoteBuilderPage() {
       referral_source: referralSource || null,
       alternate_options: alternateOptions.length > 0 ? alternateOptions : null,
       zone_override: zoneOverride || null,
+      address_verified: addressVerified === true,
       status,
     };
   }
@@ -557,6 +636,11 @@ export default function QuoteBuilderPage() {
     setQuickBookPrice(null);
     setPreferredTech(null);
     setRecentServices([]);
+    setAddressVerified(null);
+    setAddressFormatted("");
+    // Geocode client address to verify it
+    const fullAddr = [c.address, c.zip].filter(Boolean).join(", ");
+    if (fullAddr) geocodeVerify(fullAddr);
     apiFetch(`/api/clients/${c.id}/quote-context`)
       .then((data: any) => {
         setPreferredTech(data.preferred_technician || null);
@@ -577,6 +661,8 @@ export default function QuoteBuilderPage() {
     setQuickBookDismissed(false);
     setQuickBookBanner(null);
     setQuickBookPrice(null);
+    setAddressVerified(null);
+    setAddressFormatted("");
   }
 
   function applyReturningClient() {
@@ -967,13 +1053,31 @@ export default function QuoteBuilderPage() {
                 <div className="flex gap-3">
                   <div className="flex-1">
                     <Label className="text-xs">Service Address</Label>
-                    <Input value={address} onChange={e => setAddress(e.target.value)} placeholder="123 Main St, City, State" className="mt-1" />
+                    <input
+                      ref={el => { (addressInputRef as any).current = el; if (el && !inputMounted) setInputMounted(true); }}
+                      value={address}
+                      onChange={e => { setAddress(e.target.value); setAddressVerified(null); setAddressFormatted(""); }}
+                      placeholder="123 Main St, City, State"
+                      className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    />
                   </div>
                   <div style={{ width: 120 }}>
                     <Label className="text-xs">Zip Code</Label>
                     <Input value={zipCode} onChange={e => setZipCode(e.target.value)} onBlur={e => checkZip(e.target.value)} placeholder="60453" maxLength={5} className="mt-1" />
                   </div>
                 </div>
+
+                {/* Address verification indicator */}
+                {address.trim().length > 5 && addressVerified === true && (
+                  <div style={{ background: "#EAF3DE", border: "1px solid #639922", borderRadius: 6, padding: "6px 12px", fontSize: 12, color: "#3B6D11" }}>
+                    Address verified{addressFormatted ? ` — ${addressFormatted}` : ""}
+                  </div>
+                )}
+                {address.trim().length > 5 && addressVerified === false && (
+                  <div style={{ background: "#FAEEDA", border: "1px solid #BA7517", borderRadius: 6, padding: "6px 12px", fontSize: 12, color: "#854F0B" }}>
+                    Address not verified — select from suggestions to confirm
+                  </div>
+                )}
 
                 {/* Unit / Suite / Access Instructions */}
                 <div>
