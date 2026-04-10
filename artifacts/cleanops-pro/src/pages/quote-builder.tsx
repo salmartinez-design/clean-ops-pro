@@ -84,6 +84,9 @@ interface SelectedScopeState {
 
 interface SuggestedTech { id: number; name: string; zone_name: string; zone_color: string; }
 
+interface PreferredTech { id: number; full_name: string; job_count: number; }
+interface RecentService { scope: string; last_date: string; last_price: number; frequency: string | null; addons: string[]; }
+
 const SECTION_LABELS = ["Customer Info", "Property Details", "Service & Pricing", "Add-ons & Notes", "Review"];
 const SECTION_ICONS = [User, Home, Calculator, PlusSquare, CheckCircle2];
 const DIRT_LEVELS = [
@@ -167,6 +170,13 @@ export default function QuoteBuilderPage() {
   const [selectedTechId, setSelectedTechId] = useState<number | null>(null);
   const [techAvailability, setTechAvailability] = useState<Record<number, number>>({});
   const [techAvailLoading, setTechAvailLoading] = useState(false);
+
+  // ── Quick Book (returning client) ─────────────────────────────────────────
+  const [preferredTech, setPreferredTech] = useState<PreferredTech | null>(null);
+  const [recentServices, setRecentServices] = useState<RecentService[]>([]);
+  const [quickBookDismissed, setQuickBookDismissed] = useState(false);
+  const [quickBookBanner, setQuickBookBanner] = useState<{ scope: string; date: string } | null>(null);
+  const [quickBookPrice, setQuickBookPrice] = useState<number | null>(null);
 
   // ── Mobile ───────────────────────────────────────────────────────────────
   const isMobile = useIsMobile();
@@ -420,10 +430,10 @@ export default function QuoteBuilderPage() {
       pets, dirt_level: dirtLevel,
       addons: cr?.addon_breakdown ?? [],
       discount_code: discountCode || null,
-      base_price: cr ? String(cr.base_price) : null,
-      addons_total: cr ? String(cr.addons_total) : null,
+      base_price: quickBookPrice != null ? String(quickBookPrice) : (cr ? String(cr.base_price) : null),
+      addons_total: cr ? String(cr.addons_total) : "0",
       discount_amount: cr ? String(cr.discount_amount) : "0",
-      total_price: cr ? String(cr.final_total) : null,
+      total_price: quickBookPrice != null ? String(quickBookPrice) : (cr ? String(cr.final_total) : null),
       estimated_hours: cr ? String(cr.base_hours) : primaryScopeState?.hours ? String(primaryScopeState.hours) : null,
       hourly_rate: cr ? String(cr.hourly_rate) : null,
       notes: notes || null,
@@ -541,6 +551,18 @@ export default function QuoteBuilderPage() {
     setTimeout(() => setClientBannerVisible(false), 4000);
     setReturningClient(null);
     setReturningClientDismissed(true);
+    setReferralSource("existing_client");
+    setQuickBookDismissed(false);
+    setQuickBookBanner(null);
+    setQuickBookPrice(null);
+    setPreferredTech(null);
+    setRecentServices([]);
+    apiFetch(`/api/clients/${c.id}/quote-context`)
+      .then((data: any) => {
+        setPreferredTech(data.preferred_technician || null);
+        setRecentServices(data.recent_services || []);
+      })
+      .catch(() => {});
   }
 
   function clearClient() {
@@ -549,6 +571,12 @@ export default function QuoteBuilderPage() {
     setClientSearch("");
     setClientDropdownOpen(false);
     setClientBannerVisible(false);
+    setReferralSource("");
+    setPreferredTech(null);
+    setRecentServices([]);
+    setQuickBookDismissed(false);
+    setQuickBookBanner(null);
+    setQuickBookPrice(null);
   }
 
   function applyReturningClient() {
@@ -557,6 +585,19 @@ export default function QuoteBuilderPage() {
     if (client) { selectClient(client); }
     setReturningClient(null);
     setReturningClientDismissed(true);
+  }
+
+  async function handleQuickBook(service: RecentService) {
+    setSelectedScopes([]);
+    const matchedScope = scopes.find(s => s.name.toLowerCase().trim() === service.scope.toLowerCase().trim());
+    if (matchedScope) {
+      await toggleScope(matchedScope, { frequency: service.frequency ?? undefined });
+      setFinalScopeId(matchedScope.id);
+    }
+    if (preferredTech) setSelectedTechId(preferredTech.id);
+    setQuickBookPrice(service.last_price);
+    setQuickBookBanner({ scope: service.scope, date: service.last_date });
+    setActiveSection(4);
   }
 
   // ── Highlight-to-push ────────────────────────────────────────────────────
@@ -991,29 +1032,94 @@ export default function QuoteBuilderPage() {
                   </div>
                 )}
 
-                {/* How did you hear about us? */}
-                <div>
-                  <Label className="text-xs">How did you hear about us?</Label>
-                  <select
-                    value={referralSource}
-                    onChange={e => setReferralSource(e.target.value)}
-                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                    style={{ height: 36 }}
-                  >
-                    <option value="">Select…</option>
-                    <option value="Google">Google</option>
-                    <option value="Facebook">Facebook</option>
-                    <option value="Instagram">Instagram</option>
-                    <option value="Nextdoor">Nextdoor</option>
-                    <option value="Yelp">Yelp</option>
-                    <option value="Referral - Friend/Family">Referral — Friend / Family</option>
-                    <option value="Referral - Previous Client">Referral — Previous Client</option>
-                    <option value="Door Hanger / Flyer">Door Hanger / Flyer</option>
-                    <option value="Yard Sign">Yard Sign</option>
-                    <option value="Online Booking">Online Booking</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
+                {/* How did you hear about us? — only for new leads */}
+                {!selectedClientId && (
+                  <div>
+                    <Label className="text-xs">How did you hear about us?</Label>
+                    <select
+                      value={referralSource}
+                      onChange={e => setReferralSource(e.target.value)}
+                      className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                      style={{ height: 36 }}
+                    >
+                      <option value="">Select…</option>
+                      <option value="Google">Google</option>
+                      <option value="Facebook">Facebook</option>
+                      <option value="Instagram">Instagram</option>
+                      <option value="Nextdoor">Nextdoor</option>
+                      <option value="Yelp">Yelp</option>
+                      <option value="Referral - Friend/Family">Referral — Friend / Family</option>
+                      <option value="Referral - Previous Client">Referral — Previous Client</option>
+                      <option value="Door Hanger / Flyer">Door Hanger / Flyer</option>
+                      <option value="Yard Sign">Yard Sign</option>
+                      <option value="Online Booking">Online Booking</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* ── Preferred Tech pill (existing client only) ── */}
+                {selectedClientId && preferredTech && (
+                  <div style={{ background: "#EBF4FF", border: "1px solid #5B9BD5", borderRadius: 6, padding: "8px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <span style={{ fontSize: 12, color: "#185FA5", fontFamily: FF }}>
+                      Preferred tech: <strong>{preferredTech.full_name}</strong> — assigned to most of this client's jobs
+                    </span>
+                    <button
+                      onClick={() => setSelectedTechId(preferredTech.id)}
+                      style={{ fontSize: 11, color: "var(--brand)", background: "none", border: "1px solid var(--brand)", borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontFamily: FF, flexShrink: 0, whiteSpace: "nowrap" }}
+                    >
+                      {selectedTechId === preferredTech.id ? "✓ Selected" : "Use this tech"}
+                    </button>
+                  </div>
+                )}
+
+                {/* ── Quick Book panel (existing client only) ── */}
+                {selectedClientId && recentServices.length > 0 && !quickBookDismissed && (
+                  <div style={{ background: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: 8, padding: "14px 16px" }}>
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 12, fontWeight: 500, color: "#1A1917", fontFamily: FF }}>Quick Book</div>
+                      <div style={{ fontSize: 11, color: "#6B6860", marginTop: 1, fontFamily: FF }}>Book based on a previous service</div>
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      {recentServices.map((svc, i) => {
+                        const lastDate = (() => {
+                          try {
+                            const d = new Date(svc.last_date + "T12:00:00");
+                            return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                          } catch { return svc.last_date; }
+                        })();
+                        const freqMap: Record<string, string> = { weekly: "Weekly", every_2_weeks: "Biweekly", biweekly: "Biweekly", every_4_weeks: "Monthly", monthly: "Monthly", onetime: "One-Time", one_time: "One-Time" };
+                        const freqLabel = svc.frequency ? (freqMap[svc.frequency] ?? svc.frequency) : null;
+                        return (
+                          <div
+                            key={i}
+                            onClick={() => handleQuickBook(svc)}
+                            style={{ background: "#FFFFFF", border: "0.5px solid #E5E2DC", borderRadius: 8, padding: "10px 14px", minWidth: 180, cursor: "pointer", transition: "border-color 0.15s, background 0.15s" }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#5B9BD5"; (e.currentTarget as HTMLElement).style.background = "#EBF4FF"; }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#E5E2DC"; (e.currentTarget as HTMLElement).style.background = "#FFFFFF"; }}
+                          >
+                            <div style={{ fontSize: 13, fontWeight: 500, color: "#1A1917", fontFamily: FF }}>{svc.scope}</div>
+                            <div style={{ fontSize: 11, color: "#6B6860", marginTop: 2, fontFamily: FF }}>Last: {lastDate}</div>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
+                              <div style={{ fontSize: 13, fontWeight: 500, color: "#1A1917", fontFamily: FF }}>
+                                ${svc.last_price > 0 ? svc.last_price.toLocaleString("en-US") : "—"}
+                              </div>
+                              {freqLabel && (
+                                <span style={{ fontSize: 10, background: "#F0EDE8", color: "#4A4845", borderRadius: 10, padding: "2px 6px", fontFamily: FF }}>{freqLabel}</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <button
+                      onClick={() => setQuickBookDismissed(true)}
+                      style={{ marginTop: 10, fontSize: 12, color: "#5B9BD5", background: "none", border: "none", cursor: "pointer", fontFamily: FF, padding: 0 }}
+                    >
+                      Build custom quote instead →
+                    </button>
+                  </div>
+                )}
 
                 <div className="flex justify-end">
                   <Button size="sm" style={{ background: "var(--brand)", color: "#FFF" }} className="gap-1.5 hover:opacity-90" onClick={() => setActiveSection(1)}>
@@ -1328,6 +1434,18 @@ export default function QuoteBuilderPage() {
           {/* ── Section 4: Review ─────────────────────────────────────── */}
           {activeSection === 4 && (
             <div style={{ background: "#FFF", border: "1px solid #E5E2DC", borderRadius: 12, padding: 24 }}>
+
+              {/* Quick Book pre-fill banner */}
+              {quickBookBanner && (
+                <div style={{ background: "#EBF4FF", border: "1px solid #5B9BD5", borderRadius: 6, padding: "8px 12px", marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <span style={{ fontSize: 12, color: "#185FA5", fontFamily: FF }}>
+                    Pre-filled from <strong>{quickBookBanner.scope}</strong> on{" "}
+                    {(() => { try { return new Date(quickBookBanner.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); } catch { return quickBookBanner.date; } })()}.{" "}
+                    Adjust anything before saving.
+                  </span>
+                  <button onClick={() => setQuickBookBanner(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#5B9BD5", padding: 0, flexShrink: 0, fontFamily: FF, fontSize: 16, lineHeight: 1 }}>×</button>
+                </div>
+              )}
 
               <div style={{ fontSize: 11, fontWeight: 700, color: "#6B6860", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 14, fontFamily: FF }}>
                 Select option to send client

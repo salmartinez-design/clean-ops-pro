@@ -309,6 +309,76 @@ router.get("/:id/full-profile", requireAuth, async (req, res) => {
   }
 });
 
+// ─── GET CLIENT QUOTE CONTEXT (preferred tech + recent services) ─────────────
+router.get("/:id/quote-context", requireAuth, async (req, res) => {
+  try {
+    const clientId = parseInt(req.params.id);
+    const companyId = req.auth!.companyId;
+
+    const [preferredTechResult, recentServicesResult, freqResult] = await Promise.all([
+      // Most frequent assigned technician from jobs table
+      db.execute(sql`
+        SELECT u.id, concat(u.first_name, ' ', u.last_name) AS full_name, COUNT(*) AS job_count
+        FROM jobs j
+        JOIN users u ON u.id = j.assigned_user_id
+        WHERE j.client_id = ${clientId} AND j.company_id = ${companyId}
+          AND j.assigned_user_id IS NOT NULL
+          AND j.status IN ('complete','scheduled','in_progress')
+        GROUP BY u.id, u.first_name, u.last_name
+        ORDER BY COUNT(*) DESC
+        LIMIT 1
+      `),
+      // Last 20 jobs from job_history with service_type + revenue
+      db.execute(sql`
+        SELECT service_type, job_date, revenue
+        FROM job_history
+        WHERE company_id = ${companyId} AND customer_id = ${clientId}
+          AND service_type IS NOT NULL AND service_type != ''
+        ORDER BY job_date DESC
+        LIMIT 20
+      `),
+      // Active recurring frequency
+      db.execute(sql`
+        SELECT frequency FROM recurring_schedules
+        WHERE client_id = ${clientId} AND company_id = ${companyId}
+          AND is_active = true
+        ORDER BY id DESC LIMIT 1
+      `),
+    ]);
+
+    const prefRow = preferredTechResult.rows[0] as any;
+    const clientFreq = (freqResult.rows[0] as any)?.frequency ?? null;
+
+    // Deduplicate by service_type, max 3 unique
+    const seen = new Set<string>();
+    const recentServices: Array<{ scope: string; last_date: string; last_price: number; frequency: string | null; addons: string[] }> = [];
+    for (const row of recentServicesResult.rows as any[]) {
+      const scope = row.service_type as string;
+      if (seen.has(scope) || recentServices.length >= 3) continue;
+      seen.add(scope);
+      recentServices.push({
+        scope,
+        last_date: String(row.job_date),
+        last_price: parseFloat(row.revenue) || 0,
+        frequency: clientFreq,
+        addons: [],
+      });
+    }
+
+    res.json({
+      preferred_technician: prefRow ? {
+        id: Number(prefRow.id),
+        full_name: String(prefRow.full_name),
+        job_count: parseInt(String(prefRow.job_count)),
+      } : null,
+      recent_services: recentServices,
+    });
+  } catch (err) {
+    console.error("Quote context error:", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 // ─── GET CLIENT ───────────────────────────────────────────────────────────────
 router.get("/:id", requireAuth, async (req, res) => {
   try {
