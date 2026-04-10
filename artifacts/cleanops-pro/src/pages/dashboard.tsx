@@ -180,7 +180,6 @@ export default function Dashboard() {
   const intelligenceValues = [
     kpis?.forecast_next_month,
     kpis?.avg_ltv,
-    kpis?.churn_configured === false ? null : (kpis?.high_churn_count ?? kpis?.clients_at_risk),
     kpis?.avg_nps,
   ];
   const allIntelDashes = intelligenceValues.every(v => v == null);
@@ -443,11 +442,10 @@ export default function Dashboard() {
 
         {/* ── INTELLIGENCE STRIP (hidden if all dashes, below Needs Attention) ── */}
         {kpis && !allIntelDashes && (
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: 10 }}>
             {[
               { label: 'Revenue Forecast', value: kpis.forecast_next_month != null ? fmt$(kpis.forecast_next_month) : '—', sub: 'next 30 days', color: 'var(--brand)', bg: 'var(--brand-dim)' },
               { label: 'Avg Client LTV', value: kpis.avg_ltv != null ? fmt$(kpis.avg_ltv) : '—', sub: 'estimated lifetime', color: '#16A34A', bg: '#DCFCE7' },
-              { label: 'High Churn Risk', value: kpis.churn_configured === false ? '—' : (kpis.high_churn_count ?? kpis.clients_at_risk ?? '—'), sub: kpis.churn_configured === false ? 'configure in Settings' : 'clients at risk', color: '#6B7280', bg: '#F3F4F6' },
               { label: 'Avg NPS', value: kpis.avg_nps != null ? kpis.avg_nps.toFixed(1) : '—', sub: 'last 90 days', color: '#1D4ED8', bg: '#DBEAFE' },
             ].filter(w => w.value !== '—').map(w => (
               <div key={w.label} style={{ backgroundColor: w.bg, border: '1px solid transparent', borderRadius: 10, padding: '14px 16px' }}>
