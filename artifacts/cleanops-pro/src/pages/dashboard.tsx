@@ -130,7 +130,7 @@ function useGreeting(firstName: string) {
 const CARD: React.CSSProperties = {
   backgroundColor: '#FFFFFF',
   border: '0.5px solid #E5E2DC',
-  borderRadius: 8,
+  borderRadius: 10,
 };
 
 // ── Weekly Forecast hook ──────────────────────────────────────────────────────
@@ -263,33 +263,42 @@ function WeeklyForecastSection() {
     { id: 'next',    label: 'Next Week' },
   ];
 
+  const bookedLabel = isLastWeek ? 'actual' : isCurrentWeek ? 'booked' : 'projected';
+
   return (
     <>
       <style>{`@keyframes wf-pulse{0%,100%{opacity:1}50%{opacity:.45}}`}</style>
-      <div style={{ background: '#FFFFFF', border: '0.5px solid #E5E2DC', borderRadius: 10, padding: '16px 20px', marginBottom: 14 }}>
+      <div style={{ background: '#FFFFFF', border: '0.5px solid #E5E2DC', borderRadius: 10, padding: '16px 20px' }}>
 
-        {/* Top bar: section label + week dropdown */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        {/* Header: label+date left / dropdown right */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
           <div>
-            <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#9E9B94', margin: '0 0 1px', fontFamily: FF }}>Revenue Forecast</p>
+            <p style={{ fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#4A4845', margin: '0 0 2px', fontFamily: FF }}>Revenue Forecast</p>
             <p style={{ fontSize: 11, color: '#6B6860', margin: 0, fontFamily: FF }}>{week.date_range}</p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <p style={{ fontSize: 13, fontWeight: 500, color: '#1A1917', margin: 0, fontFamily: FF }}>{summaryParts}</p>
-            <select
-              value={selectedWeekId}
-              onChange={e => setSelectedWeekId(e.target.value)}
-              style={{
-                fontSize: 12, fontWeight: 500, color: '#1A1917', background: '#F7F6F3',
-                border: '0.5px solid #E5E2DC', borderRadius: 6, padding: '4px 8px',
-                cursor: 'pointer', fontFamily: FF, outline: 'none',
-              }}
-            >
-              {WEEK_OPTIONS.map(o => (
-                <option key={o.id} value={o.id}>{o.label}</option>
-              ))}
-            </select>
-          </div>
+          <select
+            value={selectedWeekId}
+            onChange={e => setSelectedWeekId(e.target.value)}
+            style={{
+              fontSize: 12, fontWeight: 500, color: '#1A1917', background: '#F7F6F3',
+              border: '0.5px solid #E5E2DC', borderRadius: 6, padding: '4px 8px',
+              cursor: 'pointer', fontFamily: FF, outline: 'none',
+            }}
+          >
+            {WEEK_OPTIONS.map(o => (
+              <option key={o.id} value={o.id}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Booked total line */}
+        <div style={{ borderBottom: '0.5px solid #F0EDE8', paddingBottom: 10, marginBottom: 12 }}>
+          <p style={{ fontSize: 16, fontWeight: 500, color: '#1A1917', margin: 0, fontFamily: FF }}>
+            {fmtWF(week.total_revenue)} {bookedLabel} · {week.total_jobs} jobs
+            {(isCurrentWeek || isNextWeek) && week.total_unassigned > 0 && (
+              <span style={{ color: '#E24B4A' }}> · {week.total_unassigned} unassigned</span>
+            )}
+          </p>
         </div>
 
         {/* 7-column day grid */}
@@ -298,11 +307,12 @@ function WeeklyForecastSection() {
             const s = dayStyle(day, week.daily_avg);
             const isToday = day.date === todayStr;
             const cellBorder = isToday ? '1.5px solid #5B9BD5' : (s.border ?? '0.5px solid transparent');
+            const cellRadius = isToday ? 8 : 6;
             const dateParts = day.date.split('-');
             const displayDate = `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(dateParts[1])-1]} ${parseInt(dateParts[2])}`;
             return (
-              <div key={day.date} style={{ background: s.bg, border: cellBorder, borderRadius: 6, padding: '8px 6px' }}>
-                <p style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#9E9B94', margin: '0 0 2px', fontFamily: FF }}>{day.day_name}</p>
+              <div key={day.date} style={{ background: s.bg, border: cellBorder, borderRadius: cellRadius, padding: '8px 6px' }}>
+                <p style={{ fontSize: 10, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#4A4845', margin: '0 0 2px', fontFamily: FF }}>{day.day_name}</p>
                 <p style={{ fontSize: 11, color: '#6B6860', margin: '0 0 6px', fontFamily: FF }}>{displayDate}</p>
                 {day.is_weekend ? (
                   <>
@@ -321,24 +331,26 @@ function WeeklyForecastSection() {
           })}
         </div>
 
-        {/* Summary note + legend */}
-        <div style={{ borderTop: '0.5px solid #F0EDE8', paddingTop: 10, marginTop: 10, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        {/* Summary note */}
+        <div style={{ borderTop: '0.5px solid #F0EDE8', paddingTop: 10, marginTop: 10 }}>
           <p style={{ fontSize: 11, color: '#6B6860', margin: 0, fontFamily: FF }}>{summaryNote}</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-            {[
-              { label: 'Above avg', bg: '#639922', border: undefined },
-              { label: 'Below avg', bg: '#EF9F27', border: undefined },
-              { label: 'Low',       bg: '#E24B4A', border: undefined },
-              { label: 'Closed',    bg: '#E5E2DC', border: undefined },
-              { label: 'Projected', bg: '#F7F6F3', border: '1px dashed #C5C0B8' },
-              { label: 'Today',     bg: 'transparent', border: '1.5px solid #5B9BD5' },
-            ].map(sw => (
-              <div key={sw.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 8, height: 8, borderRadius: 2, background: sw.bg, border: sw.border, display: 'inline-block', flexShrink: 0 }} />
-                <span style={{ fontSize: 11, color: '#6B6860', fontFamily: FF }}>{sw.label}</span>
-              </div>
-            ))}
-          </div>
+        </div>
+
+        {/* Legend */}
+        <div style={{ borderTop: '0.5px solid #F0EDE8', paddingTop: 10, marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+          {[
+            { label: 'Above avg', bg: '#639922', border: undefined },
+            { label: 'Below avg', bg: '#EF9F27', border: undefined },
+            { label: 'Low',       bg: '#E24B4A', border: undefined },
+            { label: 'Closed',    bg: '#E5E2DC', border: undefined },
+            { label: 'Projected', bg: '#F7F6F3', border: '1px dashed #C5C0B8' },
+            { label: 'Today',     bg: 'transparent', border: '1.5px solid #5B9BD5' },
+          ].map(sw => (
+            <div key={sw.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: sw.bg, border: sw.border, display: 'inline-block', flexShrink: 0 }} />
+              <span style={{ fontSize: 11, color: '#6B6860', fontFamily: FF }}>{sw.label}</span>
+            </div>
+          ))}
         </div>
       </div>
     </>
@@ -373,11 +385,11 @@ export default function Dashboard() {
 
   // Status chips — navigate to /dispatch?status=<key>
   const STATUS_CARDS = [
-    { key: 'in_progress', label: 'In Progress', bg: '#DBEAFE', color: '#1E40AF', dispatchKey: 'in_progress' },
-    { key: 'scheduled',   label: 'Scheduled',   bg: '#F3F4F6', color: '#374151', dispatchKey: 'scheduled' },
-    { key: 'complete',    label: 'Complete',     bg: '#DCFCE7', color: '#1D9E75', dispatchKey: 'complete' },
-    { key: 'flagged',     label: 'Flagged',      bg: '#FEE2E2', color: '#D85A30', dispatchKey: 'flagged' },
-    { key: 'unassigned',  label: 'Unassigned',   bg: '#FEF0E7', color: '#E24B4A', dispatchKey: 'unassigned' },
+    { key: 'in_progress', label: 'In Progress', bg: '#DBEAFE', color: '#1E40AF', dispatchKey: 'in_progress', accent: undefined },
+    { key: 'scheduled',   label: 'Scheduled',   bg: '#F3F4F6', color: '#374151', dispatchKey: 'scheduled',   accent: undefined },
+    { key: 'complete',    label: 'Complete',     bg: '#DCFCE7', color: '#1D9E75', dispatchKey: 'complete',   accent: undefined },
+    { key: 'flagged',     label: 'Flagged',      bg: '#FEE2E2', color: '#D85A30', dispatchKey: 'flagged',    accent: '#D85A30' },
+    { key: 'unassigned',  label: 'Unassigned',   bg: '#FEF0E7', color: '#E24B4A', dispatchKey: 'unassigned', accent: '#E24B4A' },
   ];
 
   // Intelligence strip — hide if all values are dashes
@@ -411,13 +423,14 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 20, fontFamily: FF }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontFamily: FF }}>
 
         {/* ── GREETING ─────────────────────────────────────────── */}
         <div style={{
           background: 'var(--brand-dim)',
           border: '1px solid color-mix(in srgb, var(--brand) 20%, transparent)',
-          borderRadius: 12, padding: isMobile ? '18px 16px' : '20px 24px',
+          borderBottom: '0.5px solid #E5E2DC',
+          borderRadius: 12, padding: isMobile ? '18px 16px 16px' : '20px 24px 16px',
           display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12,
         }}>
           <div>
@@ -438,9 +451,9 @@ export default function Dashboard() {
               </button>
             )}
             <div style={{ textAlign: 'right' }}>
-              <p style={{ fontSize: 12, color: '#6B6860', margin: '0 0 2px', fontFamily: FF }}>Revenue this week</p>
+              <p style={{ fontSize: 11, fontWeight: 500, color: '#4A4845', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 3px', fontFamily: FF }}>Revenue this week</p>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                <span style={{ fontSize: 22, fontWeight: 700, color: '#1A1917', fontFamily: FF }}>
+                <span style={{ fontSize: 20, fontWeight: 500, color: '#1A1917', fontFamily: FF }}>
                   {kpis != null ? (kpis.week_revenue > 0 ? fmt$(kpis.week_revenue) : '—') : '—'}
                 </span>
                 <DeltaBadge delta={kpis?.week_delta ?? null} />
@@ -462,6 +475,7 @@ export default function Dashboard() {
                   value={val}
                   bg={card.bg}
                   color={card.color}
+                  accentColor={card.accent}
                   onClick={() => navigate(`/dispatch?status=${card.dispatchKey}`)}
                 />
               );
@@ -470,17 +484,21 @@ export default function Dashboard() {
         </div>
 
         {/* ── HCP STRIP (above monthly revenue row) ── */}
-        {hcp != null && HCP_TILES.some(t => t.value !== '—') && (
+        {hcp != null && (
           <div style={{
             display: 'grid',
-            gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
+            gridTemplateColumns: 'repeat(2, 1fr)',
             gap: 8,
+            paddingBottom: 14,
+            borderBottom: '0.5px solid #F0EDE8',
           }}>
-            {HCP_TILES.filter(t => t.value !== '—').map((tile, i) => (
-              <div key={i} style={{ ...CARD, padding: '10px 14px' }}>
-                <p style={{ fontSize: 9, fontWeight: 600, color: '#B0ADA6', textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 3px', fontFamily: FF }}>{tile.label}</p>
-                <p style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: '#1A1917', margin: '0 0 1px', lineHeight: 1, fontFamily: FF }}>{tile.value}</p>
-                <p style={{ fontSize: 9, color: '#C4C1BA', margin: 0, fontFamily: FF }}>{tile.sub}</p>
+            {[
+              { label: 'Revenue Booked Today', value: hcp == null ? '—' : fmtWF(hcp.rev_booked_today), sub: 'on schedule today' },
+              { label: 'New Jobs Booked',      value: hcp == null ? '—' : String(hcp.new_jobs_this_week), sub: 'this week' },
+            ].map((tile, i) => (
+              <div key={i} style={{ ...CARD, padding: '12px 16px' }}>
+                <p style={{ fontSize: 11, fontWeight: 500, color: '#4A4845', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 6px', fontFamily: FF }}>{tile.label}</p>
+                <p style={{ fontSize: 22, fontWeight: 500, color: '#1A1917', margin: 0, lineHeight: 1, fontFamily: FF }}>{tile.value}</p>
               </div>
             ))}
           </div>
@@ -488,7 +506,7 @@ export default function Dashboard() {
 
         {/* ── 4-TILE METRICS ROW ───────────────────────────────── */}
         <div>
-          <p style={{ fontSize: 11, fontWeight: 600, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px', fontFamily: FF }}>Key Numbers</p>
+          <p style={{ fontSize: 11, fontWeight: 500, color: '#4A4845', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px', marginTop: 2, fontFamily: FF }}>Key Numbers</p>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 10 }}>
             {/* Monthly Revenue */}
             <div style={{ ...CARD, padding: isMobile ? '14px 14px' : '16px 20px' }}>
@@ -533,35 +551,36 @@ export default function Dashboard() {
         </div>
 
         {/* ── TWO-COLUMN: REVENUE CHART + TECHS TODAY ─────────── */}
-        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', gap: 14, alignItems: 'stretch' }}>
           {/* Revenue Chart — 60% */}
-          <div style={{ ...CARD, padding: '18px 20px', flex: '0 0 60%', minWidth: 0 }}>
+          <div style={{ ...CARD, padding: '16px 20px', flex: '0 0 60%', minWidth: 0 }}>
             {chartData.length === 0 ? (
               <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <p style={{ fontSize: 12, color: '#9E9B94', margin: 0, fontFamily: FF }}>No revenue data yet.</p>
               </div>
             ) : (
               <>
-                {/* Legend */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 6 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <span style={{ display: 'inline-block', width: 14, height: 2, backgroundColor: '#5B9BD5', borderRadius: 1 }} />
-                    <span style={{ fontSize: 11, color: '#6B6860', fontFamily: FF }}>This year</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <span style={{ display: 'inline-block', width: 14, height: 0, borderTop: '2px dashed #B5D4F4' }} />
-                    <span style={{ fontSize: 11, color: '#6B6860', fontFamily: FF }}>Prior year</span>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-                  <p style={{ fontSize: 11, fontWeight: 600, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0, fontFamily: FF }}>
+                {/* Title + YTD */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: '#1A1917', margin: 0, fontFamily: FF }}>
                     Revenue — Last 12 Months
                   </p>
-                  <p style={{ fontSize: 11, color: '#9E9B94', margin: 0, fontFamily: FF }}>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: '#1A1917', margin: 0, fontFamily: FF }}>
                     YTD {ytdTotal >= 1_000_000
                       ? `$${(ytdTotal / 1_000_000).toFixed(2)}M`
                       : `$${(ytdTotal / 1000).toFixed(1)}k`}
                   </p>
+                </div>
+                {/* Legend — above chart canvas */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ display: 'inline-block', width: 14, height: 2, backgroundColor: '#5B9BD5', borderRadius: 1 }} />
+                    <span style={{ fontSize: 11, color: '#4A4845', fontFamily: FF }}>This year</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ display: 'inline-block', width: 14, height: 0, borderTop: '2px dashed #B5D4F4' }} />
+                    <span style={{ fontSize: 11, color: '#4A4845', fontFamily: FF }}>Prior year</span>
+                  </div>
                 </div>
                 <ResponsiveContainer width="100%" height={160}>
                   <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
@@ -665,7 +684,7 @@ export default function Dashboard() {
   );
 }
 
-function StatusChip({ label, value, bg, color, onClick }: { label: string; value: number; bg: string; color: string; onClick: () => void }) {
+function StatusChip({ label, value, bg, color, accentColor, onClick }: { label: string; value: number; bg: string; color: string; accentColor?: string; onClick: () => void }) {
   const [hovered, setHovered] = useState(false);
   return (
     <button
@@ -676,13 +695,15 @@ function StatusChip({ label, value, bg, color, onClick }: { label: string; value
         flexShrink: 0, width: 140, height: 80, minWidth: 120,
         backgroundColor: bg,
         border: hovered ? '1px solid #5B9BD5' : `1px solid ${color}22`,
-        borderRadius: 10, padding: '14px 16px',
+        borderLeft: accentColor ? `3px solid ${accentColor}` : (hovered ? '1px solid #5B9BD5' : `1px solid ${color}22`),
+        borderRadius: accentColor ? '0 8px 8px 0' : 8,
+        padding: '14px 16px',
         cursor: 'pointer', textAlign: 'left',
         fontFamily: FF, transition: 'border-color 0.15s',
       }}
     >
-      <p style={{ fontSize: 28, fontWeight: 700, color, margin: '0 0 2px', lineHeight: 1, fontFamily: FF }}>{value}</p>
-      <p style={{ fontSize: 11, color, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, opacity: 0.75, fontFamily: FF }}>{label}</p>
+      <p style={{ fontSize: 24, fontWeight: 700, color, margin: '0 0 2px', lineHeight: 1, fontFamily: FF }}>{value}</p>
+      <p style={{ fontSize: 11, fontWeight: 500, color: '#4A4845', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, fontFamily: FF }}>{label}</p>
     </button>
   );
 }
