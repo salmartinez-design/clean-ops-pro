@@ -9,27 +9,99 @@ import { requireAuth, requireRole } from "../lib/auth.js";
 
 const router = Router();
 
-// ─── PHES company_id=1 seed zones ───────────────────────────────────────────
+// ─── PHES company_id=1 seed zones (17 Oak Lawn zones) ───────────────────────
+// Source: MaidCentral screenshot 2026-04-10 (Oak Lawn location)
+// Deduplication applied — first alphabetical zone wins each conflicted zip:
+//   60632 → Chicago Central (removed from Company Zone)
+//   60630 → Lake View/Lincoln Square/Lincolnwood (removed from Norridge/Park Ridge/Des Plaines)
+//   60706 → Maywood/Northlake/Schiller Park (removed from Norridge/Park Ridge/Des Plaines)
+//   60523 → La Grange/Hodgkins/Berwyn (removed from Westmont/Lombard/Elmhurst)
+//   60409 → South Suburbs (duplicate within same zone removed)
 const PHES_SEED: { name: string; color: string; zip_codes: string[] }[] = [
   {
-    name: "Southwest Zone",
-    color: "#FF69B4",
-    zip_codes: ["60453","60456","60458","60459","60464","60465","60480","60482","60487"],
+    name: "Chicago Central",
+    color: "#F1D0A4",
+    zip_codes: ["60632","60633","60615","60653","60608","60616","60623","60804","60638"],
   },
   {
-    name: "Chicago South Zone",
-    color: "#5B9BD5",
-    zip_codes: ["60629","60632","60636","60638","60643","60652","60655"],
+    name: "Chicago Downtown/Loop Zone",
+    color: "#4B8083",
+    zip_codes: ["60605","60654","60601","60661","60606","60602","60603","60604","60699","60611","60610","60607"],
   },
   {
-    name: "Northwest Zone",
-    color: "#F97316",
-    zip_codes: ["60634","60630","60631","60646","60656","60068","60714"],
+    name: "Chicago North Residential Zone",
+    color: "#CCF518",
+    zip_codes: ["60622","60642","60614","60647","60651","60639","60641","60634"],
   },
   {
-    name: "North Shore Zone",
-    color: "#2D6A4F",
-    zip_codes: ["60201","60202","60203","60091","60093","60076","60077"],
+    name: "Chicago South",
+    color: "#D34DCB",
+    zip_codes: ["60628","60617","60619","60649","60620","60637"],
+  },
+  {
+    name: "Chicago West Side",
+    color: "#FF7F50",
+    zip_codes: ["60624","60644","60512"],
+  },
+  {
+    name: "Company Zone",
+    color: "#F7DAE9",
+    zip_codes: ["60453","60803","60655","60415","60456","60465","60482","60643","60805","60459","60455","60454"],
+  },
+  {
+    name: "Homer Glen/Lemont/Burr Ridge",
+    color: "#00C5CD",
+    zip_codes: [],
+  },
+  {
+    name: "Homewood/Harvey/Markham",
+    color: "#8C0000",
+    zip_codes: [],
+  },
+  {
+    name: "La Grange/Hodgkins/Berwyn",
+    color: "#00D0FF",
+    zip_codes: ["60534","60402","60304","60513","60546","60130","60141","60155","60526","60154","60523","60558","60501"],
+  },
+  {
+    name: "Lake View/Lincoln Square/Lincolnwood",
+    color: "#A97A00",
+    zip_codes: ["60625","60646","60630","60659","60640","60660","60626","60645","60712","60618","60613","60657","60076"],
+  },
+  {
+    name: "Maywood/Northlake/Schiller Park",
+    color: "#7F6669",
+    zip_codes: ["60176","60131","60164","60163","60162","60706","60171","60165","60153","60305","60707","60302","60301"],
+  },
+  {
+    name: "Naperville/Woodridge/Lisle",
+    color: "#F1B9F7",
+    zip_codes: ["60540","60532","60517","60565","60516","60561"],
+  },
+  {
+    name: "Norridge/Park Ridge/Des Plaines",
+    color: "#4FF30A",
+    zip_codes: ["60068","60018","60666","60656","60053"],
+  },
+  {
+    name: "South Suburbs",
+    color: "#FF7200",
+    zip_codes: ["60409","60633","60472","60827","46311","60411","60430","60429","60422","60428","60476","60426","60469","60473"],
+  },
+  {
+    name: "Southwest Suburbs",
+    color: "#17C9D3",
+    zip_codes: ["60441","60446","60440","60490","60439","60527","60480","60491","60458","60451","60423"],
+  },
+  {
+    name: "Tinley/Orlando/Palos Park",
+    color: "#F7D7D0",
+    zip_codes: ["60464","60463","60445","60452","60477","60467","60462","60487","60466"],
+  },
+  {
+    name: "Westmont/Lombard/Elmhurst",
+    color: "#00B8FF",
+    zip_codes: ["60559","60514","60521","60515","60148","60126","60181"],
   },
 ];
 
