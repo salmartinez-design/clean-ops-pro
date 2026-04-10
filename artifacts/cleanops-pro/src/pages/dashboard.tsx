@@ -402,7 +402,12 @@ export default function Dashboard() {
 
           {/* Techs Today — 38% (always rendered, independent of chart data) */}
           <div style={{ ...CARD, padding: '16px 18px', flex: '0 0 38%', minWidth: 0 }}>
-            <p style={{ fontSize: 11, fontWeight: 600, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px', fontFamily: FF }}>Techs Today</p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <p style={{ fontSize: 11, fontWeight: 600, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0, fontFamily: FF }}>Techs Today</p>
+              <button onClick={() => navigate('/employees/clocks')} style={{ fontSize: 11, color: 'var(--brand)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: FF, display: 'flex', alignItems: 'center', gap: 3, padding: 0 }}>
+                Clock Monitor <ChevronRight size={12} />
+              </button>
+            </div>
             {!techsData ? (
               <p style={{ fontSize: 12, color: '#9E9B94', margin: 0, fontFamily: FF }}>Loading…</p>
             ) : (
@@ -463,54 +468,6 @@ export default function Dashboard() {
         {/* ── Mileage Pending queue (owner/admin only) ── */}
         {canAdmin && <MileagePendingBanner />}
 
-        {/* Employee board — compact version */}
-        {today?.employee_board?.length > 0 && (
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <p style={{ fontSize: 11, fontWeight: 600, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0, fontFamily: FF }}>Team Today</p>
-              <button onClick={() => navigate('/employees/clocks')} style={{ fontSize: 12, color: 'var(--brand)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: FF, display: 'flex', alignItems: 'center', gap: 3 }}>
-                Clock Monitor <ChevronRight size={13} />
-              </button>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(160px, 1fr))', gap: 8 }}>
-              {today.employee_board.filter((e: any) => e.status !== 'OFF TODAY').slice(0, 8).map((emp: any) => {
-                const STATUS_CFG: Record<string, { color: string; bg: string; dot: string }> = {
-                  'ON JOB':    { color: '#166534', bg: '#DCFCE7', dot: '#22C55E' },
-                  'EN ROUTE':  { color: '#1D4ED8', bg: '#DBEAFE', dot: '#3B82F6' },
-                  'SCHEDULED': { color: '#6B7280', bg: '#F3F4F6', dot: '#9CA3AF' },
-                  'COMPLETE':  { color: '#0F766E', bg: '#CCFBF1', dot: '#14B8A6' },
-                };
-                const cfg = STATUS_CFG[emp.status] || STATUS_CFG['SCHEDULED'];
-                return (
-                  <button
-                    key={emp.id}
-                    onClick={() => navigate(`/employees/${emp.id}`)}
-                    style={{
-                      backgroundColor: cfg.bg, border: `1px solid ${cfg.color}18`,
-                      borderRadius: 10, padding: '10px 12px', cursor: 'pointer',
-                      textAlign: 'left', fontFamily: FF,
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
-                      {emp.avatar_url
-                        ? <img src={emp.avatar_url} style={{ width: 22, height: 22, borderRadius: 11, objectFit: 'cover', flexShrink: 0 }} />
-                        : <div style={{ width: 22, height: 22, borderRadius: 11, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#6B7280', flexShrink: 0 }}>
-                            {emp.first_name?.[0]}{emp.last_name?.[0]}
-                          </div>
-                      }
-                      <p style={{ fontSize: 11, fontWeight: 600, color: '#1A1917', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: FF }}>{emp.first_name} {emp.last_name}</p>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <span style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: cfg.dot, flexShrink: 0 }} />
-                      <span style={{ fontSize: 10, fontWeight: 700, color: cfg.color, fontFamily: FF }}>{emp.status}</span>
-                    </div>
-                    {emp.detail && <p style={{ fontSize: 10, color: '#6B7280', margin: '3px 0 0 0', lineHeight: 1.3, fontFamily: FF }}>{emp.detail}</p>}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
       </div>
       {showCloseDay && <CloseDayModal onClose={() => setShowCloseDay(false)} />}
