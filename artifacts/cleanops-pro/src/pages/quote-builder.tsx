@@ -121,6 +121,8 @@ const DIRT_LEVELS = [
 const SECTION_ICONS = [User, Home, Calculator, PlusSquare];
 const SECTION_LABELS = ["Customer Info", "Property Details", "Service & Pricing", "Add-ons & Notes"];
 
+interface SuggestedTech { id: number; name: string; zone_name: string; zone_color: string; }
+
 export default function QuoteBuilderPage() {
   const [matchEdit, editParams] = useRoute("/quotes/:id/edit"); const id = editParams?.id;
   const [, navigate] = useLocation();
@@ -167,11 +169,29 @@ export default function QuoteBuilderPage() {
   const [notes, setNotes] = useState("");
   const [internalMemo, setInternalMemo] = useState("");
 
-  // Call Notes (office-only sticky panel)
+  // Call Notes
   const [callNotes, setCallNotes] = useState("");
   const [callNotesSaving, setCallNotesSaving] = useState(false);
   const [callNotesSaved, setCallNotesSaved] = useState(false);
   const [callNotesMobileOpen, setCallNotesMobileOpen] = useState(false);
+  const [callNotesSavedVisible, setCallNotesSavedVisible] = useState(false);
+  const callNotesRef = useRef<HTMLTextAreaElement>(null);
+  const autoSavedIdRef = useRef<string | null>(null);
+  const [callNoteTooltip, setCallNoteTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
+  const [pushConfirmed, setPushConfirmed] = useState(false);
+
+  // Returning client detection
+  const [returningClient, setReturningClient] = useState<{ id: number; name: string; phone?: string; email?: string; address?: string } | null>(null);
+  const [returningClientDismissed, setReturningClientDismissed] = useState(false);
+
+  // Smart tech suggestions
+  const [suggestedTechs, setSuggestedTechs] = useState<SuggestedTech[]>([]);
+  const [selectedTechId, setSelectedTechId] = useState<number | null>(null);
+  const [techAvailability, setTechAvailability] = useState<Record<number, number>>({});
+  const [techAvailLoading, setTechAvailLoading] = useState(false);
+
+  // Date picker (Section 2 — for tech Phase 2)
+  const [selectedDate, setSelectedDate] = useState("");
 
   const [calcResult, setCalcResult] = useState<CalcResult | null>(null);
   const [calcLoading, setCalcLoading] = useState(false);
@@ -269,16 +289,25 @@ export default function QuoteBuilderPage() {
     }
   }, [scopeId, frequencies, frequencyStr]);
 
-  // ── Call Notes auto-save (debounced 2s) ──────────────────────────────────────
+  // ── Call Notes auto-save (10s debounce + auto-create draft) ─────────────────
   useEffect(() => {
-    if (!isEdit || !id) return;
-    const timer = setTimeout(() => {
+    if (!callNotes) return;
+    const timer = setTimeout(async () => {
+      const targetId = isEdit ? id : autoSavedIdRef.current;
       setCallNotesSaving(true);
-      apiFetch(`/api/quotes/${id}`, { method: "PATCH", body: { call_notes: callNotes || null } })
-        .then(() => { setCallNotesSaved(true); setTimeout(() => setCallNotesSaved(false), 2000); })
-        .catch(() => {})
-        .finally(() => setCallNotesSaving(false));
-    }, 2000);
+      try {
+        if (targetId) {
+          await apiFetch(`/api/quotes/${targetId}`, { method: "PATCH", body: { call_notes: callNotes || null } });
+        } else {
+          // Auto-create a minimal draft to persist call notes
+          const result = await apiFetch("/api/quotes", { method: "POST", body: { call_notes: callNotes, status: "draft" } });
+          autoSavedIdRef.current = String(result.id);
+        }
+        setCallNotesSavedVisible(true);
+        setTimeout(() => setCallNotesSavedVisible(false), 2500);
+      } catch { /* silent */ }
+      finally { setCallNotesSaving(false); }
+    }, 10000);
     return () => clearTimeout(timer);
   }, [callNotes, isEdit, id]);
 
@@ -392,13 +421,26 @@ export default function QuoteBuilderPage() {
 
   async function checkZip(zip: string) {
     const clean = zip.trim().replace(/\D/g, "").slice(0, 5);
-    if (clean.length < 5) { setZipZone(null); return; }
+    if (clean.length < 5) { setZipZone(null); setSuggestedTechs([]); return; }
     setCheckingZip(true);
     try {
       const zones = await apiFetch("/api/zones");
       const match = (Array.isArray(zones) ? zones : []).find((z: any) => Array.isArray(z.zip_codes) && z.zip_codes.includes(clean));
-      setZipZone(match ? { name: match.name, color: match.color } : "uncovered");
-    } catch { setZipZone(null); }
+      if (match) {
+        setZipZone({ name: match.name, color: match.color });
+        const techs: SuggestedTech[] = (match.employees ?? []).map((e: any) => ({
+          id: e.id,
+          name: e.name,
+          zone_name: match.name,
+          zone_color: match.color,
+        }));
+        setSuggestedTechs(techs);
+        setTechAvailability({});
+      } else {
+        setZipZone("uncovered");
+        setSuggestedTechs([]);
+      }
+    } catch { setZipZone(null); setSuggestedTechs([]); }
     finally { setCheckingZip(false); }
   }
 
@@ -407,8 +449,9 @@ export default function QuoteBuilderPage() {
     try {
       const payload = buildPayload(status);
       let result;
-      if (isEdit) {
-        result = await apiFetch(`/api/quotes/${id}`, { method: "PATCH", body: payload });
+      const targetId = isEdit ? id : autoSavedIdRef.current;
+      if (targetId) {
+        result = await apiFetch(`/api/quotes/${targetId}`, { method: "PATCH", body: payload });
       } else {
         result = await apiFetch("/api/quotes", { method: "POST", body: payload });
       }
@@ -478,6 +521,86 @@ export default function QuoteBuilderPage() {
     if (freq?.rate_override) return parseFloat(freq.rate_override);
     if (freq) return base * parseFloat(freq.multiplier);
     return base;
+  }
+
+  // ── Highlight-to-push ─────────────────────────────────────────────────────
+  function handleCallNotesMouseUp() {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.toString().length <= 3) {
+      setCallNoteTooltip(null);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    setCallNoteTooltip({
+      x: rect.left + rect.width / 2,
+      y: rect.top - 8,
+      text: sel.toString(),
+    });
+  }
+
+  function pushSelectedToJobNotes() {
+    if (!callNoteTooltip) return;
+    const textToAdd = callNoteTooltip.text;
+    setInternalMemo(prev => prev ? `${prev}\n${textToAdd}` : textToAdd);
+    setCallNoteTooltip(null);
+    window.getSelection()?.removeAllRanges();
+    setPushConfirmed(true);
+    setTimeout(() => setPushConfirmed(false), 1500);
+  }
+
+  // ── Returning client detection ────────────────────────────────────────────
+  function handlePhoneBlur(phone: string) {
+    if (!phone || phone.trim().length < 7 || selectedClientId || returningClientDismissed) return;
+    const cleaned = phone.replace(/\D/g, "");
+    if (cleaned.length < 7) return;
+    const tail = cleaned.slice(-7);
+    const match = clients.find(c => c.phone && c.phone.replace(/\D/g, "").includes(tail));
+    if (match) setReturningClient({ id: match.id, name: `${match.first_name} ${match.last_name}`, phone: match.phone, email: match.email, address: match.address });
+  }
+
+  function handleEmailBlur(email: string) {
+    if (!email || !email.includes("@") || selectedClientId || returningClientDismissed) return;
+    const match = clients.find(c => c.email?.toLowerCase() === email.toLowerCase());
+    if (match) setReturningClient({ id: match.id, name: `${match.first_name} ${match.last_name}`, phone: match.phone, email: match.email, address: match.address });
+  }
+
+  function applyReturningClient() {
+    if (!returningClient) return;
+    const client = clients.find(c => c.id === returningClient.id);
+    if (client) {
+      setSelectedClientId(client.id);
+      setAddress(client.address || "");
+    }
+    setReturningClient(null);
+    setReturningClientDismissed(true);
+  }
+
+  // ── Tech availability (Phase 2) ──────────────────────────────────────────
+  async function fetchTechAvailability(date: string) {
+    if (!suggestedTechs.length || !date) return;
+    setTechAvailLoading(true);
+    try {
+      const data = await apiFetch(`/api/dispatch?date=${date}`);
+      const countMap: Record<number, number> = {};
+      const techIds = new Set(suggestedTechs.map(t => t.id));
+      for (const emp of (data.employees ?? [])) {
+        if (techIds.has(emp.id)) {
+          const jobCount = (emp.jobs ?? []).filter((j: any) => !["void", "moved", "skip"].includes(j.status)).length;
+          countMap[emp.id] = jobCount;
+        }
+      }
+      setTechAvailability(countMap);
+    } catch { /* silent */ }
+    finally { setTechAvailLoading(false); }
+  }
+
+  // ── Tech suggestion display helpers ──────────────────────────────────────
+  function techAvailDot(count: number): { color: string; label: string; muted: boolean } {
+    if (count === 0) return { color: "#22C55E", label: "Available", muted: false };
+    if (count === 1) return { color: "#EAB308", label: "1 job that day", muted: false };
+    if (count < 4) return { color: "#F97316", label: `${count} jobs that day`, muted: false };
+    return { color: "#9E9B94", label: "Likely unavailable", muted: true };
   }
 
   // ── Mobile variables ─────────────────────────────────────────────────────
@@ -823,9 +946,28 @@ export default function QuoteBuilderPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F7F6F3]">
-      {/* Header */}
-      <div className="border-b border-[#E5E2DC] bg-white px-6 py-4 flex items-center gap-4">
+    <div className="min-h-screen" style={{ background: '#F7F6F3', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+
+      {/* ── Highlight-to-push tooltip (fixed) ─────────────────────── */}
+      {callNoteTooltip && (
+        <div
+          style={{
+            position: 'fixed', left: callNoteTooltip.x, top: callNoteTooltip.y,
+            transform: 'translateX(-50%) translateY(-100%)',
+            background: '#1A1917', color: '#FFF', fontSize: 12, borderRadius: 4,
+            padding: '4px 10px', zIndex: 9999, whiteSpace: 'nowrap',
+            cursor: 'pointer', userSelect: 'none' as const,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+          }}
+          onMouseDown={e => e.preventDefault()}
+          onClick={pushSelectedToJobNotes}
+        >
+          Push to Job Notes
+        </div>
+      )}
+
+      {/* ── Header ────────────────────────────────────────────────── */}
+      <div style={{ borderBottom: '1px solid #E5E2DC', background: '#FFF', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 12, position: 'sticky', top: 0, zIndex: 50 }}>
         <Button variant="ghost" size="sm" onClick={() => navigate("/quotes")} className="gap-1.5 text-[#6B7280]">
           <ArrowLeft className="w-4 h-4" />
           Back to Quotes
@@ -833,20 +975,58 @@ export default function QuoteBuilderPage() {
         <div className="h-5 w-px bg-[#E5E2DC]" />
         <h1 className="text-lg font-semibold text-[#1A1917]">{isEdit ? "Edit Quote" : "New Quote"}</h1>
         <div className="ml-auto flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => save("draft")} disabled={saving} className="gap-1.5">
+          <Button
+            variant="outline" size="sm" onClick={() => save("draft")} disabled={saving}
+            className="gap-1.5 border-[#E5E2DC] text-[#1A1917] bg-transparent hover:bg-[#F7F6F3]"
+          >
             <Save className="w-4 h-4" />
             Save Draft
           </Button>
-          <Button size="sm" onClick={() => save("sent")} disabled={saving} className="bg-[#00C9A0] hover:bg-[#00b890] text-white gap-1.5">
+          <Button size="sm" onClick={() => save("sent")} disabled={saving} className="gap-1.5 bg-white text-[#1A1917] border border-[#E5E2DC] hover:bg-[#F7F6F3]">
             <SendHorizonal className="w-4 h-4" />
             Save & Send
+          </Button>
+          <Button
+            size="sm" onClick={() => save("draft", true)} disabled={saving || !scopeId}
+            style={{ background: 'var(--brand)', color: '#FFF' }} className="gap-1.5 hover:opacity-90"
+          >
+            <ArrowRight className="w-4 h-4" />
+            Save & Convert to Job
           </Button>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto p-6 flex gap-6">
-        {/* ── Main Wizard ─────────────────────────────────────────────────────── */}
-        <div className="flex-1 min-w-0 space-y-4">
+      {/* ── Two-column body ───────────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '58fr 42fr', gap: 20, padding: '24px', alignItems: 'flex-start', paddingBottom: 80 }}>
+
+        {/* ── LEFT: Wizard ───────────────────────────────────────── */}
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' as const }}>
+            {SECTION_LABELS.map((label, i) => {
+              const Icon = SECTION_ICONS[i];
+              const isActive = activeSection === i;
+              return (
+                <button
+                  key={i}
+                  onClick={() => setActiveSection(i)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    cursor: 'pointer', border: 'none', transition: 'all 0.15s',
+                    background: isActive ? 'var(--brand)' : '#F7F6F3',
+                    color: isActive ? '#FFF' : '#6B6860',
+                  }}
+                >
+                  <Icon style={{ width: 14, height: 14 }} />
+                  {label}
+                  {sectionComplete[i] && !isActive && (
+                    <span style={{ width: 6, height: 6, background: '#22C55E', borderRadius: '50%', display: 'inline-block' }} />
+                  )}
+                </button>
+              );
+            })}
+          </div>
           {/* Section tabs */}
           <div className="flex gap-2 mb-2">
             {SECTION_LABELS.map((label, i) => {
@@ -872,18 +1052,16 @@ export default function QuoteBuilderPage() {
             })}
           </div>
 
-          {/* ── Section 0: Customer Info ───────────────────────────────────── */}
+          {/* ── Section 0: Customer Info ────────────────────────────── */}
           {activeSection === 0 && (
-            <SectionCard title="Customer Info">
+            <div style={{ background: '#FFF', border: '1px solid #E5E2DC', borderRadius: 12, padding: 24 }}>
               <div className="space-y-4">
                 <div>
                   <Label className="text-xs text-[#9E9B94] mb-1 block">Existing Client</Label>
                   <Popover open={clientOpen} onOpenChange={setClientOpen}>
                     <PopoverTrigger asChild>
                       <Button variant="outline" role="combobox" className="w-full justify-between text-sm font-normal">
-                        {selectedClient
-                          ? `${selectedClient.first_name} ${selectedClient.last_name}`
-                          : "Search clients..."}
+                        {selectedClient ? `${selectedClient.first_name} ${selectedClient.last_name}` : "Search clients..."}
                         <ChevronDown className="w-4 h-4 ml-2 text-[#9E9B94]" />
                       </Button>
                     </PopoverTrigger>
@@ -893,18 +1071,14 @@ export default function QuoteBuilderPage() {
                         <CommandList>
                           <CommandEmpty>No clients found.</CommandEmpty>
                           <CommandGroup>
-                            <CommandItem value="lead" onSelect={() => { setSelectedClientId(null); setClientOpen(false); }}>
+                            <CommandItem value="lead" onSelect={() => { setSelectedClientId(null); setClientOpen(false); setReturningClient(null); }}>
                               — Enter lead info instead
                             </CommandItem>
                             {clients.map(c => (
                               <CommandItem
                                 key={c.id}
                                 value={`${c.first_name} ${c.last_name} ${c.email}`}
-                                onSelect={() => {
-                                  setSelectedClientId(c.id);
-                                  setAddress(c.address || "");
-                                  setClientOpen(false);
-                                }}
+                                onSelect={() => { setSelectedClientId(c.id); setAddress(c.address || ""); setClientOpen(false); setReturningClient(null); }}
                               >
                                 <div>
                                   <p className="text-sm font-medium">{c.first_name} {c.last_name}</p>
@@ -927,11 +1101,29 @@ export default function QuoteBuilderPage() {
                     </div>
                     <div>
                       <Label className="text-xs">Email</Label>
-                      <Input value={leadEmail} onChange={e => setLeadEmail(e.target.value)} placeholder="jane@example.com" type="email" className="mt-1" />
+                      <Input value={leadEmail} onChange={e => setLeadEmail(e.target.value)} onBlur={e => handleEmailBlur(e.target.value)} placeholder="jane@example.com" type="email" className="mt-1" />
                     </div>
                     <div>
                       <Label className="text-xs">Phone</Label>
-                      <Input value={leadPhone} onChange={e => setLeadPhone(e.target.value)} placeholder="(555) 000-0000" className="mt-1" />
+                      <Input value={leadPhone} onChange={e => setLeadPhone(e.target.value)} onBlur={e => handlePhoneBlur(e.target.value)} placeholder="(555) 000-0000" className="mt-1" />
+                    </div>
+                  </div>
+                )}
+
+                {/* Returning client banner */}
+                {returningClient && !selectedClientId && (
+                  <div style={{ background: '#EBF4FF', border: '1px solid #5B9BD5', borderRadius: 6, padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#1A1917' }}>Returning client — {returningClient.name}</div>
+                      {returningClient.address && <div style={{ fontSize: 12, color: '#5B9BD5', marginTop: 2 }}>{returningClient.address}</div>}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                      <button onClick={applyReturningClient} style={{ fontSize: 12, fontWeight: 600, color: '#2563EB', background: '#DBEAFE', border: 'none', cursor: 'pointer', padding: '4px 10px', borderRadius: 4 }}>
+                        Use this client
+                      </button>
+                      <button onClick={() => { setReturningClient(null); setReturningClientDismissed(true); setLeadPhone(""); }} style={{ fontSize: 12, color: '#6B7280', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px' }}>
+                        Not them
+                      </button>
                     </div>
                   </div>
                 )}
@@ -941,7 +1133,7 @@ export default function QuoteBuilderPage() {
                     <Label className="text-xs">Service Address</Label>
                     <Input value={address} onChange={e => setAddress(e.target.value)} placeholder="123 Main St, City, State" className="mt-1" />
                   </div>
-                  <div style={{ width: 110 }}>
+                  <div style={{ width: 120 }}>
                     <Label className="text-xs">Zip Code</Label>
                     <Input value={zipCode} onChange={e => setZipCode(e.target.value)} onBlur={e => checkZip(e.target.value)} placeholder="60453" maxLength={5} className="mt-1" />
                   </div>
@@ -960,91 +1152,98 @@ export default function QuoteBuilderPage() {
                   </div>
                 )}
 
+                {/* Suggested technicians (after zip) */}
+                {suggestedTechs.length > 0 && (
+                  <div style={{ background: '#F7F6F3', border: '1px solid #E5E2DC', borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#6B6860', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>Suggested Technicians</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {suggestedTechs.map(tech => {
+                        const isSelected = selectedTechId === tech.id;
+                        return (
+                          <div key={tech.id} onClick={() => setSelectedTechId(isSelected ? null : tech.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 6, cursor: 'pointer', border: isSelected ? '2px solid var(--brand)' : '1px solid #E5E2DC', background: isSelected ? 'rgba(0,201,160,0.05)' : '#FFF', transition: 'all 0.15s' }}>
+                            <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{tech.name.charAt(0).toUpperCase()}</div>
+                            <div style={{ flex: 1, fontSize: 13, fontWeight: isSelected ? 700 : 500, color: '#1A1917' }}>{tech.name}</div>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600, background: `${tech.zone_color}20`, color: tech.zone_color }}>
+                              <div style={{ width: 5, height: 5, borderRadius: '50%', background: tech.zone_color }} />{tech.zone_name}
+                            </div>
+                            <div style={{ fontSize: 11, color: '#9E9B94', flexShrink: 0 }}>In zone</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {!checkingZip && zipZone === null && zipCode.length === 5 && (
+                  <div style={{ padding: '8px 12px', borderRadius: 8, background: '#F7F6F3', border: '1px solid #E5E2DC', fontSize: 12, color: '#9E9B94' }}>No techs assigned to this zone — job will be unassigned.</div>
+                )}
+
                 <div className="flex justify-end">
-                  <Button size="sm" className="bg-[#00C9A0] hover:bg-[#00b890] text-white gap-1.5" onClick={() => setActiveSection(1)}>
+                  <Button size="sm" style={{ background: 'var(--brand)', color: '#FFF' }} className="gap-1.5 hover:opacity-90" onClick={() => setActiveSection(1)}>
                     Next: Property Details <ArrowRight className="w-3.5 h-3.5" />
                   </Button>
                 </div>
               </div>
-            </SectionCard>
+            </div>
           )}
 
-          {/* ── Section 1: Property Details ────────────────────────────────── */}
+          {/* ── Section 1: Property Details ──────────────────────────── */}
           {activeSection === 1 && (
-            <SectionCard title="Property Details">
+            <div style={{ background: '#FFF', border: '1px solid #E5E2DC', borderRadius: 12, padding: 24 }}>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-xs">Square Footage</Label>
-                  <p className="text-[10px] text-[#9E9B94] mb-1">
-                    {pricingMethod === "sqft" ? "Required for pricing" : "Optional for reference"}
-                  </p>
-                  <Input
-                    type="number"
-                    value={sqft || ""}
-                    onChange={e => setSqft(parseInt(e.target.value) || 0)}
-                    placeholder="e.g. 1800"
-                    className="mt-1"
-                  />
+                  <p className="text-[10px] text-[#9E9B94] mb-1">{pricingMethod === "sqft" ? "Required for pricing" : "Optional for reference"}</p>
+                  <Input type="number" value={sqft || ""} onChange={e => setSqft(parseInt(e.target.value) || 0)} placeholder="e.g. 1800" className="mt-1" />
                 </div>
                 <div>
                   <Label className="text-xs">Bedrooms</Label>
                   <Select value={String(bedrooms)} onValueChange={v => setBedrooms(parseInt(v))}>
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {[1,2,3,4,5,6,7,8].map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
-                    </SelectContent>
+                    <SelectContent>{[1,2,3,4,5,6,7,8].map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div>
                   <Label className="text-xs">Full Bathrooms</Label>
                   <Select value={String(bathrooms)} onValueChange={v => setBathrooms(parseInt(v))}>
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {[1,2,3,4,5,6].map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
-                    </SelectContent>
+                    <SelectContent>{[1,2,3,4,5,6].map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div>
                   <Label className="text-xs">Half Bathrooms</Label>
                   <Select value={String(halfBaths)} onValueChange={v => setHalfBaths(parseInt(v))}>
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {[0,1,2,3].map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
-                    </SelectContent>
+                    <SelectContent>{[0,1,2,3].map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div>
                   <Label className="text-xs">Pets</Label>
                   <Select value={String(pets)} onValueChange={v => setPets(parseInt(v))}>
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {[0,1,2,3,4].map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
-                    </SelectContent>
+                    <SelectContent>{[0,1,2,3,4].map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div>
                   <Label className="text-xs">Dirt Level</Label>
                   <Select value={dirtLevel} onValueChange={setDirtLevel}>
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {DIRT_LEVELS.map(d => <SelectItem key={d.value} value={d.value}>{d.label.split(" — ")[0]}</SelectItem>)}
-                    </SelectContent>
+                    <SelectContent>{DIRT_LEVELS.map(d => <SelectItem key={d.value} value={d.value}>{d.label.split(" — ")[0]}</SelectItem>)}</SelectContent>
                   </Select>
                   <p className="text-xs text-[#9E9B94] mt-1">{DIRT_LEVELS.find(d => d.value === dirtLevel)?.label.split(" — ")[1]}</p>
                 </div>
               </div>
-              <div className="flex justify-between mt-4">
+              <div className="flex justify-between mt-6">
                 <Button size="sm" variant="ghost" onClick={() => setActiveSection(0)}>Back</Button>
-                <Button size="sm" className="bg-[#00C9A0] hover:bg-[#00b890] text-white gap-1.5" onClick={() => setActiveSection(2)}>
+                <Button size="sm" style={{ background: 'var(--brand)', color: '#FFF' }} className="gap-1.5 hover:opacity-90" onClick={() => setActiveSection(2)}>
                   Next: Service & Pricing <ArrowRight className="w-3.5 h-3.5" />
                 </Button>
               </div>
-            </SectionCard>
+            </div>
           )}
 
-          {/* ── Section 2: Service & Pricing ──────────────────────────────── */}
+          {/* ── Section 2: Service & Pricing ──────────────────────────── */}
           {activeSection === 2 && (
-            <SectionCard title="Service & Pricing">
+            <div style={{ background: '#FFF', border: '1px solid #E5E2DC', borderRadius: 12, padding: 24 }}>
               <div className="space-y-5">
 
                 {/* Scope selector */}
@@ -1166,24 +1365,60 @@ export default function QuoteBuilderPage() {
                 )}
 
                 {frequencies.length === 0 && scopeId && (
-                  <div className="text-xs text-[#9E9B94] italic">
-                    No frequencies configured for this scope. Pricing will use the base hourly rate.
+                  <div className="text-xs text-[#9E9B94] italic">No frequencies configured for this scope.</div>
+                )}
+
+                {/* Date picker */}
+                <div>
+                  <Label className="text-xs">Preferred Date</Label>
+                  <input type="date" value={selectedDate}
+                    onChange={e => { setSelectedDate(e.target.value); fetchTechAvailability(e.target.value); }}
+                    style={{ display: 'block', width: '100%', marginTop: 4, height: 38, border: '1px solid #E5E2DC', borderRadius: 8, padding: '0 12px', fontSize: 14, color: '#1A1917', fontFamily: "'Plus Jakarta Sans', sans-serif", background: '#FFF', outline: 'none', boxSizing: 'border-box' as const }}
+                  />
+                </div>
+
+                {/* Tech availability (Phase 2) */}
+                {suggestedTechs.length > 0 && selectedDate && (
+                  <div style={{ background: '#F7F6F3', border: '1px solid #E5E2DC', borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#6B6860', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      Technician Availability
+                      {techAvailLoading && <span style={{ fontSize: 11, fontWeight: 400, color: '#9E9B94', textTransform: 'none', letterSpacing: 0 }}>Loading...</span>}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {[...suggestedTechs].sort((a, b) => (techAvailability[a.id] ?? 0) - (techAvailability[b.id] ?? 0)).map(tech => {
+                        const count = techAvailability[tech.id];
+                        const avail = count !== undefined ? techAvailDot(count) : null;
+                        const isSelected = selectedTechId === tech.id;
+                        return (
+                          <div key={tech.id} onClick={() => setSelectedTechId(isSelected ? null : tech.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 6, cursor: 'pointer', border: isSelected ? '2px solid var(--brand)' : '1px solid #E5E2DC', background: isSelected ? 'rgba(0,201,160,0.05)' : '#FFF', opacity: avail?.muted ? 0.55 : 1, transition: 'all 0.15s' }}>
+                            <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{tech.name.charAt(0).toUpperCase()}</div>
+                            <div style={{ flex: 1, fontSize: 13, fontWeight: isSelected ? 700 : 500, color: '#1A1917' }}>{tech.name}</div>
+                            {avail && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: avail.color, flexShrink: 0 }}>
+                                <div style={{ width: 7, height: 7, borderRadius: '50%', background: avail.color }} />
+                                {avail.label}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
                 <div className="flex justify-between mt-4">
                   <Button size="sm" variant="ghost" onClick={() => setActiveSection(1)}>Back</Button>
-                  <Button size="sm" className="bg-[#00C9A0] hover:bg-[#00b890] text-white gap-1.5" onClick={() => setActiveSection(3)}>
+                  <Button size="sm" style={{ background: 'var(--brand)', color: '#FFF' }} className="gap-1.5 hover:opacity-90" onClick={() => setActiveSection(3)}>
                     Next: Add-ons <ArrowRight className="w-3.5 h-3.5" />
                   </Button>
                 </div>
               </div>
-            </SectionCard>
+            </div>
           )}
 
           {/* ── Section 3: Add-ons & Notes ─────────────────────────────────── */}
           {activeSection === 3 && (
-            <SectionCard title="Add-ons & Notes">
+            <div style={{ background: '#FFF', border: '1px solid #E5E2DC', borderRadius: 12, padding: 24 }}>
               <div className="space-y-4">
                 {scopeAddons.filter(a => a.is_active && a.show_office !== false).length > 0 && (() => {
                   const activeAddons = scopeAddons.filter(a => a.is_active && a.show_office !== false);
@@ -1317,67 +1552,61 @@ export default function QuoteBuilderPage() {
                   <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes visible to the client..." rows={3} className="mt-1 text-sm" />
                 </div>
                 <div>
-                  <Label className="text-xs">Internal Memo</Label>
-                  <Textarea value={internalMemo} onChange={e => setInternalMemo(e.target.value)} placeholder="Internal notes not visible to the client..." rows={2} className="mt-1 text-sm" />
+                  <Label className="text-xs">Internal Memo / Job Notes</Label>
+                  <Textarea value={internalMemo} onChange={e => setInternalMemo(e.target.value)} placeholder="Internal notes not visible to the client..." rows={3} className="mt-1 text-sm" />
+                  {pushConfirmed && <p className="text-[11px] text-[#9E9B94] mt-1">✓ Added from call notes.</p>}
                 </div>
 
                 <div className="flex justify-between mt-2">
                   <Button size="sm" variant="ghost" onClick={() => setActiveSection(2)}>Back</Button>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => save("draft")} disabled={saving} className="gap-1.5">
+                    <Button variant="outline" size="sm" onClick={() => save("draft")} disabled={saving} className="gap-1.5 border-[#E5E2DC] bg-transparent text-[#1A1917]">
                       <Save className="w-3.5 h-3.5" /> Save Draft
                     </Button>
-                    <Button size="sm" onClick={() => save("sent")} disabled={saving} className="bg-[#00C9A0] hover:bg-[#00b890] text-white gap-1.5">
-                      <SendHorizonal className="w-3.5 h-3.5" /> Send Quote
+                    <Button size="sm" onClick={() => save("draft", true)} disabled={saving || !scopeId} style={{ background: 'var(--brand)', color: '#FFF' }} className="gap-1.5 hover:opacity-90">
+                      <ArrowRight className="w-3.5 h-3.5" /> Save & Convert to Job
                     </Button>
                   </div>
                 </div>
               </div>
-            </SectionCard>
+            </div>
           )}
         </div>
 
-        {/* ── Call Notes Panel (office/owner only) ─────────────────────────── */}
-        {isOfficeOrOwner && (
-          <div className="w-64 shrink-0">
-            <div className="bg-white border border-[#E5E2DC] rounded-lg p-4 sticky top-6 space-y-3">
-              <div className="flex items-center justify-between border-b border-[#E5E2DC] pb-2.5">
-                <div className="flex items-center gap-1.5">
-                  <Phone className="w-3.5 h-3.5 text-[var(--brand)]" />
-                  <h3 className="font-semibold text-[#1A1917] text-sm">Call Notes</h3>
-                </div>
-                {callNotesSaving && (
-                  <span className="text-[10px] text-[#9E9B94] font-medium animate-pulse">Saving...</span>
-                )}
-                {!callNotesSaving && callNotesSaved && (
-                  <span className="flex items-center gap-0.5 text-[10px] text-green-600 font-medium">
-                    <Check className="w-3 h-3" /> Saved
-                  </span>
-                )}
+        {/* ── RIGHT: Sticky Panel ─────────────────────────────────────── */}
+        <div style={{ position: 'sticky', top: 24 }}>
+
+          {/* Call Notes */}
+          <div style={{ background: '#FFF', border: '1px solid #E5E2DC', borderRadius: 12, padding: 16, marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#1A1917', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Call Notes</span>
+                <span style={{ fontSize: 11, color: '#9E9B94', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Not visible to client.</span>
               </div>
-              <Textarea
-                value={callNotes}
-                onChange={e => { setCallNotes(e.target.value); setCallNotesSaved(false); }}
-                placeholder="Notes from the call — not visible to the client..."
-                rows={8}
-                className="text-xs resize-none"
-                style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
-              />
-              <p className="text-[10px] text-[#9E9B94] leading-snug">
-                {isEdit ? "Auto-saves 2 s after you stop typing." : "Saves with the quote."}
-              </p>
+              <div style={{ fontSize: 11, color: '#9E9B94', fontFamily: "'Plus Jakarta Sans', sans-serif", minWidth: 50, textAlign: 'right' }}>
+                {callNotesSaving ? "Saving..." : callNotesSavedVisible ? "Saved" : ""}
+              </div>
             </div>
-          </div>
-        )}
-
-        {/* ── Live Price Panel ─────────────────────────────────────────────── */}
-        <div className="w-72 shrink-0">
-          <div className="bg-white border border-[#E5E2DC] rounded-lg p-4 space-y-4 sticky top-6">
-            <h3 className="font-semibold text-[#1A1917] text-sm border-b border-[#E5E2DC] pb-3">Price Preview</h3>
-
-            {calcLoading && (
-              <div className="py-4 text-center text-xs text-[#9E9B94]">Calculating...</div>
+            <textarea
+              ref={callNotesRef}
+              value={callNotes}
+              onChange={e => setCallNotes(e.target.value)}
+              onMouseUp={handleCallNotesMouseUp}
+              onTouchEnd={handleCallNotesMouseUp}
+              onClick={() => setCallNoteTooltip(null)}
+              placeholder="Notes from the call..."
+              rows={12}
+              style={{ width: '100%', boxSizing: 'border-box', resize: 'none', border: '1px solid #E5E2DC', borderRadius: 8, padding: '10px 12px', fontSize: 13, lineHeight: '1.6', color: '#1A1917', fontFamily: "'Plus Jakarta Sans', sans-serif", background: '#FAFAF9', outline: 'none' }}
+            />
+            {pushConfirmed && (
+              <p style={{ fontSize: 11, color: '#9E9B94', marginTop: 6, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>✓ Added to job notes</p>
             )}
+          </div>
+
+          {/* Price Preview */}
+          <div style={{ background: '#FFF', border: '1px solid #E5E2DC', borderRadius: 12, padding: 16 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: '#1A1917', fontFamily: "'Plus Jakarta Sans', sans-serif", marginBottom: 12, paddingBottom: 10, borderBottom: '1px solid #E5E2DC' }}>Price Preview</h3>
+            {calcLoading && <div style={{ padding: '16px 0', textAlign: 'center', fontSize: 13, color: '#9E9B94' }}>Calculating...</div>}
 
             {!calcLoading && calcResult ? (
               <>
@@ -1492,18 +1721,10 @@ export default function QuoteBuilderPage() {
             ) : null}
 
             {/* Action buttons */}
-            <div className="border-t border-[#E5E2DC] pt-3 space-y-2">
+            <div style={{ borderTop: '1px solid #E5E2DC', paddingTop: 12, marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
               <Button
-                className="w-full bg-[#00C9A0] hover:bg-[#00b890] text-white gap-1.5"
-                size="sm"
-                onClick={() => save("sent")}
-                disabled={saving || !scopeId}
-              >
-                <SendHorizonal className="w-3.5 h-3.5" />
-                Save & Send Quote
-              </Button>
-              <Button
-                className="w-full bg-[#1A1917] hover:bg-[#333] text-white gap-1.5"
+                className="w-full gap-1.5 hover:opacity-90"
+                style={{ background: 'var(--brand)', color: '#FFF' }}
                 size="sm"
                 onClick={() => save("draft", true)}
                 disabled={saving || !scopeId}
@@ -1511,12 +1732,23 @@ export default function QuoteBuilderPage() {
                 <ArrowRight className="w-3.5 h-3.5" />
                 Save & Convert to Job
               </Button>
-              <Button className="w-full" variant="outline" size="sm" onClick={() => save("draft")} disabled={saving}>
-                <Save className="w-3.5 h-3.5 mr-1.5" />
+              <Button
+                className="w-full gap-1.5"
+                variant="outline"
+                size="sm"
+                onClick={() => save("sent")}
+                disabled={saving}
+              >
+                <SendHorizonal className="w-3.5 h-3.5" />
+                Save & Send Quote
+              </Button>
+              <Button className="w-full gap-1.5" variant="ghost" size="sm" onClick={() => save("draft")} disabled={saving}>
+                <Save className="w-3.5 h-3.5" />
                 Save Draft
               </Button>
             </div>
           </div>
+
         </div>
       </div>
     </div>
