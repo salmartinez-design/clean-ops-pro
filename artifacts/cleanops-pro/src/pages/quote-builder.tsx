@@ -159,6 +159,7 @@ export default function QuoteBuilderPage() {
   const callNotesRef = useRef<HTMLTextAreaElement>(null);
   const autoSavedIdRef = useRef<string | null>(null);
   const addressInputRef = useRef<HTMLInputElement>(null);
+  const discountCodeRef = useRef<string>("");
 
   // ── Google Maps Places ───────────────────────────────────────────────────
   const [mapsReady, setMapsReady] = useState(false);
@@ -197,6 +198,7 @@ export default function QuoteBuilderPage() {
   useEffect(() => { sqftRef.current = sqft; }, [sqft]);
   const selectedScopesRef = useRef<SelectedScopeState[]>([]);
   useEffect(() => { selectedScopesRef.current = selectedScopes; }, [selectedScopes]);
+  useEffect(() => { discountCodeRef.current = discountCode; }, [discountCode]);
   const recalcTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
 
   // ── Data queries ─────────────────────────────────────────────────────────
@@ -404,6 +406,7 @@ export default function QuoteBuilderPage() {
         const body: Record<string, unknown> = { scope_id: scopeId, frequency: state.frequency || undefined, addon_ids: state.addon_ids };
         if (method === "sqft") { body.sqft = currentSqft; }
         else { body.hours = state.hours; if (currentSqft > 0) body.sqft = currentSqft; }
+        if (discountCodeRef.current) body.discount_code = discountCodeRef.current;
         const result = await apiFetch("/api/pricing/calculate", { method: "POST", body });
         setSelectedScopes(prev => prev.map(s => s.scope_id === scopeId ? { ...s, calc: result, calcLoading: false } : s));
       } catch {

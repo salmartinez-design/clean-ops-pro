@@ -103,7 +103,7 @@ function Badge({ children, color = "#6B6860" }: { children: React.ReactNode; col
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-interface Scope { id: number; name: string; scope_group: string; hourly_rate: string; minimum_bill: string; is_active: boolean; sort_order: number; }
+interface Scope { id: number; name: string; scope_group: string; pricing_method: string; hourly_rate: string; minimum_bill: string; is_active: boolean; displayed_for_office: boolean; sort_order: number; }
 interface Tier { id?: number; min_sqft: number | string; max_sqft: number | string; hours: number | string; }
 interface Frequency { id?: number; frequency: string; label: string; rate_override: string | null; multiplier: string; }
 interface Addon { id: number; name: string; price: string | null; price_type: string; percent_of_base: string | null; time_add_minutes: number; unit: string; is_active: boolean; }
@@ -125,10 +125,12 @@ export function PricingTab() {
   const [expandedScope, setExpandedScope] = useState<number | null>(null);
   const [scopeSubTab, setScopeSubTab] = useState<"tiers" | "frequencies" | "addons">("tiers");
   const [showNewScope, setShowNewScope] = useState(false);
-  const [newScope, setNewScope] = useState({ name: "", scope_group: "Residential", hourly_rate: "", minimum_bill: "" });
+  const [newScope, setNewScope] = useState({ name: "", scope_group: "Residential", pricing_method: "sqft", hourly_rate: "", minimum_bill: "" });
   const [recurringExpanded, setRecurringExpanded] = useState(false);
   const [activeRecurringScope, setActiveRecurringScope] = useState<number>(0);
   const [recurringSubTab, setRecurringSubTab] = useState<"tiers" | "frequencies" | "addons">("tiers");
+  const [editingScope, setEditingScope] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", scope_group: "", pricing_method: "", hourly_rate: "", minimum_bill: "" });
 
   const { data: scopes = [] } = useQuery<Scope[]>({ queryKey: ["pricing-scopes"], queryFn: () => apiFetch("/api/pricing/scopes") });
   const RECURRING_IDS = scopes.filter(s => s.scope_group === 'Recurring Cleaning').map(s => s.id);
@@ -144,19 +146,36 @@ export function PricingTab() {
 
   const createScope = useMutation({
     mutationFn: (body: typeof newScope) => apiFetch("/api/pricing/scopes", { method: "POST", body: JSON.stringify(body) }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["pricing-scopes"] }); setShowNewScope(false); setNewScope({ name: "", scope_group: "Residential", hourly_rate: "", minimum_bill: "" }); toast({ title: "Scope created" }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["pricing-scopes"] }); setShowNewScope(false); setNewScope({ name: "", scope_group: "Residential", pricing_method: "sqft", hourly_rate: "", minimum_bill: "" }); toast({ title: "Scope created" }); },
     onError: () => toast({ title: "Failed to create scope", variant: "destructive" }),
   });
 
-  const toggleScope = useMutation({
+  const toggleActive = useMutation({
     mutationFn: (s: Scope) => apiFetch(`/api/pricing/scopes/${s.id}`, { method: "PUT", body: JSON.stringify({ is_active: !s.is_active }) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pricing-scopes"] }),
+  });
+
+  const toggleOffice = useMutation({
+    mutationFn: (s: Scope) => apiFetch(`/api/pricing/scopes/${s.id}`, { method: "PUT", body: JSON.stringify({ displayed_for_office: !s.displayed_for_office }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pricing-scopes"] }),
+  });
+
+  const saveScope = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: typeof editForm }) => apiFetch(`/api/pricing/scopes/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["pricing-scopes"] }); setEditingScope(null); toast({ title: "Scope saved" }); },
+    onError: () => toast({ title: "Failed to save scope", variant: "destructive" }),
   });
 
   const deleteScope = useMutation({
     mutationFn: (id: number) => apiFetch(`/api/pricing/scopes/${id}`, { method: "DELETE" }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["pricing-scopes"] }); if (expandedScope) setExpandedScope(null); },
   });
+
+  function startEdit(scope: Scope) {
+    setEditingScope(scope.id);
+    setEditForm({ name: scope.name, scope_group: scope.scope_group, pricing_method: scope.pricing_method, hourly_rate: String(scope.hourly_rate), minimum_bill: String(scope.minimum_bill) });
+    setExpandedScope(null);
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
@@ -173,7 +192,7 @@ export function PricingTab() {
 
         {showNewScope && (
           <div style={{ ...card, borderColor: "var(--brand)", marginBottom: 12 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 160px 140px 140px auto", gap: 10, alignItems: "end" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 150px 140px 120px 120px auto", gap: 10, alignItems: "end" }}>
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#9E9B94", marginBottom: 4 }}>SCOPE NAME</div>
                 <input style={inp} placeholder="e.g. Deep Clean or Move In/Out" value={newScope.name} onChange={e => setNewScope(p => ({ ...p, name: e.target.value }))} />
@@ -183,10 +202,20 @@ export function PricingTab() {
                 <select style={{ ...inp }} value={newScope.scope_group} onChange={e => setNewScope(p => ({ ...p, scope_group: e.target.value }))}>
                   <option>Residential</option>
                   <option>Commercial</option>
+                  <option>Recurring Cleaning</option>
+                  <option>Hourly</option>
                 </select>
               </div>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#9E9B94", marginBottom: 4 }}>HOURLY RATE ($)</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#9E9B94", marginBottom: 4 }}>PRICING METHOD</div>
+                <select style={{ ...inp }} value={newScope.pricing_method} onChange={e => setNewScope(p => ({ ...p, pricing_method: e.target.value }))}>
+                  <option value="sqft">By Sq Ft</option>
+                  <option value="hourly">Hourly</option>
+                  <option value="simplified">Simplified</option>
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#9E9B94", marginBottom: 4 }}>RATE ($/hr)</div>
                 <input style={inp} type="number" placeholder="70" value={newScope.hourly_rate} onChange={e => setNewScope(p => ({ ...p, hourly_rate: e.target.value }))} />
               </div>
               <div>
@@ -203,25 +232,82 @@ export function PricingTab() {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {/* Regular active scopes (excluding recurring group 4/9/10 and inactive) */}
-          {scopes.filter(s => s.is_active && !RECURRING_IDS.includes(s.id)).map(scope => (
-            <div key={scope.id} style={{ border: "1px solid #E5E2DC", borderRadius: 10, background: "#fff", overflow: "hidden" }}>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", cursor: "pointer", userSelect: "none" }}
-                onClick={() => { setExpandedScope(expandedScope === scope.id ? null : scope.id); setScopeSubTab("tiers"); }}
-              >
-                {expandedScope === scope.id ? <ChevronDown size={15} color="#9E9B94" /> : <ChevronRight size={15} color="#9E9B94" />}
-                <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: 14, color: "#1A1917", flex: 1 }}>{scope.name}</span>
-                <Badge>{scope.scope_group}</Badge>
-                <span style={{ fontSize: 12, color: "#6B6860", minWidth: 80 }}>${parseFloat(scope.hourly_rate).toFixed(0)}/hr</span>
-                <span style={{ fontSize: 12, color: "#6B6860", minWidth: 90 }}>Min ${parseFloat(scope.minimum_bill).toFixed(0)}</span>
-                <button style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 4px" }} onClick={e => { e.stopPropagation(); toggleScope.mutate(scope); }} title="Deactivate">
-                  <ToggleRight size={20} color="var(--brand)" />
-                </button>
-                <button style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 4px" }} onClick={e => { e.stopPropagation(); if (confirm(`Delete "${scope.name}"?`)) deleteScope.mutate(scope.id); }}>
-                  <Trash2 size={14} color="#DC2626" />
-                </button>
-              </div>
-              {expandedScope === scope.id && (
+          {scopes.filter(s => !RECURRING_IDS.includes(s.id)).map(scope => (
+            <div key={scope.id} style={{ border: `1px solid ${!scope.is_active ? "#E5E2DC" : scope.displayed_for_office ? "#E5E2DC" : "#E5E2DC"}`, borderRadius: 10, background: "#fff", overflow: "hidden", opacity: scope.is_active ? 1 : 0.5 }}>
+
+              {/* ── Edit mode row ── */}
+              {editingScope === scope.id ? (
+                <div style={{ padding: "12px 16px", borderBottom: expandedScope === scope.id ? "1px solid #E5E2DC" : "none" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 150px 140px 100px 100px auto", gap: 8, alignItems: "end" }}>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", marginBottom: 3 }}>NAME</div>
+                      <input style={inp} value={editForm.name} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", marginBottom: 3 }}>GROUP</div>
+                      <select style={{ ...inp }} value={editForm.scope_group} onChange={e => setEditForm(p => ({ ...p, scope_group: e.target.value }))}>
+                        <option>Residential</option>
+                        <option>Commercial</option>
+                        <option>Recurring Cleaning</option>
+                        <option>Hourly</option>
+                      </select>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", marginBottom: 3 }}>METHOD</div>
+                      <select style={{ ...inp }} value={editForm.pricing_method} onChange={e => setEditForm(p => ({ ...p, pricing_method: e.target.value }))}>
+                        <option value="sqft">By Sq Ft</option>
+                        <option value="hourly">Hourly</option>
+                        <option value="simplified">Simplified</option>
+                      </select>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", marginBottom: 3 }}>RATE ($/hr)</div>
+                      <input style={inp} type="number" value={editForm.hourly_rate} onChange={e => setEditForm(p => ({ ...p, hourly_rate: e.target.value }))} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", marginBottom: 3 }}>MIN ($)</div>
+                      <input style={inp} type="number" value={editForm.minimum_bill} onChange={e => setEditForm(p => ({ ...p, minimum_bill: e.target.value }))} />
+                    </div>
+                    <div style={{ display: "flex", gap: 4, paddingTop: 16 }}>
+                      <button style={btn("primary")} onClick={() => saveScope.mutate({ id: scope.id, body: editForm })} disabled={saveScope.isPending}><Check size={13} /></button>
+                      <button style={btn()} onClick={() => setEditingScope(null)}><X size={13} /></button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", cursor: "pointer", userSelect: "none" }}
+                  onClick={() => { if (scope.is_active) { setExpandedScope(expandedScope === scope.id ? null : scope.id); setScopeSubTab("tiers"); } }}
+                >
+                  {expandedScope === scope.id ? <ChevronDown size={15} color="#9E9B94" /> : <ChevronRight size={15} color="#9E9B94" />}
+                  <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: 13, color: "#1A1917", flex: 1 }}>{scope.name}</span>
+                  <Badge>{scope.scope_group}</Badge>
+                  <span style={{ fontSize: 11, color: "#9E9B94", minWidth: 66, textAlign: "right" }}>${parseFloat(scope.hourly_rate).toFixed(0)}/hr</span>
+                  <span style={{ fontSize: 11, color: "#9E9B94", minWidth: 72, textAlign: "right" }}>Min ${parseFloat(scope.minimum_bill).toFixed(0)}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 2 }} onClick={e => e.stopPropagation()}>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: scope.displayed_for_office ? "var(--brand)" : "#9E9B94", letterSpacing: "0.02em" }}>OFFICE</span>
+                      <button style={{ background: "none", border: "none", cursor: "pointer", padding: "1px 2px", lineHeight: 1 }} onClick={() => toggleOffice.mutate(scope)} title={scope.displayed_for_office ? "Hide from Quote Builder" : "Show in Quote Builder"}>
+                        {scope.displayed_for_office ? <ToggleRight size={19} color="var(--brand)" /> : <ToggleLeft size={19} color="#C9C5BE" />}
+                      </button>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1, marginLeft: 6 }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: scope.is_active ? "#059669" : "#9E9B94", letterSpacing: "0.02em" }}>ACTIVE</span>
+                      <button style={{ background: "none", border: "none", cursor: "pointer", padding: "1px 2px", lineHeight: 1 }} onClick={() => toggleActive.mutate(scope)} title={scope.is_active ? "Deactivate" : "Activate"}>
+                        {scope.is_active ? <ToggleRight size={19} color="#059669" /> : <ToggleLeft size={19} color="#C9C5BE" />}
+                      </button>
+                    </div>
+                  </div>
+                  <button style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 4px" }} onClick={e => { e.stopPropagation(); startEdit(scope); }} title="Edit formula">
+                    <Edit2 size={13} color="#6B6860" />
+                  </button>
+                  <button style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 4px" }} onClick={e => { e.stopPropagation(); if (confirm(`Delete "${scope.name}"?`)) deleteScope.mutate(scope.id); }}>
+                    <Trash2 size={13} color="#DC2626" />
+                  </button>
+                </div>
+              )}
+
+              {expandedScope === scope.id && scope.is_active && editingScope !== scope.id && (
                 <div style={{ borderTop: "1px solid #E5E2DC" }}>
                   <div style={{ display: "flex", gap: 0, borderBottom: "1px solid #E5E2DC", padding: "0 18px" }}>
                     {(["tiers", "frequencies", "addons"] as const).map(t => (
@@ -297,7 +383,7 @@ export function PricingTab() {
             );
           })()}
 
-          {scopes.filter(s => s.is_active).length === 0 && <div style={{ textAlign: "center", padding: 32, color: "#9E9B94", fontSize: 13 }}>No scopes yet. Create your first scope above.</div>}
+          {scopes.length === 0 && <div style={{ textAlign: "center", padding: 32, color: "#9E9B94", fontSize: 13 }}>No scopes yet. Create your first scope above.</div>}
         </div>
       </div>
 
