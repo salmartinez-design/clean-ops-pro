@@ -121,7 +121,8 @@ router.get("/", requireAuth, async (req, res) => {
         ? db.execute(sql`
             SELECT customer_id::int AS cid, MAX(job_date)::text AS last_date
             FROM job_history
-            WHERE company_id = ${companyId} AND customer_id = ANY(${clientIds})
+            WHERE company_id = ${companyId}
+              AND customer_id IN (${sql.join(clientIds.map(id => sql`${id}`), sql`, `)})
             GROUP BY customer_id
           `)
         : Promise.resolve({ rows: [] } as any),
