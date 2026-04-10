@@ -38,6 +38,9 @@ async function apiFetch(path: string, opts: { method?: string; body?: any } = {}
 
 interface Client {
   id: number; first_name: string; last_name: string; email: string; phone: string; address: string;
+  zip?: string; frequency?: string | null;
+  last_service_date?: string | null; next_job_date?: string | null;
+  zone_color?: string | null; zone_name?: string | null;
 }
 
 interface PricingScope {
@@ -825,22 +828,55 @@ export default function QuoteBuilderPage() {
 
                       {/* Results */}
                       {!clientSearchLoading && clientResults.map(c => {
-                        const lastSvc = c.last_service_date ? new Date(c.last_service_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : null;
-                        const freq = c.frequency ? c.frequency.charAt(0).toUpperCase() + c.frequency.slice(1).replace(/-/g, " ") : null;
+                        // Frequency label
+                        const freqMap: Record<string, string> = {
+                          weekly: "Weekly", every_2_weeks: "Biweekly", biweekly: "Biweekly",
+                          every_4_weeks: "Monthly", monthly: "Monthly",
+                          onetime: "One-Time", one_time: "One-Time",
+                        };
+                        const freqLabel = c.frequency ? (freqMap[c.frequency] ?? null) : null;
+
+                        // Last service date
+                        const fmtSvcDate = (d: string | null | undefined) => {
+                          if (!d) return null;
+                          const dt = new Date(d + "T12:00:00");
+                          const now = new Date();
+                          const sameYear = dt.getFullYear() === now.getFullYear();
+                          return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) });
+                        };
+                        const lastDoneStr = c.last_service_date ? fmtSvcDate(c.last_service_date) : null;
+                        const nextJobStr  = c.next_job_date     ? fmtSvcDate(c.next_job_date)     : null;
+
                         return (
                           <div
                             key={c.id}
                             onClick={() => selectClient(c)}
-                            style={{ padding: "10px 14px", borderBottom: "1px solid #F0EDE8", cursor: "pointer", minHeight: 56 }}
+                            style={{ padding: "10px 14px", borderBottom: "1px solid #F0EDE8", cursor: "pointer" }}
                             onMouseEnter={e => (e.currentTarget.style.background = "#F7F6F3")}
                             onMouseLeave={e => (e.currentTarget.style.background = "#FFF")}
                           >
-                            <div style={{ fontSize: 14, fontWeight: 500, color: "#1A1917", fontFamily: FF }}>{c.first_name} {c.last_name}</div>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 2 }}>
-                              <div style={{ fontSize: 12, color: "#6B6860", fontFamily: FF }}>{c.address || c.phone || c.email || ""}</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                                {lastSvc && <span style={{ fontSize: 11, color: "#9E9B94", fontFamily: FF }}>{lastSvc}</span>}
-                                {freq && <span style={{ fontSize: 10, fontWeight: 500, color: "#6B6860", background: "#F0EDE8", borderRadius: 10, padding: "2px 6px", fontFamily: FF }}>{freq}</span>}
+                            {/* Line 1: Name + Frequency badge */}
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                              <span style={{ fontSize: 14, fontWeight: 500, color: "#1A1917", fontFamily: FF }}>{c.first_name} {c.last_name}</span>
+                              {freqLabel && (
+                                <span style={{ fontSize: 10, fontWeight: 500, color: "#4A4845", background: "#F0EDE8", borderRadius: 10, padding: "2px 7px", flexShrink: 0, fontFamily: FF }}>{freqLabel}</span>
+                              )}
+                            </div>
+                            {/* Line 2: Zone dot + address (left) · last done / next (right) */}
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 3, gap: 8 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                                <span
+                                  title={c.zone_name || "No zone"}
+                                  style={{ width: 10, height: 10, borderRadius: "50%", background: c.zone_color || "#B4B2A9", flexShrink: 0, display: "inline-block" }}
+                                />
+                                <span style={{ fontSize: 12, color: "#4A4845", fontFamily: FF, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {c.address || c.phone || c.email || ""}
+                                </span>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 0, flexShrink: 0, fontSize: 11, fontFamily: FF }}>
+                                <span style={{ color: "#6B6860" }}>Last done: {lastDoneStr || "—"}</span>
+                                <span style={{ color: "#C5C0B8", margin: "0 4px" }}>·</span>
+                                <span style={{ color: nextJobStr ? "#6B6860" : "#A32D2D" }}>Next: {nextJobStr || "none"}</span>
                               </div>
                             </div>
                           </div>

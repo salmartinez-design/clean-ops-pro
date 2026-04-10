@@ -85,60 +85,100 @@ router.get("/", requireAuth, async (req, res) => {
       .limit(parseInt(limit as string))
       .offset(offset);
 
-    // Fetch last job date per client to determine AT RISK
     const clientIds = clients.map(c => c.id);
-    let lastJobMap: Record<number, string | null> = {};
-    if (clientIds.length > 0) {
-      const lastJobs = await db
-        .select({ client_id: jobsTable.client_id, scheduled_date: jobsTable.scheduled_date })
-        .from(jobsTable)
-        .where(and(
-          eq(jobsTable.company_id, req.auth!.companyId),
-          eq(jobsTable.status, "complete"),
-          inArray(jobsTable.client_id, clientIds)
-        ))
-        .orderBy(desc(jobsTable.scheduled_date));
-      for (const r of lastJobs) {
-        if (!lastJobMap[r.client_id!] && r.scheduled_date) lastJobMap[r.client_id!] = r.scheduled_date;
+    const companyId = req.auth!.companyId;
+
+    // Run all supplemental queries in parallel
+    const [zonesResult, lastJobsResult, nextJobsResult, histLastResult, totalResult] = await Promise.all([
+      // All service zones for this company (zip→zone lookup)
+      db.select({ name: serviceZonesTable.name, color: serviceZonesTable.color, zip_codes: serviceZonesTable.zip_codes })
+        .from(serviceZonesTable)
+        .where(eq(serviceZonesTable.company_id, companyId)),
+
+      // Last completed job per client (jobs table)
+      clientIds.length > 0
+        ? db.select({ client_id: jobsTable.client_id, scheduled_date: jobsTable.scheduled_date })
+            .from(jobsTable)
+            .where(and(eq(jobsTable.company_id, companyId), eq(jobsTable.status, "complete"), inArray(jobsTable.client_id, clientIds)))
+            .orderBy(desc(jobsTable.scheduled_date))
+        : Promise.resolve([]),
+
+      // Next upcoming job per client
+      clientIds.length > 0
+        ? db.select({ client_id: jobsTable.client_id, scheduled_date: jobsTable.scheduled_date })
+            .from(jobsTable)
+            .where(and(
+              eq(jobsTable.company_id, companyId),
+              sql`${jobsTable.status} IN ('scheduled','in_progress')`,
+              sql`${jobsTable.scheduled_date} >= CURRENT_DATE`,
+              inArray(jobsTable.client_id, clientIds)
+            ))
+            .orderBy(jobsTable.scheduled_date)
+        : Promise.resolve([]),
+
+      // Last service from job_history (may include archived history before jobs table era)
+      clientIds.length > 0
+        ? db.execute(sql`
+            SELECT customer_id::int AS cid, MAX(job_date)::text AS last_date
+            FROM job_history
+            WHERE company_id = ${companyId} AND customer_id = ANY(${clientIds})
+            GROUP BY customer_id
+          `)
+        : Promise.resolve({ rows: [] } as any),
+
+      // Total count for pagination
+      db.select({ count: count() }).from(clientsTable).where(and(...conditions)),
+    ]);
+
+    // Build zip → zone map (first match wins)
+    const zipZoneMap = new Map<string, { color: string; name: string }>();
+    for (const z of zonesResult) {
+      for (const zip of (z.zip_codes as string[])) {
+        if (!zipZoneMap.has(zip)) zipZoneMap.set(zip, { color: z.color, name: z.name });
       }
     }
 
-    // Fetch next job date per client
-    let nextJobMap: Record<number, string | null> = {};
-    if (clientIds.length > 0) {
-      const nextJobs = await db
-        .select({ client_id: jobsTable.client_id, scheduled_date: jobsTable.scheduled_date })
-        .from(jobsTable)
-        .where(and(
-          eq(jobsTable.company_id, req.auth!.companyId),
-          sql`${jobsTable.status} IN ('scheduled','in_progress')`,
-          sql`${jobsTable.scheduled_date} >= CURRENT_DATE`,
-          inArray(jobsTable.client_id, clientIds)
-        ))
-        .orderBy(jobsTable.scheduled_date);
-      for (const r of nextJobs) {
-        if (!nextJobMap[r.client_id!] && r.scheduled_date) nextJobMap[r.client_id!] = r.scheduled_date;
-      }
+    // Build client maps
+    const lastJobMap: Record<number, string | null> = {};
+    for (const r of lastJobsResult as any[]) {
+      if (!lastJobMap[r.client_id!] && r.scheduled_date) lastJobMap[r.client_id!] = r.scheduled_date;
+    }
+
+    const nextJobMap: Record<number, string | null> = {};
+    for (const r of nextJobsResult as any[]) {
+      if (!nextJobMap[r.client_id!] && r.scheduled_date) nextJobMap[r.client_id!] = r.scheduled_date;
+    }
+
+    const histMap: Record<number, string | null> = {};
+    for (const r of (histLastResult as any).rows) {
+      histMap[r.cid] = r.last_date;
     }
 
     const enriched = clients.map(c => {
-      const last = lastJobMap[c.id];
-      const daysSinceLast = last
-        ? Math.floor((Date.now() - new Date(last).getTime()) / 86400000)
+      const lastFromJobs = lastJobMap[c.id] || null;
+      const lastFromHist = histMap[c.id] || null;
+      // Take the more recent of jobs table vs job_history
+      let lastServiceDate: string | null = null;
+      if (lastFromJobs && lastFromHist) {
+        lastServiceDate = lastFromJobs >= lastFromHist ? lastFromJobs : lastFromHist;
+      } else {
+        lastServiceDate = lastFromJobs || lastFromHist;
+      }
+      const daysSinceLast = lastServiceDate
+        ? Math.floor((Date.now() - new Date(lastServiceDate).getTime()) / 86400000)
         : 999;
+      const zone = zipZoneMap.get(c.zip || '') || null;
       return {
         ...c,
-        last_service_date: last || null,
+        last_service_date: lastServiceDate,
         next_service_date: nextJobMap[c.id] || null,
-        at_risk: false, // disabled until churn thresholds configured in company settings
+        next_job_date: nextJobMap[c.id] || null,
+        zone_color: zone?.color || null,
+        zone_name: zone?.name || null,
+        at_risk: false,
         days_since_last: daysSinceLast,
       };
     });
-
-    const totalResult = await db
-      .select({ count: count() })
-      .from(clientsTable)
-      .where(and(...conditions));
 
     return res.json({
       data: enriched,
