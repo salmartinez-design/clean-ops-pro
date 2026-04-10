@@ -6,7 +6,7 @@ import { useLocation } from "wouter";
 import { ChevronRight, Calendar, ShieldAlert, Building2, Car, Check, X } from "lucide-react";
 import { CloseDayModal } from "@/components/close-day-modal";
 import { useBranch } from "@/contexts/branch-context";
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -70,14 +70,14 @@ function useKpis() {
 }
 
 function useRevenueChart() {
-  const [data, setData] = useState<{ month: string; revenue: number; jobs: number }[]>([]);
+  const [data, setData] = useState<{ data: { month: string; revenue: number; jobs: number }[]; prior_year: { month: string; revenue: number }[] }>({ data: [], prior_year: [] });
   useEffect(() => {
     const load = async () => {
       try {
         const r = await apiFetch('/api/dashboard/revenue-chart');
         if (r.ok) {
           const json = await r.json();
-          setData(json.data || []);
+          setData({ data: json.data || [], prior_year: json.prior_year || [] });
         }
       } catch {}
     };
@@ -86,16 +86,30 @@ function useRevenueChart() {
   return data;
 }
 
+function useTechsToday() {
+  const [data, setData] = useState<any>(null);
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const r = await apiFetch('/api/dashboard/techs-today');
+        if (r.ok) setData(await r.json());
+      } catch {}
+    };
+    load();
+    const iv = setInterval(load, 60000);
+    return () => clearInterval(iv);
+  }, []);
+  return data;
+}
+
 function useFirstName(): string {
   const token = useAuthStore(state => state.token) || '';
   const [name, setName] = useState('');
   useEffect(() => {
-    // Try JWT first for instant display
     try {
       const p = JSON.parse(atob(token.split('.')[1]));
       if (p.first_name) { setName(p.first_name); return; }
     } catch {}
-    // Fall back to /api/auth/me for fresh data (handles old tokens)
     if (!token) return;
     apiFetch('/api/auth/me')
       .then(r => r.ok ? r.json() : null)
@@ -113,16 +127,22 @@ function useGreeting(firstName: string) {
   return `Good evening${suffix}.`;
 }
 
+const CARD: React.CSSProperties = {
+  backgroundColor: '#FFFFFF',
+  border: '0.5px solid #E5E2DC',
+  borderRadius: 8,
+};
+
 export default function Dashboard() {
   const isMobile = useIsMobile();
   const [, navigate] = useLocation();
-  const [dismissedActions, setDismissedActions] = useState<Set<number>>(new Set());
   const [showCloseDay, setShowCloseDay] = useState(false);
   const { activeBranchId, activeBranch } = useBranch();
 
   const today = useToday(activeBranchId);
   const kpis = useKpis();
   const revenueChart = useRevenueChart();
+  const techsData = useTechsToday();
 
   const token = useAuthStore(state => state.token) || '';
   let userRole = 'office';
@@ -137,87 +157,52 @@ export default function Dashboard() {
   const todayDate = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 
   const counts = today?.counts || {};
-  const actions: any[] = (kpis?.action_items || []).filter((_: any, i: number) => !dismissedActions.has(i));
+  const actions: any[] = kpis?.action_items || [];
 
+  // Status chips — navigate to /dispatch?status=<key>
   const STATUS_CARDS = [
-    { key: 'in_progress', label: 'In Progress', bg: '#DBEAFE', color: '#1E40AF', href: '/jobs' },
-    { key: 'scheduled',   label: 'Scheduled',   bg: '#F3F4F6', color: '#374151', href: '/jobs' },
-    { key: 'complete',    label: 'Complete',     bg: '#DCFCE7', color: '#166534', href: '/jobs' },
-    { key: 'flagged',     label: 'Flagged',      bg: null,      color: '#991B1B', href: '/employees/clocks', valueFn: () => today?.alerts?.filter((a: any) => a.action === 'review_clock').length ?? 0 },
-    { key: 'unassigned',  label: 'Unassigned',   bg: null,      color: '#92400E', href: '/jobs', valueFn: () => kpis?.action_items?.filter((a: any) => a.text?.includes('unassigned'))[0] ? parseInt(kpis.action_items.find((a: any) => a.text?.includes('unassigned')).text) : 0 },
+    { key: 'in_progress', label: 'In Progress', bg: '#DBEAFE', color: '#1E40AF', dispatchKey: 'in_progress' },
+    { key: 'scheduled',   label: 'Scheduled',   bg: '#F3F4F6', color: '#374151', dispatchKey: 'scheduled' },
+    { key: 'complete',    label: 'Complete',     bg: '#DCFCE7', color: '#1D9E75', dispatchKey: 'complete' },
+    { key: 'flagged',     label: 'Flagged',      bg: '#FEE2E2', color: '#D85A30', dispatchKey: 'flagged' },
+    { key: 'unassigned',  label: 'Unassigned',   bg: '#FEF0E7', color: '#E24B4A', dispatchKey: 'unassigned' },
   ];
 
+  // Intelligence strip — hide if all values are dashes
   const hcp = kpis?.hcp;
-
   const HCP_TILES = [
-    {
-      label: 'Revenue Booked Today',
-      value: hcp == null ? '—' : fmt$(hcp.rev_booked_today),
-      sub: 'on schedule today',
-    },
-    {
-      label: 'New Jobs Booked',
-      value: hcp == null ? '—' : String(hcp.new_jobs_this_week),
-      sub: 'this week',
-    },
-    {
-      label: 'Quotes Given',
-      value: hcp == null ? '—' : String(hcp.quotes_given_today),
-      sub: 'today',
-    },
-    {
-      label: 'Booked Online',
-      value: hcp == null ? '—' : String(hcp.booked_online_month),
-      sub: 'this month',
-    },
+    { label: 'Revenue Booked Today', value: hcp == null ? '—' : fmt$(hcp.rev_booked_today), sub: 'on schedule today' },
+    { label: 'New Jobs Booked',      value: hcp == null ? '—' : String(hcp.new_jobs_this_week), sub: 'this week' },
+    { label: 'Quotes Given',         value: hcp == null ? '—' : String(hcp.quotes_given_today), sub: 'today' },
+    { label: 'Booked Online',        value: hcp == null ? '—' : String(hcp.booked_online_month), sub: 'this month' },
   ];
 
-  const KPI_ROWS = [
-    [
-      {
-        label: 'Monthly Revenue',
-        value: kpis == null ? '—' : (kpis.month_revenue > 0 ? fmt$(kpis.month_revenue) : '—'),
-        delta: kpis?.month_delta ?? null, warn: false,
-      },
-      {
-        label: 'Avg Bill',
-        value: kpis == null ? '—' : (kpis.avg_bill > 0 ? `$${kpis.avg_bill.toFixed(0)}` : '—'),
-        delta: null, warn: false,
-      },
-      {
-        label: 'Active Clients',
-        value: kpis == null ? '—' : (kpis.active_clients != null ? kpis.active_clients : '—'),
-        delta: null, warn: false,
-      },
-    ],
-    [
-      {
-        label: 'Quality Score',
-        value: kpis?.quality_score != null && kpis.quality_score > 0 ? `${kpis.quality_score}/100` : '—',
-        delta: null, warn: false,
-      },
-      {
-        label: 'Clients at Risk',
-        value: kpis == null ? '—' : (kpis.churn_configured === false ? '—' : (kpis.clients_at_risk ?? '—')),
-        delta: null, warn: kpis?.churn_configured === true && (kpis?.clients_at_risk || 0) > 0, click: '/customers',
-      },
-      {
-        label: 'Week Revenue',
-        value: kpis == null ? '—' : (kpis.week_revenue > 0 ? fmt$(kpis.week_revenue) : '—'),
-        delta: kpis?.week_delta ?? null, warn: false,
-      },
-    ],
+  const intelligenceValues = [
+    kpis?.forecast_next_month,
+    kpis?.avg_ltv,
+    kpis?.churn_configured === false ? null : (kpis?.high_churn_count ?? kpis?.clients_at_risk),
+    kpis?.avg_nps,
   ];
+  const allIntelDashes = intelligenceValues.every(v => v == null);
 
-  const ACTION_DOT: Record<string, string> = { red: '#EF4444', amber: '#F59E0B', blue: '#3B82F6' };
+  // Merged chart data — align prior_year by month label (already aligned server-side)
+  const chartData = revenueChart.data.map((d, i) => ({
+    month: d.month,
+    revenue: d.revenue,
+    prior_revenue: revenueChart.prior_year[i]?.revenue ?? 0,
+  }));
 
-  const CARD: React.CSSProperties = { backgroundColor: '#FFFFFF', border: '1px solid #E5E2DC', borderRadius: 10 };
+  // YTD = current calendar year only (months whose label ends in current year)
+  const currentYearSuffix = `'${String(new Date().getFullYear()).slice(2)}`;
+  const ytdTotal = revenueChart.data
+    .filter(r => r.month.endsWith(currentYearSuffix))
+    .reduce((s, r) => s + r.revenue, 0);
 
   return (
     <DashboardLayout>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20, fontFamily: FF }}>
 
-        {/* ── SECTION 1: GREETING ─────────────────────────── */}
+        {/* ── GREETING ─────────────────────────────────────────── */}
         <div style={{
           background: 'var(--brand-dim)',
           border: '1px solid color-mix(in srgb, var(--brand) 20%, transparent)',
@@ -253,179 +238,168 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ── SECTION 2: TODAY'S STATUS ─────────────────────── */}
+        {/* ── STATUS CHIPS ─────────────────────────────────────── */}
         <div>
           <p style={{ fontSize: 11, fontWeight: 600, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px', fontFamily: FF }}>Today's Status</p>
-          <div style={{
-            display: 'flex', gap: 10, overflowX: 'auto',
-            paddingBottom: 4, scrollbarWidth: 'none',
-          }}>
+          <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4, scrollbarWidth: 'none' }}>
             {STATUS_CARDS.map(card => {
-              const rawVal = card.valueFn ? card.valueFn() : (counts[card.key] ?? 0);
-              const val = Number(rawVal);
-              const isAlert = (card.key === 'flagged' || card.key === 'unassigned') && val > 0;
-              const bg = isAlert ? (card.key === 'flagged' ? '#FEE2E2' : '#FEF3C7') : (card.bg || '#F9F9F7');
+              const val = Number(counts[card.key] ?? 0);
               return (
-                <button
+                <StatusChip
                   key={card.key}
-                  onClick={() => navigate(card.href)}
-                  style={{
-                    flexShrink: 0, width: 140, height: 80, minWidth: 120,
-                    backgroundColor: bg, border: `1px solid ${card.color}22`,
-                    borderRadius: 10, padding: '14px 16px',
-                    cursor: 'pointer', textAlign: 'left',
-                    fontFamily: FF, transition: 'transform 0.1s',
-                  }}
-                >
-                  <p style={{ fontSize: 28, fontWeight: 700, color: card.color, margin: '0 0 2px', lineHeight: 1, fontFamily: FF }}>{val}</p>
-                  <p style={{ fontSize: 11, color: card.color, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, opacity: 0.75, fontFamily: FF }}>{card.label}</p>
-                </button>
+                  label={card.label}
+                  value={val}
+                  bg={card.bg}
+                  color={card.color}
+                  onClick={() => navigate(`/dispatch?status=${card.dispatchKey}`)}
+                />
               );
             })}
           </div>
         </div>
 
-        {/* ── SECTION 2B: HCP KPI STRIP ────────────────────── */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
-          gap: 8,
-        }}>
-          {HCP_TILES.map((tile, i) => (
-            <div
-              key={i}
-              style={{
-                backgroundColor: '#F7F6F3',
-                border: '1px solid #E5E2DC',
-                borderRadius: 8,
-                padding: '10px 14px',
-              }}
-            >
-              <p style={{ fontSize: 9, fontWeight: 600, color: '#B0ADA6', textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 3px', fontFamily: FF }}>
-                {tile.label}
-              </p>
-              <p style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: '#1A1917', margin: '0 0 1px', lineHeight: 1, fontFamily: FF }}>
-                {tile.value}
-              </p>
-              <p style={{ fontSize: 9, color: '#C4C1BA', margin: 0, fontFamily: FF }}>
-                {tile.sub}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        {/* ── SECTION 3: KEY NUMBERS ───────────────────────── */}
+        {/* ── 4-TILE METRICS ROW ───────────────────────────────── */}
         <div>
           <p style={{ fontSize: 11, fontWeight: 600, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px', fontFamily: FF }}>Key Numbers</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {KPI_ROWS.map((row, ri) => (
-              <div key={ri} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-                {row.map((kpi, ki) => (
-                  <button
-                    key={ki}
-                    onClick={() => kpi.click ? navigate(kpi.click) : undefined}
-                    style={{
-                      ...CARD,
-                      padding: isMobile ? '14px 14px' : '16px 20px',
-                      backgroundColor: kpi.warn ? '#FEF3C7' : '#FFFFFF',
-                      border: `1px solid ${kpi.warn ? '#F59E0B44' : '#E5E2DC'}`,
-                      cursor: kpi.click ? 'pointer' : 'default',
-                      textAlign: 'left', fontFamily: FF,
-                    }}
-                  >
-                    <p style={{ fontSize: isMobile ? 10 : 11, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px', fontFamily: FF }}>
-                      {kpi.label}
-                    </p>
-                    <p style={{ fontSize: isMobile ? 20 : 26, fontWeight: 700, color: kpi.warn ? '#92400E' : '#1A1917', margin: '0 0 4px', lineHeight: 1, fontFamily: FF }}>
-                      {kpi.value}
-                    </p>
-                    {kpi.delta !== null && <DeltaBadge delta={kpi.delta} />}
-                  </button>
-                ))}
-              </div>
-            ))}
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 10 }}>
+            {/* Monthly Revenue */}
+            <div style={{ ...CARD, padding: isMobile ? '14px 14px' : '16px 20px' }}>
+              <p style={{ fontSize: 11, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px', fontFamily: FF }}>Monthly Revenue</p>
+              <p style={{ fontSize: isMobile ? 20 : 26, fontWeight: 700, color: '#1A1917', margin: '0 0 4px', lineHeight: 1, fontFamily: FF }}>
+                {kpis == null ? '—' : (kpis.month_revenue > 0 ? fmt$(kpis.month_revenue) : '—')}
+              </p>
+              <DeltaBadge delta={kpis?.month_delta ?? null} />
+            </div>
+
+            {/* Avg Bill */}
+            <div style={{ ...CARD, padding: isMobile ? '14px 14px' : '16px 20px' }}>
+              <p style={{ fontSize: 11, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px', fontFamily: FF }}>Avg Bill</p>
+              <p style={{ fontSize: isMobile ? 20 : 26, fontWeight: 700, color: '#1A1917', margin: '0 0 4px', lineHeight: 1, fontFamily: FF }}>
+                {kpis == null ? '—' : (kpis.avg_bill > 0 ? `$${kpis.avg_bill.toFixed(0)}` : '—')}
+              </p>
+              <p style={{ fontSize: 11, color: '#9E9B94', margin: 0, fontFamily: FF }}>Last 30 days</p>
+            </div>
+
+            {/* Active Clients */}
+            <div style={{ ...CARD, padding: isMobile ? '14px 14px' : '16px 20px' }}>
+              <p style={{ fontSize: 11, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px', fontFamily: FF }}>Active Clients</p>
+              <p style={{ fontSize: isMobile ? 20 : 26, fontWeight: 700, color: '#1A1917', margin: '0 0 4px', lineHeight: 1, fontFamily: FF }}>
+                {kpis == null ? '—' : (kpis.active_clients != null ? kpis.active_clients : '—')}
+              </p>
+              {kpis?.recurring_count != null && (
+                <p style={{ fontSize: 11, color: '#9E9B94', margin: 0, fontFamily: FF }}>{kpis.recurring_count} recurring</p>
+              )}
+            </div>
+
+            {/* Next 7 Days */}
+            <div style={{ ...CARD, padding: isMobile ? '14px 14px' : '16px 20px' }}>
+              <p style={{ fontSize: 11, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px', fontFamily: FF }}>Next 7 Days</p>
+              <p style={{ fontSize: isMobile ? 20 : 26, fontWeight: 700, color: '#1A1917', margin: '0 0 4px', lineHeight: 1, fontFamily: FF }}>
+                {kpis == null ? '—' : (kpis.next7_revenue > 0 ? fmt$(kpis.next7_revenue) : '—')}
+              </p>
+              {kpis?.next7_jobs != null && (
+                <p style={{ fontSize: 11, color: '#1D9E75', margin: 0, fontFamily: FF }}>{kpis.next7_jobs} jobs on the books</p>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* ── SECTION 3B: REVENUE TREND CHART ─────────────── */}
-        {revenueChart.length > 0 && (
-          <div style={{ ...CARD, padding: '18px 20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
-              <p style={{ fontSize: 11, fontWeight: 600, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0, fontFamily: FF }}>
-                Revenue — Last 12 Months
-              </p>
-              <p style={{ fontSize: 11, color: '#9E9B94', margin: 0, fontFamily: FF }}>
-                {revenueChart.reduce((s, r) => s + r.revenue, 0) >= 1_000_000
-                  ? `$${(revenueChart.reduce((s, r) => s + r.revenue, 0) / 1_000_000).toFixed(2)}M total`
-                  : `$${(revenueChart.reduce((s, r) => s + r.revenue, 0) / 1000).toFixed(1)}k total`}
-              </p>
-            </div>
-            <ResponsiveContainer width="100%" height={160}>
-              <AreaChart data={revenueChart} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                <defs>
-                  <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#00C9A0" stopOpacity={0.18} />
-                    <stop offset="95%" stopColor="#00C9A0" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#F0EDE8" vertical={false} />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fontSize: 10, fill: '#9E9B94', fontFamily: FF }}
-                  axisLine={false}
-                  tickLine={false}
-                  interval={isMobile ? 2 : 0}
-                />
-                <YAxis
-                  tick={{ fontSize: 10, fill: '#9E9B94', fontFamily: FF }}
-                  axisLine={false}
-                  tickLine={false}
-                  tickFormatter={(v: number) => v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`}
-                  width={44}
-                />
-                <Tooltip
-                  contentStyle={{ fontFamily: FF, fontSize: 12, borderRadius: 8, border: '1px solid #E5E2DC', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}
-                  formatter={(value: number) => [`$${value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`, 'Revenue']}
-                  labelStyle={{ fontWeight: 600, color: '#1A1917' }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="revenue"
-                  stroke="#00C9A0"
-                  strokeWidth={2}
-                  fill="url(#revGrad)"
-                  dot={false}
-                  activeDot={{ r: 4, fill: '#00C9A0', strokeWidth: 0 }}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        {/* ── SECTION 3C: INTELLIGENCE STRIP ───────────────── */}
-        {kpis && (
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 10 }}>
-            {[
-              { label: 'Revenue Forecast', value: kpis.forecast_next_month != null ? fmt$(kpis.forecast_next_month) : '—', sub: 'next 30 days', color: 'var(--brand)', bg: 'var(--brand-dim)' },
-              { label: 'Avg Client LTV', value: kpis.avg_ltv != null ? fmt$(kpis.avg_ltv) : '—', sub: 'estimated lifetime', color: '#16A34A', bg: '#DCFCE7' },
-              { label: 'High Churn Risk', value: kpis.churn_configured === false ? '—' : (kpis.high_churn_count ?? kpis.clients_at_risk ?? '—'), sub: kpis.churn_configured === false ? 'configure in Settings' : 'clients at risk', color: '#6B7280', bg: '#F3F4F6' },
-              { label: 'Avg NPS', value: kpis.avg_nps != null ? kpis.avg_nps.toFixed(1) : '—', sub: 'last 90 days', color: '#1D4ED8', bg: '#DBEAFE' },
-            ].map(w => (
-              <div key={w.label} style={{ backgroundColor: w.bg, border: '1px solid transparent', borderRadius: 10, padding: '14px 16px' }}>
-                <p style={{ fontSize: isMobile ? 10 : 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px', fontFamily: FF }}>{w.label}</p>
-                <p style={{ fontSize: isMobile ? 20 : 24, fontWeight: 800, color: w.color, margin: '0 0 2px', lineHeight: 1, fontFamily: FF }}>{w.value}</p>
-                <p style={{ fontSize: 10, color: '#9E9B94', margin: 0, fontFamily: FF }}>{w.sub}</p>
+        {/* ── TWO-COLUMN: REVENUE CHART + TECHS TODAY ─────────── */}
+        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+          {/* Revenue Chart — 60% */}
+          <div style={{ ...CARD, padding: '18px 20px', flex: '0 0 60%', minWidth: 0 }}>
+            {chartData.length === 0 ? (
+              <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <p style={{ fontSize: 12, color: '#9E9B94', margin: 0, fontFamily: FF }}>No revenue data yet.</p>
               </div>
-            ))}
+            ) : (
+              <>
+                {/* Legend */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ display: 'inline-block', width: 14, height: 2, backgroundColor: '#5B9BD5', borderRadius: 1 }} />
+                    <span style={{ fontSize: 11, color: '#6B6860', fontFamily: FF }}>This year</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ display: 'inline-block', width: 14, height: 0, borderTop: '2px dashed #B5D4F4' }} />
+                    <span style={{ fontSize: 11, color: '#6B6860', fontFamily: FF }}>Prior year</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+                  <p style={{ fontSize: 11, fontWeight: 600, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0, fontFamily: FF }}>
+                    Revenue — Last 12 Months
+                  </p>
+                  <p style={{ fontSize: 11, color: '#9E9B94', margin: 0, fontFamily: FF }}>
+                    YTD {ytdTotal >= 1_000_000
+                      ? `$${(ytdTotal / 1_000_000).toFixed(2)}M`
+                      : `$${(ytdTotal / 1000).toFixed(1)}k`}
+                  </p>
+                </div>
+                <ResponsiveContainer width="100%" height={160}>
+                  <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F0EDE8" vertical={false} />
+                    <XAxis
+                      dataKey="month"
+                      tick={{ fontSize: 10, fill: '#9E9B94', fontFamily: FF }}
+                      axisLine={false}
+                      tickLine={false}
+                      interval={isMobile ? 2 : 0}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 10, fill: '#9E9B94', fontFamily: FF }}
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={(v: number) => v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`}
+                      width={44}
+                    />
+                    <Tooltip
+                      contentStyle={{ fontFamily: FF, fontSize: 12, borderRadius: 8, border: '1px solid #E5E2DC', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}
+                      formatter={(value: number, name: string) => [
+                        `$${value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
+                        name === 'revenue' ? 'This year' : 'Prior year',
+                      ]}
+                      labelStyle={{ fontWeight: 600, color: '#1A1917' }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="revenue"
+                      stroke="#5B9BD5"
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 4, fill: '#5B9BD5', strokeWidth: 0 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="prior_revenue"
+                      stroke="#B5D4F4"
+                      strokeWidth={1.5}
+                      strokeDasharray="4 3"
+                      dot={false}
+                      activeDot={{ r: 3, fill: '#B5D4F4', strokeWidth: 0 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </>
+            )}
           </div>
-        )}
 
-        {/* ── SECTION 4: ACTION ITEMS ───────────────────────── */}
+          {/* Techs Today — 38% (always rendered, independent of chart data) */}
+          <div style={{ ...CARD, padding: '16px 18px', flex: '0 0 38%', minWidth: 0 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: '#9E9B94', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px', fontFamily: FF }}>Techs Today</p>
+            {!techsData ? (
+              <p style={{ fontSize: 12, color: '#9E9B94', margin: 0, fontFamily: FF }}>Loading…</p>
+            ) : (
+              <TechsTodayPanel techsData={techsData} navigate={navigate} />
+            )}
+          </div>
+        </div>
+
+        {/* ── NEEDS ATTENTION ──────────────────────────────────── */}
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1917', margin: 0, fontFamily: FF }}>Needs Attention</p>
             {actions.length > 0 && (
-              <span style={{ fontSize: 11, fontWeight: 600, background: '#FEE2E2', color: '#991B1B', borderRadius: 10, padding: '2px 8px', fontFamily: FF }}>
+              <span style={{ fontSize: 11, fontWeight: 700, background: '#FEE2E2', color: '#991B1B', borderRadius: 10, padding: '2px 8px', fontFamily: FF }}>
                 {actions.length}
               </span>
             )}
@@ -437,32 +411,47 @@ export default function Dashboard() {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {(kpis?.action_items || []).map((a: any, i: number) => {
-                if (dismissedActions.has(i)) return null;
-                return (
-                  <div key={i} style={{ ...CARD, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: ACTION_DOT[a.level] || '#9E9B94', flexShrink: 0 }} />
-                    <p style={{ fontSize: 13, color: '#1A1917', margin: 0, flex: 1, lineHeight: 1.4, fontFamily: FF }}>{a.text}</p>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-                      <button
-                        onClick={() => navigate(a.action)}
-                        style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 12, fontWeight: 600, color: 'var(--brand)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: FF, padding: '4px 0' }}
-                      >
-                        View <ChevronRight size={13} />
-                      </button>
-                      <button
-                        onClick={() => setDismissedActions(prev => new Set([...prev, i]))}
-                        style={{ fontSize: 11, color: '#9E9B94', background: 'none', border: 'none', cursor: 'pointer', fontFamily: FF, padding: '4px 0' }}
-                      >
-                        Dismiss
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+              {actions.map((a: any, i: number) => (
+                <NeedsAttentionItem key={i} item={a} navigate={navigate} />
+              ))}
             </div>
           )}
         </div>
+
+        {/* ── HCP STRIP (secondary, below Needs Attention; hidden when all values are dashes) ── */}
+        {hcp != null && HCP_TILES.some(t => t.value !== '—') && (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
+            gap: 8,
+          }}>
+            {HCP_TILES.filter(t => t.value !== '—').map((tile, i) => (
+              <div key={i} style={{ ...CARD, padding: '10px 14px' }}>
+                <p style={{ fontSize: 9, fontWeight: 600, color: '#B0ADA6', textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 3px', fontFamily: FF }}>{tile.label}</p>
+                <p style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: '#1A1917', margin: '0 0 1px', lineHeight: 1, fontFamily: FF }}>{tile.value}</p>
+                <p style={{ fontSize: 9, color: '#C4C1BA', margin: 0, fontFamily: FF }}>{tile.sub}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── INTELLIGENCE STRIP (hidden if all dashes, below Needs Attention) ── */}
+        {kpis && !allIntelDashes && (
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 10 }}>
+            {[
+              { label: 'Revenue Forecast', value: kpis.forecast_next_month != null ? fmt$(kpis.forecast_next_month) : '—', sub: 'next 30 days', color: 'var(--brand)', bg: 'var(--brand-dim)' },
+              { label: 'Avg Client LTV', value: kpis.avg_ltv != null ? fmt$(kpis.avg_ltv) : '—', sub: 'estimated lifetime', color: '#16A34A', bg: '#DCFCE7' },
+              { label: 'High Churn Risk', value: kpis.churn_configured === false ? '—' : (kpis.high_churn_count ?? kpis.clients_at_risk ?? '—'), sub: kpis.churn_configured === false ? 'configure in Settings' : 'clients at risk', color: '#6B7280', bg: '#F3F4F6' },
+              { label: 'Avg NPS', value: kpis.avg_nps != null ? kpis.avg_nps.toFixed(1) : '—', sub: 'last 90 days', color: '#1D4ED8', bg: '#DBEAFE' },
+            ].filter(w => w.value !== '—').map(w => (
+              <div key={w.label} style={{ backgroundColor: w.bg, border: '1px solid transparent', borderRadius: 10, padding: '14px 16px' }}>
+                <p style={{ fontSize: isMobile ? 10 : 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px', fontFamily: FF }}>{w.label}</p>
+                <p style={{ fontSize: isMobile ? 20 : 24, fontWeight: 800, color: w.color, margin: '0 0 2px', lineHeight: 1, fontFamily: FF }}>{w.value}</p>
+                <p style={{ fontSize: 10, color: '#9E9B94', margin: 0, fontFamily: FF }}>{w.sub}</p>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* ── Commercial Alerts ── */}
         {canAdmin && <CommercialAlertsBanner />}
@@ -525,6 +514,115 @@ export default function Dashboard() {
       </div>
       {showCloseDay && <CloseDayModal onClose={() => setShowCloseDay(false)} />}
     </DashboardLayout>
+  );
+}
+
+function StatusChip({ label, value, bg, color, onClick }: { label: string; value: number; bg: string; color: string; onClick: () => void }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        flexShrink: 0, width: 140, height: 80, minWidth: 120,
+        backgroundColor: bg,
+        border: hovered ? '1px solid #5B9BD5' : `1px solid ${color}22`,
+        borderRadius: 10, padding: '14px 16px',
+        cursor: 'pointer', textAlign: 'left',
+        fontFamily: FF, transition: 'border-color 0.15s',
+      }}
+    >
+      <p style={{ fontSize: 28, fontWeight: 700, color, margin: '0 0 2px', lineHeight: 1, fontFamily: FF }}>{value}</p>
+      <p style={{ fontSize: 11, color, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, opacity: 0.75, fontFamily: FF }}>{label}</p>
+    </button>
+  );
+}
+
+const ACTION_DOT: Record<string, string> = { red: '#EF4444', amber: '#F59E0B', blue: '#3B82F6' };
+
+function NeedsAttentionItem({ item, navigate }: { item: any; navigate: (path: string) => void }) {
+  return (
+    <div style={{ backgroundColor: '#FFFFFF', border: '0.5px solid #E5E2DC', borderRadius: 8, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: ACTION_DOT[item.level] || '#9E9B94', flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1917', margin: '0 0 2px', fontFamily: FF }}>{item.title}</p>
+        <p style={{ fontSize: 12, color: '#6B6860', margin: 0, lineHeight: 1.4, fontFamily: FF }}>{item.text}</p>
+      </div>
+      {item.action && (
+        <button
+          onClick={() => navigate(item.action)}
+          style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 12, fontWeight: 600, color: '#5B9BD5', background: 'none', border: 'none', cursor: 'pointer', fontFamily: FF, padding: '4px 0', flexShrink: 0 }}
+        >
+          View <ChevronRight size={13} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function TechsTodayPanel({ techsData, navigate }: { techsData: any; navigate: (path: string) => void }) {
+  const techs: any[] = techsData?.techs || [];
+  const totalJobsToday: number = techsData?.total_jobs_today ?? 0;
+  const MAX_DISPLAY = 6;
+  const displayTechs = techs.slice(0, MAX_DISPLAY);
+  const activeTechs = techs.filter(t => t.job_count > 0).length;
+  const totalCapacity = techs.length * 4;
+  const openSlots = Math.max(0, totalCapacity - totalJobsToday);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {displayTechs.map((tech: any) => {
+        const initials = `${tech.first_name?.[0] ?? ''}${tech.last_name?.[0] ?? ''}`.toUpperCase();
+        const hasJobs = tech.job_count > 0;
+        const capacityPct = Math.min(tech.job_count / 4, 1) * 100;
+        return (
+          <div key={tech.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{
+              width: 26, height: 26, borderRadius: 13,
+              backgroundColor: '#E8F0FB', color: '#185FA5',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 10, fontWeight: 700, flexShrink: 0, fontFamily: FF,
+            }}>
+              {initials}
+            </div>
+            <p style={{ fontSize: 12, fontWeight: 600, color: '#1A1917', margin: 0, flex: 1, fontFamily: FF, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {tech.first_name} {tech.last_name?.[0]}.
+            </p>
+            <span style={{
+              fontSize: 10, fontWeight: 700,
+              color: hasJobs ? '#185FA5' : '#D85A30',
+              background: hasJobs ? '#E8F0FB' : '#FEF0E7',
+              borderRadius: 10, padding: '1px 6px', flexShrink: 0, fontFamily: FF,
+            }}>
+              {tech.job_count}
+            </span>
+            <div style={{ width: 60, height: 4, backgroundColor: '#F0EDE8', borderRadius: 2, flexShrink: 0, overflow: 'hidden' }}>
+              <div style={{ width: `${capacityPct}%`, height: '100%', backgroundColor: '#5B9BD5', borderRadius: 2 }} />
+            </div>
+          </div>
+        );
+      })}
+
+      {techs.length > MAX_DISPLAY && (
+        <button
+          onClick={() => navigate('/employees')}
+          style={{ fontSize: 11, color: '#5B9BD5', background: 'none', border: 'none', cursor: 'pointer', fontFamily: FF, textAlign: 'left', padding: '2px 0' }}
+        >
+          View all →
+        </button>
+      )}
+
+      {/* Capacity summary */}
+      <div style={{ borderTop: '1px solid #F0EDE8', paddingTop: 8, marginTop: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 11, color: '#9E9B94', fontFamily: FF }}>
+          <span style={{ fontWeight: 700, color: openSlots > 0 ? '#1D9E75' : '#F59E0B' }}>{openSlots}</span> open slots
+        </span>
+        <span style={{ fontSize: 11, color: '#9E9B94', fontFamily: FF }}>
+          {activeTechs} active / {totalJobsToday} jobs
+        </span>
+      </div>
+    </div>
   );
 }
 

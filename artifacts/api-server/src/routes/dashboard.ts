@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, usersTable, invoicesTable, timeclockTable, scorecardsTable, accountsTable, accountPropertiesTable, quotesTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, lt, isNull, count, sum, avg, desc, sql, isNotNull, ne } from "drizzle-orm";
+import { jobsTable, clientsTable, usersTable, invoicesTable, timeclockTable, scorecardsTable, accountsTable, accountPropertiesTable, quotesTable, recurringSchedulesTable } from "@workspace/db/schema";
+import { eq, and, gte, lte, lt, isNull, count, sum, avg, desc, sql, isNotNull, ne, notInArray } from "drizzle-orm";
 import { requireAuth } from "../lib/auth.js";
 
 const router = Router();
@@ -159,6 +159,7 @@ router.get("/today", requireAuth, async (req, res) => {
     const companyId = req.auth!.companyId!;
     const now = new Date();
     const todayStr = now.toISOString().split("T")[0];
+    const tomorrowStr = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString().split("T")[0];
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const { branch_id } = req.query;
     const todayBranchCond = branch_id && branch_id !== "all" ? [eq(jobsTable.branch_id, parseInt(branch_id as string))] : [];
@@ -183,17 +184,21 @@ router.get("/today", requireAuth, async (req, res) => {
 
     const todayRevenue = todayJobs.filter(j => j.status === 'complete').reduce((s, j) => s + parseFloat(j.base_fee || '0'), 0);
 
-    const flagged = await db
-      .select({
+    // Flagged clock-ins today — get both full count AND detail list separately
+    const [flaggedCountRow, flagged] = await Promise.all([
+      db.select({ c: count() }).from(timeclockTable)
+        .where(and(eq(timeclockTable.company_id, companyId), eq(timeclockTable.flagged, true), gte(timeclockTable.clock_in_at, new Date(todayStr)), lt(timeclockTable.clock_in_at, new Date(tomorrowStr)))),
+      db.select({
         id: timeclockTable.id,
         user_id: timeclockTable.user_id,
         distance_ft: timeclockTable.distance_from_job_ft,
         user_name: sql<string>`concat(${usersTable.first_name},' ',${usersTable.last_name})`,
       })
-      .from(timeclockTable)
-      .leftJoin(usersTable, eq(timeclockTable.user_id, usersTable.id))
-      .where(and(eq(timeclockTable.company_id, companyId), eq(timeclockTable.flagged, true), gte(timeclockTable.clock_in_at, new Date(todayStr))))
-      .limit(5);
+        .from(timeclockTable)
+        .leftJoin(usersTable, eq(timeclockTable.user_id, usersTable.id))
+        .where(and(eq(timeclockTable.company_id, companyId), eq(timeclockTable.flagged, true), gte(timeclockTable.clock_in_at, new Date(todayStr)), lt(timeclockTable.clock_in_at, new Date(tomorrowStr))))
+        .limit(5),
+    ]);
 
     const overdueInvoices = await db
       .select({
@@ -228,6 +233,7 @@ router.get("/today", requireAuth, async (req, res) => {
       .where(and(
         eq(timeclockTable.company_id, companyId),
         gte(timeclockTable.clock_in_at, new Date(todayStr)),
+        lt(timeclockTable.clock_in_at, new Date(tomorrowStr)),
         isNull(timeclockTable.clock_out_at),
       ));
 
@@ -300,6 +306,12 @@ router.get("/today", requireAuth, async (req, res) => {
 
     const enRouteCount = employeeBoard.filter(e => e.status === 'EN ROUTE').length;
 
+    // Counts for status chips — scoped to today
+    // unassigned: status='scheduled' AND assigned_user_id IS NULL (per spec)
+    const unassignedCount = todayJobs.filter(j => j.assigned_user_id === null && j.status === 'scheduled').length;
+    // Use the dedicated COUNT query for accurate flagged count (not limited by detail LIMIT 5)
+    const flaggedCount = Number(flaggedCountRow[0]?.c || 0);
+
     return res.json({
       counts: {
         in_progress: Number(inProgress[0].c),
@@ -307,6 +319,8 @@ router.get("/today", requireAuth, async (req, res) => {
         complete: Number(complete[0].c),
         cancelled: Number(cancelled[0].c),
         en_route: enRouteCount,
+        flagged: flaggedCount,
+        unassigned: unassignedCount,
       },
       today_revenue: todayRevenue,
       alerts,
@@ -323,6 +337,7 @@ router.get("/kpis", requireAuth, async (req, res) => {
     const companyId = req.auth!.companyId!;
     const now = new Date();
     const todayStr = now.toISOString().split("T")[0];
+    const tomorrowStr = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString().split("T")[0];
 
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthStartStr = monthStart.toISOString().split("T")[0];
@@ -344,7 +359,10 @@ router.get("/kpis", requireAuth, async (req, res) => {
     const fortyFiveDaysAgoStr = new Date(now.getTime() - 45 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
     const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
 
-    // Revenue queries use the jobs table (billed_amount, status='complete')
+    // Next 7 days window
+    const next7Start = todayStr;
+    const next7End = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
     const [
       jhWeekRev,
       jhPrevWeekRev,
@@ -363,6 +381,21 @@ router.get("/kpis", requireAuth, async (req, res) => {
       hcpNewJobsThisWeek,
       hcpQuotesToday,
       hcpBookedOnlineMonth,
+      // Next 7 days
+      next7Rev,
+      next7Count,
+      // Recurring count
+      recurringCount,
+      // Outstanding AR
+      outstandingAR,
+      // Completed jobs not invoiced (last 30 days)
+      completeNotInvoiced30,
+      // Techs with jobs today but no clock-in
+      techsNoClockin,
+      // Jobs in next 7 days missing address_street
+      jobsMissingAddress,
+      // Invoice sequence check
+      invoiceHighId,
     ] = await Promise.all([
       // Week revenue from completed jobs
       db.execute(sql`
@@ -437,16 +470,16 @@ router.get("/kpis", requireAuth, async (req, res) => {
           )
           AND c.created_at < now() - interval '30 days'
       `),
-      // Unassigned jobs today
+      // Unassigned jobs today: status='scheduled' AND assigned_user_id IS NULL (per spec)
       db.select({ count: count() }).from(jobsTable)
-        .where(and(eq(jobsTable.company_id, companyId), eq(jobsTable.scheduled_date, todayStr), isNull(jobsTable.assigned_user_id))),
-      // Flagged clock-ins today
+        .where(and(eq(jobsTable.company_id, companyId), eq(jobsTable.scheduled_date, todayStr), eq(jobsTable.status, "scheduled"), isNull(jobsTable.assigned_user_id))),
+      // Flagged clock-ins today (bounded to today only)
       db.select({ count: count() }).from(timeclockTable)
-        .where(and(eq(timeclockTable.company_id, companyId), eq(timeclockTable.flagged, true), gte(timeclockTable.clock_in_at, new Date(todayStr)))),
+        .where(and(eq(timeclockTable.company_id, companyId), eq(timeclockTable.flagged, true), gte(timeclockTable.clock_in_at, new Date(todayStr)), lt(timeclockTable.clock_in_at, new Date(tomorrowStr)))),
       // Overdue invoices
       db.select({ count: count() }).from(invoicesTable)
         .where(and(eq(invoicesTable.company_id, companyId), eq(invoicesTable.status, "overdue"))),
-      // Jobs complete but not invoiced (this month)
+      // Jobs complete but not invoiced (this month) — kept for legacy
       db.select({ id: jobsTable.id }).from(jobsTable)
         .where(and(eq(jobsTable.company_id, companyId), eq(jobsTable.status, "complete"), gte(jobsTable.scheduled_date, monthStartStr)))
         .then(async (completedJobs) => {
@@ -486,39 +519,217 @@ router.get("/kpis", requireAuth, async (req, res) => {
           gte(jobsTable.scheduled_date, monthStartStr),
           sql`${jobsTable.status} != 'cancelled'`,
         )),
+
+      // Next 7 days revenue
+      db.execute(sql`
+        SELECT COALESCE(SUM(base_fee), 0)::numeric AS total
+        FROM jobs
+        WHERE company_id = ${companyId}
+          AND status != 'cancelled'
+          AND scheduled_date >= ${next7Start}
+          AND scheduled_date <= ${next7End}
+      `),
+
+      // Next 7 days job count
+      db.select({ c: count() }).from(jobsTable)
+        .where(and(
+          eq(jobsTable.company_id, companyId),
+          gte(jobsTable.scheduled_date, next7Start),
+          lte(jobsTable.scheduled_date, next7End),
+          sql`${jobsTable.status} != 'cancelled'`,
+        )),
+
+      // Recurring schedules active count
+      db.select({ count: count() }).from(recurringSchedulesTable)
+        .where(and(
+          eq(recurringSchedulesTable.company_id, companyId),
+          eq(recurringSchedulesTable.is_active, true),
+        )),
+
+      // Outstanding AR — invoices status IN ('sent', 'overdue')
+      // Note: schema enum only has draft/sent/paid/overdue — 'unpaid' is not a valid enum value
+      db.execute(sql`
+        SELECT
+          COUNT(*)::int AS inv_count,
+          COALESCE(SUM(total), 0)::numeric AS total,
+          COUNT(CASE WHEN created_at < now() - interval '30 days' THEN 1 END)::int AS over_30
+        FROM invoices
+        WHERE company_id = ${companyId}
+          AND status IN ('sent', 'overdue')
+      `),
+
+      // Completed jobs in last 30 days not invoiced
+      db.select({ id: jobsTable.id }).from(jobsTable)
+        .where(and(
+          eq(jobsTable.company_id, companyId),
+          eq(jobsTable.status, "complete"),
+          gte(jobsTable.scheduled_date, thirtyDaysAgoStr),
+          lte(jobsTable.scheduled_date, todayStr),
+        ))
+        .then(async (completedJobs) => {
+          if (completedJobs.length === 0) return 0;
+          const invoicedJobIds = await db.select({ job_id: invoicesTable.job_id }).from(invoicesTable)
+            .where(and(eq(invoicesTable.company_id, companyId), isNotNull(invoicesTable.job_id)));
+          const invoicedSet = new Set(invoicedJobIds.map(i => i.job_id));
+          return completedJobs.filter(j => !invoicedSet.has(j.id)).length;
+        }),
+
+      // Techs with jobs today but no clock-in entry today
+      db.execute(sql`
+        SELECT COUNT(DISTINCT j.assigned_user_id)::int AS tech_count
+        FROM jobs j
+        WHERE j.company_id = ${companyId}
+          AND j.scheduled_date = ${todayStr}
+          AND j.status != 'cancelled'
+          AND j.assigned_user_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM timeclock tc
+            WHERE tc.user_id = j.assigned_user_id
+              AND tc.company_id = ${companyId}
+              AND tc.clock_in_at >= ${todayStr}::date
+              AND tc.clock_in_at < ${tomorrowStr}::date
+          )
+      `),
+
+      // Jobs in next 7 days missing address_street
+      db.select({ count: count() }).from(jobsTable)
+        .where(and(
+          eq(jobsTable.company_id, companyId),
+          gte(jobsTable.scheduled_date, next7Start),
+          lte(jobsTable.scheduled_date, next7End),
+          sql`${jobsTable.status} != 'cancelled'`,
+          isNull(jobsTable.address_street),
+        )),
+
+      // Check if any invoice with id >= 6082 exists
+      db.execute(sql`
+        SELECT COUNT(*)::int AS cnt FROM invoices WHERE company_id = ${companyId} AND id >= 6082
+      `),
     ]);
 
-    const weekRevNum = parseFloat((jhWeekRev.rows[0] as any)?.total || "0");
-    const prevWeekRevNum = parseFloat((jhPrevWeekRev.rows[0] as any)?.total || "0");
+    type SqlRow = Record<string, unknown>;
+    function rowStr(row: SqlRow | undefined, key: string): string { return String(row?.[key] ?? "0"); }
+    function rowNum(row: SqlRow | undefined, key: string): number { return Number(row?.[key] ?? 0); }
+
+    const weekRevNum = parseFloat(rowStr(jhWeekRev.rows[0], 'total'));
+    const prevWeekRevNum = parseFloat(rowStr(jhPrevWeekRev.rows[0], 'total'));
     const weekDelta = prevWeekRevNum > 0 ? Math.round(((weekRevNum - prevWeekRevNum) / prevWeekRevNum) * 100) : null;
 
-    const monthRevNum = parseFloat((jhMonthRev.rows[0] as any)?.total || "0");
-    const lastMonthRevNum = parseFloat((jhLastMonthRev.rows[0] as any)?.total || "0");
+    const monthRevNum = parseFloat(rowStr(jhMonthRev.rows[0], 'total'));
+    const lastMonthRevNum = parseFloat(rowStr(jhLastMonthRev.rows[0], 'total'));
     const monthDelta = lastMonthRevNum > 0 ? Math.round(((monthRevNum - lastMonthRevNum) / lastMonthRevNum) * 100) : null;
 
-    const avgBill = parseFloat((jhAvgBill.rows[0] as any)?.avg_bill || "0");
-    const qualityScoreRaw = (avgScore as any).rows?.[0]?.avg_score;
-    const qualityScore = qualityScoreRaw != null ? Math.round(parseFloat(qualityScoreRaw)) : null;
-    const atRiskRaw = Number((atRiskResult.rows[0] as any)?.at_risk || 0);
+    const avgBill = parseFloat(rowStr(jhAvgBill.rows[0], 'avg_bill'));
+    const qualityScoreRaw = avgScore.rows[0]?.['avg_score'];
+    const qualityScore = qualityScoreRaw != null ? Math.round(parseFloat(String(qualityScoreRaw))) : null;
+    const atRiskRaw = rowNum(atRiskResult.rows[0], 'at_risk');
     const unassigned = Number(unassignedToday[0]?.count || 0);
     const flagged = Number(flaggedToday[0]?.count || 0);
     const overdue = Number(overdueInvoices[0]?.count || 0);
-    const notInvoiced = Number((completeNotInvoiced as any)[0]?.count || 0);
+    const notInvoiced = Number((completeNotInvoiced as Array<{ count: number }>)[0]?.count || 0);
     const clientsAtRisk = atRiskRaw;
 
-    // HCP values
-    const revBookedToday = parseFloat((hcpRevBookedToday[0] as any)?.total || "0");
-    const newJobsThisWeek = Number((hcpNewJobsThisWeek[0] as any)?.c || 0);
-    const quotesGivenToday = Number((hcpQuotesToday[0] as any)?.c || 0);
-    const bookedOnlineMonth = Number((hcpBookedOnlineMonth as any)[0]?.c || 0);
+    const next7RevNum = parseFloat(rowStr(next7Rev.rows[0], 'total'));
+    const next7CountNum = Number(next7Count[0]?.c || 0);
+    const recurringCountNum = Number(recurringCount[0]?.count || 0);
 
-    type ActionItem = { level: 'red' | 'amber' | 'blue'; text: string; action: string };
+    const arRow = outstandingAR.rows[0];
+    const arCount = rowNum(arRow, 'inv_count');
+    const arTotal = parseFloat(rowStr(arRow, 'total'));
+    const arOver30 = rowNum(arRow, 'over_30');
+
+    const notInvoiced30 = typeof completeNotInvoiced30 === 'number' ? completeNotInvoiced30 : 0;
+    const techsNoClockinNum = rowNum(techsNoClockin.rows[0], 'tech_count');
+    const jobsMissingAddrNum = Number(jobsMissingAddress[0]?.count || 0);
+    const hasInvoiceHighId = rowNum(invoiceHighId.rows[0], 'cnt') > 0;
+
+    // HCP values (hcpRevBookedToday uses sum() → string|null; hcpNew/Quotes/Booked use count() → number)
+    const revBookedToday = parseFloat(String(hcpRevBookedToday[0]?.total ?? "0"));
+    const newJobsThisWeek = Number(hcpNewJobsThisWeek[0]?.c || 0);
+    const quotesGivenToday = Number(hcpQuotesToday[0]?.c || 0);
+    const bookedOnlineMonth = Number(hcpBookedOnlineMonth[0]?.c || 0);
+
+    type ActionItem = { level: 'red' | 'amber' | 'blue'; title: string; text: string; action: string };
     const actions: ActionItem[] = [];
-    if (flagged > 0) actions.push({ level: 'red', text: `${flagged} flagged clock-in${flagged > 1 ? 's' : ''} need review`, action: '/employees/clocks' });
-    if (unassigned > 0) actions.push({ level: 'red', text: `${unassigned} job${unassigned > 1 ? 's' : ''} today ${unassigned > 1 ? 'are' : 'is'} unassigned`, action: '/jobs' });
-    if (overdue > 0) actions.push({ level: 'red', text: `${overdue} invoice${overdue > 1 ? 's' : ''} overdue — review immediately`, action: '/invoices' });
-    if (notInvoiced > 0) actions.push({ level: 'amber', text: `${notInvoiced} completed job${notInvoiced > 1 ? 's' : ''} this month not yet invoiced`, action: '/invoices' });
-    if (atRiskRaw > 0) actions.push({ level: 'amber', text: `${atRiskRaw} client${atRiskRaw > 1 ? 's' : ''} with no booking in 30+ days`, action: '/customers' });
+
+    // 1. Unassigned jobs today (red)
+    if (unassigned > 0) {
+      actions.push({
+        level: 'red',
+        title: 'Unassigned Jobs',
+        text: `${unassigned} job${unassigned > 1 ? 's' : ''} today ${unassigned > 1 ? 'are' : 'is'} unassigned`,
+        action: '/dispatch?status=unassigned',
+      });
+    }
+
+    // 2. Outstanding AR (red)
+    if (arCount > 0) {
+      const arTotalFmt = arTotal >= 1000 ? `$${(arTotal / 1000).toFixed(1)}k` : `$${arTotal.toFixed(0)}`;
+      actions.push({
+        level: 'red',
+        title: 'Outstanding AR',
+        text: `${arCount} invoice${arCount > 1 ? 's' : ''} outstanding — ${arTotalFmt} total${arOver30 > 0 ? `, ${arOver30} over 30 days` : ''}`,
+        action: '/invoices',
+      });
+    }
+
+    // 3. Completed jobs not invoiced in last 30 days (amber)
+    if (notInvoiced30 > 0) {
+      actions.push({
+        level: 'amber',
+        title: 'Not Invoiced',
+        text: `${notInvoiced30} completed job${notInvoiced30 > 1 ? 's' : ''} in last 30 days not yet invoiced`,
+        action: '/invoices',
+      });
+    }
+
+    // 4. Techs with jobs today but no clock-in (amber)
+    if (techsNoClockinNum > 0) {
+      actions.push({
+        level: 'amber',
+        title: 'Clocked In',
+        text: `${techsNoClockinNum} tech${techsNoClockinNum > 1 ? 's' : ''} with jobs today but no clock-in`,
+        action: '/clock-monitor',
+      });
+    }
+
+    // 5. Static: Tammy McArcle card on file issue (blue)
+    actions.push({
+      level: 'blue',
+      title: 'Card on File',
+      text: 'Tammy McArcle — Card on file issue in Square.',
+      action: '/clients',
+    });
+
+    // 6. Clients at risk (blue)
+    if (atRiskRaw > 0) {
+      actions.push({
+        level: 'blue',
+        title: 'Clients at Risk',
+        text: `${atRiskRaw} client${atRiskRaw > 1 ? 's' : ''} with no booking in 45+ days`,
+        action: '/clients?filter=at_risk',
+      });
+    }
+
+    // 7. Jobs missing address (amber)
+    if (jobsMissingAddrNum > 0) {
+      actions.push({
+        level: 'amber',
+        title: 'Missing Address',
+        text: `${jobsMissingAddrNum} job${jobsMissingAddrNum > 1 ? 's' : ''} in next 7 days missing street address`,
+        action: '/jobs',
+      });
+    }
+
+    // 8. Static invoice sequence note (blue, only if no invoices with id >= 6082)
+    if (!hasInvoiceHighId) {
+      actions.push({
+        level: 'blue',
+        title: 'Invoice Sequence',
+        text: 'Invoice numbering sequence may need to be updated to match prior records.',
+        action: '',
+      });
+    }
 
     return res.json({
       week_revenue: weekRevNum,
@@ -527,10 +738,13 @@ router.get("/kpis", requireAuth, async (req, res) => {
       month_delta: monthDelta,
       avg_bill: avgBill,
       active_clients: Number(activeClients[0]?.count || 0),
+      recurring_count: recurringCountNum,
       quality_score: qualityScore,
       clients_at_risk: clientsAtRisk,
       churn_configured: true,
-      action_items: actions.slice(0, 5),
+      next7_revenue: next7RevNum,
+      next7_jobs: next7CountNum,
+      action_items: actions.slice(0, 8),
       // HouseCall Pro KPI bar
       hcp: {
         rev_booked_today: revBookedToday,
@@ -549,30 +763,132 @@ router.get("/revenue-chart", requireAuth, async (req, res) => {
   try {
     const companyId = req.auth!.companyId!;
 
-    const rows = await db.execute(sql`
-      SELECT
-        TO_CHAR(DATE_TRUNC('month', scheduled_date), 'Mon ''YY') AS month,
-        DATE_TRUNC('month', scheduled_date) AS month_date,
-        COALESCE(SUM(billed_amount), 0)::numeric AS revenue,
-        COUNT(*)::int AS jobs
-      FROM jobs
-      WHERE company_id = ${companyId}
-        AND status = 'complete'
-        AND scheduled_date >= DATE_TRUNC('month', NOW()) - INTERVAL '11 months'
-        AND scheduled_date <= NOW()
-      GROUP BY DATE_TRUNC('month', scheduled_date)
-      ORDER BY month_date ASC
-    `);
+    // Build a fixed 12-month label set using month_date as key (YYYY-MM format)
+    // Current year: last 12 months; prior year: same months shifted -1 year
+    const [currentRows, priorRows] = await Promise.all([
+      db.execute(sql`
+        SELECT
+          TO_CHAR(DATE_TRUNC('month', scheduled_date), 'Mon ''YY') AS month,
+          TO_CHAR(DATE_TRUNC('month', scheduled_date), 'YYYY-MM') AS month_key,
+          DATE_TRUNC('month', scheduled_date) AS month_date,
+          COALESCE(SUM(billed_amount), 0)::numeric AS revenue,
+          COUNT(*)::int AS jobs
+        FROM jobs
+        WHERE company_id = ${companyId}
+          AND status = 'complete'
+          AND scheduled_date >= DATE_TRUNC('month', NOW()) - INTERVAL '11 months'
+          AND scheduled_date <= NOW()
+        GROUP BY DATE_TRUNC('month', scheduled_date)
+        ORDER BY month_date ASC
+      `),
+      // Prior year: query jobs from same 12-month window shifted back 1 year
+      // We key by month_date + 1 year so we can match it to the current month
+      db.execute(sql`
+        SELECT
+          TO_CHAR(DATE_TRUNC('month', scheduled_date) + INTERVAL '1 year', 'YYYY-MM') AS month_key,
+          COALESCE(SUM(billed_amount), 0)::numeric AS revenue,
+          COUNT(*)::int AS jobs
+        FROM jobs
+        WHERE company_id = ${companyId}
+          AND status = 'complete'
+          AND scheduled_date >= DATE_TRUNC('month', NOW()) - INTERVAL '23 months'
+          AND scheduled_date < DATE_TRUNC('month', NOW()) - INTERVAL '11 months'
+        GROUP BY DATE_TRUNC('month', scheduled_date)
+        ORDER BY month_key ASC
+      `),
+    ]);
+
+    const currentData = currentRows.rows.map((r) => ({
+      month: String(r['month'] ?? ''),
+      month_key: String(r['month_key'] ?? ''),
+      revenue: parseFloat(String(r['revenue'] ?? '0')),
+      jobs: Number(r['jobs'] ?? 0),
+    }));
+
+    // Build prior-year lookup by month_key (shifted +1 year to match current month)
+    const priorByKey: Record<string, number> = {};
+    priorRows.rows.forEach((r) => {
+      const key = String(r['month_key'] ?? '');
+      const rev = parseFloat(String(r['revenue'] ?? '0'));
+      if (key) priorByKey[key] = rev;
+    });
+
+    // Align prior year revenue to the same month labels using month_key
+    const priorYear = currentData.map((d) => ({
+      month: d.month,
+      revenue: priorByKey[d.month_key] ?? 0,
+    }));
+
+    // Strip month_key from the public response
+    const data = currentData.map(({ month_key: _mk, ...rest }) => rest);
 
     return res.json({
-      data: rows.rows.map((r: any) => ({
-        month: r.month,
-        revenue: parseFloat(r.revenue),
-        jobs: Number(r.jobs),
-      })),
+      data,
+      prior_year: priorYear,
     });
   } catch (err) {
     console.error("Revenue chart error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.get("/techs-today", requireAuth, async (req, res) => {
+  try {
+    const companyId = req.auth!.companyId!;
+    const now = new Date();
+    const todayStr = now.toISOString().split("T")[0];
+
+    const techs = await db
+      .select({
+        id: usersTable.id,
+        first_name: usersTable.first_name,
+        last_name: usersTable.last_name,
+        avatar_url: usersTable.avatar_url,
+      })
+      .from(usersTable)
+      .where(and(
+        eq(usersTable.company_id, companyId),
+        eq(usersTable.role, "technician"),
+        eq(usersTable.is_active, true),
+      ));
+
+    const jobCounts = await db
+      .select({
+        assigned_user_id: jobsTable.assigned_user_id,
+        job_count: count(),
+      })
+      .from(jobsTable)
+      .where(and(
+        eq(jobsTable.company_id, companyId),
+        eq(jobsTable.scheduled_date, todayStr),
+        sql`${jobsTable.status} != 'cancelled'`,
+        isNotNull(jobsTable.assigned_user_id),
+      ))
+      .groupBy(jobsTable.assigned_user_id);
+
+    const jobCountMap: Record<number, number> = {};
+    for (const row of jobCounts) {
+      if (row.assigned_user_id != null) {
+        jobCountMap[row.assigned_user_id] = Number(row.job_count);
+      }
+    }
+
+    const enriched = techs.map(t => ({
+      ...t,
+      job_count: jobCountMap[t.id] ?? 0,
+    })).sort((a, b) => {
+      if (b.job_count !== a.job_count) return b.job_count - a.job_count;
+      return `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`);
+    });
+
+    const totalJobsToday = enriched.reduce((s, t) => s + t.job_count, 0);
+
+    return res.json({
+      techs: enriched,
+      total_jobs_today: totalJobsToday,
+    });
+  } catch (err) {
+    console.error("Techs today error:", err);
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });
