@@ -663,6 +663,11 @@ export default function QuoteBuilderPage() {
     setQuickBookPrice(null);
     setAddressVerified(null);
     setAddressFormatted("");
+    setAddress("");
+    setZipCode("");
+    setZipZone(null);
+    setSuggestedTechs([]);
+    setUnitSuite("");
   }
 
   function applyReturningClient() {
@@ -1087,11 +1092,19 @@ export default function QuoteBuilderPage() {
 
                 {/* Zip zone banners */}
                 {checkingZip && <div style={{ fontSize: 12, color: "#9E9B94" }}>Checking service area...</div>}
-                {!checkingZip && zipZone && zipZone !== "uncovered" && (
-                  <div style={{ background: "#EAF3DE", border: "1px solid #639922", borderRadius: 6, padding: "8px 12px", fontSize: 12, fontWeight: 600, color: "#3B6D11" }}>
-                    Zone: {zipZone.name} — We service this area.
-                  </div>
-                )}
+                {!checkingZip && zipZone && zipZone !== "uncovered" && (() => {
+                  const c = zipZone.color || "#639922";
+                  const r = parseInt(c.slice(1, 3), 16);
+                  const g = parseInt(c.slice(3, 5), 16);
+                  const b = parseInt(c.slice(5, 7), 16);
+                  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+                  const textColor = lum > 0.55 ? "#2D2B28" : c;
+                  return (
+                    <div style={{ background: `rgba(${r},${g},${b},0.12)`, border: `1px solid ${c}`, borderRadius: 6, padding: "8px 12px", fontSize: 12, fontWeight: 600, color: textColor }}>
+                      Zone: {zipZone.name} — We service this area.
+                    </div>
+                  );
+                })()}
                 {!checkingZip && zipZone === "uncovered" && zipCode.trim().length === 5 && (
                   <div>
                     <div style={{ background: "#FCEBEB", border: "1px solid #A32D2D", borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#791F1F" }}>
