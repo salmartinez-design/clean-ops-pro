@@ -105,7 +105,8 @@ export default function QuoteBuilderPage() {
   // ── Section 0: Customer Info ─────────────────────────────────────────────
   const [clientOpen, setClientOpen] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
-  const [leadName, setLeadName] = useState("");
+  const [leadFirstName, setLeadFirstName] = useState("");
+  const [leadLastName, setLeadLastName] = useState("");
   const [leadEmail, setLeadEmail] = useState("");
   const [leadPhone, setLeadPhone] = useState("");
   const [address, setAddress] = useState("");
@@ -195,7 +196,9 @@ export default function QuoteBuilderPage() {
   useEffect(() => {
     if (!existingQuote) return;
     setSelectedClientId(existingQuote.client_id || null);
-    setLeadName(existingQuote.lead_name || "");
+    const nameParts = (existingQuote.lead_name || "").split(" ");
+    setLeadFirstName(nameParts[0] || "");
+    setLeadLastName(nameParts.slice(1).join(" ") || "");
     setLeadEmail(existingQuote.lead_email || "");
     setLeadPhone(existingQuote.lead_phone || "");
     setAddress(existingQuote.address || "");
@@ -345,7 +348,7 @@ export default function QuoteBuilderPage() {
 
   // ── Section completion ────────────────────────────────────────────────────
   const sectionComplete = [
-    Boolean(selectedClientId || leadName || leadEmail),
+    Boolean(selectedClientId || leadFirstName || leadEmail),
     Boolean(sqft > 0),
     selectedScopes.length > 0,
     true,
@@ -369,7 +372,7 @@ export default function QuoteBuilderPage() {
       }));
     return {
       client_id: selectedClientId || null,
-      lead_name: client ? `${client.first_name} ${client.last_name}`.trim() : leadName || null,
+      lead_name: client ? `${client.first_name} ${client.last_name}`.trim() : `${leadFirstName} ${leadLastName}`.trim() || null,
       lead_email: client?.email || leadEmail || null,
       lead_phone: client?.phone || leadPhone || null,
       address: address || client?.address || null,
@@ -737,9 +740,13 @@ export default function QuoteBuilderPage() {
                 {/* Lead fields */}
                 {!selectedClientId && (
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="col-span-2">
-                      <Label className="text-xs">Lead Name</Label>
-                      <Input value={leadName} onChange={e => setLeadName(e.target.value)} placeholder="Jane Doe" className="mt-1" />
+                    <div>
+                      <Label className="text-xs">First Name</Label>
+                      <Input value={leadFirstName} onChange={e => setLeadFirstName(e.target.value)} placeholder="Jane" className="mt-1" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Last Name</Label>
+                      <Input value={leadLastName} onChange={e => setLeadLastName(e.target.value)} placeholder="Doe" className="mt-1" />
                     </div>
                     <div>
                       <Label className="text-xs">Email</Label>
