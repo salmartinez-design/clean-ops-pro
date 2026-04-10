@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useState, useCallback, useRef, FormEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppSidebar } from "./app-sidebar";
 import { useAuthStore } from "@/lib/auth";
 import { useLocation, Link } from "wouter";
@@ -15,7 +16,8 @@ import {
   UserCheck, FileText, DollarSign, BarChart2, TrendingUp,
   BookOpen, Star, Settings, Clock,
   MoreHorizontal, Search, MessageSquare, X, ChevronRight,
-  ChevronDown, Eye, LogOut, CircleHelp, Lock, KeyRound,
+  ChevronDown, Eye, LogOut, CircleHelp, Lock, KeyRound, Bell,
+  CalendarX2, UserMinus, AlertTriangle,
 } from "lucide-react";
 import { useEmployeeView } from "@/contexts/employee-view-context";
 
@@ -60,6 +62,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/reports/first-time':           'First Time In',
   '/company/zones':                'Service Zones',
   '/company/rates':                'Rates & Add-ons',
+  '/notifications':                'Notifications',
 };
 
 const BOTTOM_TABS_MANAGER = [
@@ -412,7 +415,10 @@ export function DashboardLayout({ children, title, fullBleed, onNewJob }: Dashbo
   const [moreOpen, setMoreOpen] = useState(false);
   const [userDropOpen, setUserDropOpen] = useState(false);
   const [changePwOpen, setChangePwOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
   const userDropRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (!userDropOpen) return;
@@ -424,6 +430,15 @@ export function DashboardLayout({ children, title, fullBleed, onNewJob }: Dashbo
   }, [userDropOpen]);
 
   useEffect(() => {
+    if (!notifOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [notifOpen]);
+
+  useEffect(() => {
     if (!token) setLocation("/login");
   }, [token, setLocation]);
 
@@ -431,6 +446,39 @@ export function DashboardLayout({ children, title, fullBleed, onNewJob }: Dashbo
     request: { headers: getAuthHeaders() },
     query: { enabled: !!token, retry: false },
   });
+
+  const isManager = user?.role === 'owner' || user?.role === 'office';
+
+  const { data: notifData } = useQuery({
+    queryKey: ['notifications-inbox'],
+    queryFn: async () => {
+      const r = await fetch(`${API}/api/notifications/inbox?limit=20`, { headers: getAuthHeaders() as any });
+      if (!r.ok) return { data: [], unread_count: 0 };
+      return r.json();
+    },
+    enabled: !!token && isManager,
+    refetchInterval: 30_000,
+    staleTime: 20_000,
+  });
+
+  const notifItems: any[] = notifData?.data || [];
+  const notifUnread: number = notifData?.unread_count || 0;
+
+  const markNotifRead = async (id: string, link?: string) => {
+    try {
+      await fetch(`${API}/api/notifications/inbox/${id}/read`, { method: 'PATCH', headers: getAuthHeaders() as any });
+      queryClient.invalidateQueries({ queryKey: ['notifications-inbox'] });
+    } catch (_) {}
+    if (link) setLocation(link);
+    setNotifOpen(false);
+  };
+
+  const markAllNotifRead = async () => {
+    try {
+      await fetch(`${API}/api/notifications/inbox/read-all`, { method: 'PATCH', headers: getAuthHeaders() as any });
+      queryClient.invalidateQueries({ queryKey: ['notifications-inbox'] });
+    } catch (_) {}
+  };
 
   useTenantBrand();
   const unreadCount = useUnreadCount(user?.id);
@@ -640,6 +688,80 @@ export function DashboardLayout({ children, title, fullBleed, onNewJob }: Dashbo
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9E9B94', padding: 6, borderRadius: 8, display: 'flex', alignItems: 'center' }}>
               <CircleHelp size={18} />
             </button>
+
+            {isManager && (
+              <div ref={notifRef} style={{ position: 'relative' }}>
+                <button
+                  onClick={() => setNotifOpen(p => !p)}
+                  title="Notifications"
+                  style={{ background: notifOpen ? 'var(--brand-dim)' : 'none', border: 'none', cursor: 'pointer', color: notifOpen ? 'var(--brand)' : '#6B7280', padding: 6, borderRadius: 8, display: 'flex', alignItems: 'center', position: 'relative' } as any}
+                >
+                  <Bell size={20} />
+                  {notifUnread > 0 && (
+                    <span style={{ position: 'absolute', top: 2, right: 2, minWidth: 9, height: 9, borderRadius: 5, background: '#EF4444', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: '#fff', fontWeight: 700, padding: '0 2px' }}>
+                      {notifUnread > 9 ? '9+' : notifUnread}
+                    </span>
+                  )}
+                </button>
+
+                {notifOpen && (
+                  <div style={{
+                    position: 'absolute', top: '100%', right: 0, marginTop: 6,
+                    background: '#fff', borderRadius: 12, border: '1px solid #E5E2DC',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.12)', width: 380, zIndex: 200,
+                    display: 'flex', flexDirection: 'column', overflow: 'hidden',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px 10px', borderBottom: '1px solid #F0EDEA' }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: '#1A1917', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                        Notifications {notifUnread > 0 && <span style={{ fontSize: 11, color: '#EF4444', marginLeft: 4 }}>({notifUnread} unread)</span>}
+                      </span>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        {notifUnread > 0 && (
+                          <button onClick={markAllNotifRead} style={{ fontSize: 11, color: 'var(--brand)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600 }}>
+                            Mark all read
+                          </button>
+                        )}
+                        <button onClick={() => { setNotifOpen(false); setLocation('/notifications'); }} style={{ fontSize: 11, color: '#9E9B94', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                          View all
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+                      {notifItems.length === 0 ? (
+                        <div style={{ padding: '32px 16px', textAlign: 'center', color: '#9E9B94', fontSize: 13, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                          No notifications yet
+                        </div>
+                      ) : notifItems.map((n: any) => {
+                        const icon = n.type === 'new_booking' ? <Bell size={14} style={{ color: '#2563EB' }} /> : n.type === 'late_clockin' ? <AlertTriangle size={14} style={{ color: '#F59E0B' }} /> : <UserMinus size={14} style={{ color: '#DC2626' }} />;
+                        return (
+                          <button
+                            key={n.id}
+                            onClick={() => markNotifRead(n.id, n.link)}
+                            style={{
+                              display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 16px',
+                              background: n.read ? '#fff' : '#F0F4FF',
+                              border: 'none', borderBottom: '1px solid #F7F6F3', cursor: 'pointer', width: '100%', textAlign: 'left',
+                            }}
+                          >
+                            <span style={{ marginTop: 2, flexShrink: 0, width: 28, height: 28, borderRadius: 7, background: n.read ? '#F3F4F6' : 'var(--brand-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              {icon}
+                            </span>
+                            <span style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ display: 'block', fontSize: 12, fontWeight: n.read ? 500 : 700, color: '#1A1917', fontFamily: "'Plus Jakarta Sans', sans-serif", lineHeight: 1.3 }}>{n.title}</span>
+                              {n.body && <span style={{ display: 'block', fontSize: 11, color: '#6B7280', marginTop: 2, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.body}</span>}
+                              <span style={{ display: 'block', fontSize: 10, color: '#C0BDB8', marginTop: 3 }}>
+                                {new Date(n.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </span>
+                            {!n.read && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#2563EB', flexShrink: 0, marginTop: 4 }} />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {user && (
               <>

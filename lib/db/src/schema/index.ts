@@ -67,3 +67,4 @@ export * from "./employee_payroll_history";
 export * from "./addon_bundles";
 export * from "./rate_locks";
 export * from "./offer_settings";
+export * from "./notifications";

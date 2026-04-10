@@ -249,6 +249,55 @@ export async function runRecurringJobGeneration() {
       console.error(`[recurring-jobs] company ${company.id} failed:`, err);
     }
   }
+
+  // ── job_unassigned alerts: jobs within 48h with no assigned technician ────
+  try {
+    const now = new Date();
+    const in48h = new Date(now.getTime() + 48 * 3600 * 1000);
+    const today = now.toISOString().slice(0, 10);
+    const future = in48h.toISOString().slice(0, 10);
+
+    const unassigned = await db.execute(
+      sql`SELECT j.id, j.company_id, j.scheduled_date, c.first_name, c.last_name
+          FROM jobs j
+          LEFT JOIN clients c ON c.id = j.client_id
+          WHERE j.scheduled_date BETWEEN ${today} AND ${future}
+            AND j.status = 'scheduled'
+            AND j.company_id IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM job_technicians jt WHERE jt.job_id = j.id
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM notifications n
+              WHERE n.company_id = j.company_id
+                AND n.type = 'job_unassigned'
+                AND (n.meta->>'job_id')::int = j.id
+                AND n.read = false
+                AND n.created_at > now() - interval '24 hours'
+            )`
+    );
+
+    for (const row of unassigned.rows as any[]) {
+      try {
+        const clientName = row.first_name ? `${row.first_name} ${row.last_name}` : "Unknown Client";
+        const title = `Unassigned Job — ${clientName}`;
+        const body = `Job #${row.id} (${row.scheduled_date}) has no assigned technician and is coming up within 48 hours.`;
+        await db.execute(
+          sql`INSERT INTO notifications (company_id, type, title, body, link, meta)
+              VALUES (${Number(row.company_id)}, 'job_unassigned', ${title}, ${body}, ${'/dispatch'}, ${JSON.stringify({ job_id: row.id, client_name: clientName })}::jsonb)`
+        );
+      } catch (e) {
+        console.error(`[job_unassigned] failed for job ${row.id}:`, e);
+      }
+    }
+
+    if (unassigned.rows.length > 0) {
+      console.log(`[recurring-jobs] Inserted ${unassigned.rows.length} job_unassigned notifications`);
+    }
+  } catch (err) {
+    console.error("[job_unassigned] cron check failed:", err);
+  }
+
   return total;
 }
 

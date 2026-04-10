@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { notificationTemplatesTable, notificationLogTable } from "@workspace/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { notificationTemplatesTable, notificationLogTable, inAppNotificationsTable } from "@workspace/db/schema";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
 
 const router = Router();
@@ -125,6 +125,74 @@ router.get("/log", requireAuth, requireRole("owner", "admin"), async (req, res) 
     return res.json({ data: logs });
   } catch (err) {
     console.error("Notification log error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ── In-app notification center ──────────────────────────────────────────────
+
+router.get("/inbox", requireAuth, requireRole("owner", "office"), async (req, res) => {
+  try {
+    const companyId = req.auth!.companyId!;
+    const limit = Math.min(parseInt((req.query.limit as string) || "50"), 100);
+    const unreadOnly = req.query.unread === "true";
+
+    const conditions = [eq(inAppNotificationsTable.company_id, companyId)];
+    if (unreadOnly) conditions.push(eq(inAppNotificationsTable.read, false));
+
+    const rows = await db
+      .select()
+      .from(inAppNotificationsTable)
+      .where(and(...conditions))
+      .orderBy(desc(inAppNotificationsTable.created_at))
+      .limit(limit);
+
+    const [countRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(inAppNotificationsTable)
+      .where(and(
+        eq(inAppNotificationsTable.company_id, companyId),
+        eq(inAppNotificationsTable.read, false),
+      ));
+
+    return res.json({ data: rows, unread_count: countRow?.count ?? 0 });
+  } catch (err) {
+    console.error("Inbox fetch error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.patch("/inbox/read-all", requireAuth, requireRole("owner", "office"), async (req, res) => {
+  try {
+    const companyId = req.auth!.companyId!;
+    await db
+      .update(inAppNotificationsTable)
+      .set({ read: true })
+      .where(and(
+        eq(inAppNotificationsTable.company_id, companyId),
+        eq(inAppNotificationsTable.read, false),
+      ));
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("Read-all error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.patch("/inbox/:id/read", requireAuth, requireRole("owner", "office"), async (req, res) => {
+  try {
+    const companyId = req.auth!.companyId!;
+    const id = req.params.id;
+    await db
+      .update(inAppNotificationsTable)
+      .set({ read: true })
+      .where(and(
+        eq(inAppNotificationsTable.id, id),
+        eq(inAppNotificationsTable.company_id, companyId),
+      ));
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("Mark-read error:", err);
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });

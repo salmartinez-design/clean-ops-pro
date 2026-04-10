@@ -76,6 +76,7 @@ const AdminDashboard      = lazy(() => import("@/pages/admin/index"));
 const AdminCompanies      = lazy(() => import("@/pages/admin/companies"));
 const AdminBilling        = lazy(() => import("@/pages/admin/billing"));
 const AdminCleancyclopedia= lazy(() => import("@/pages/admin/cleancyclopedia"));
+const NotificationsPage   = lazy(() => import("@/pages/notifications"));
 const NotFound            = lazy(() => import("@/pages/not-found"));
 
 const queryClient = new QueryClient({
@@ -169,6 +170,8 @@ function Router() {
         <Route path="/sign/:token" component={SignPage} />
         <Route path="/onboard/:token" component={OnboardPage} />
         <Route path="/sign-doc/:token" component={SignDocPage} />
+
+        <Route path="/notifications" component={NotificationsPage} />
 
         <Route path="/admin" component={AdminDashboard} />
         <Route path="/admin/companies" component={AdminCompanies} />

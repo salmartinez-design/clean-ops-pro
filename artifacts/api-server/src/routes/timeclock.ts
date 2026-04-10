@@ -260,6 +260,31 @@ router.post("/clock-in", requireAuth, async (req, res) => {
       result: attemptResult,
     });
 
+    // ── Late clock-in notification ───────────────────────────────────────────
+    try {
+      const scheduledDate = jobRow.scheduled_date ? String(jobRow.scheduled_date).slice(0, 10) : null;
+      if (scheduledDate) {
+        const arrivalWindow = (jobRow as any).arrival_window || "morning";
+        const startHour = arrivalWindow === "afternoon" ? 13 : 8;
+        const scheduledStart = new Date(`${scheduledDate}T${String(startHour).padStart(2, '0')}:00:00-06:00`);
+        const lateThreshold = new Date(scheduledStart.getTime() + 20 * 60 * 1000);
+        if (new Date() > lateThreshold) {
+          const techRow = await db.select({ first_name: usersTable.first_name, last_name: usersTable.last_name })
+            .from(usersTable).where(eq(usersTable.id, req.auth!.userId)).limit(1);
+          const techName = techRow[0] ? `${techRow[0].first_name} ${techRow[0].last_name}` : "A technician";
+          const clientName = job[0].clients ? `${(job[0].clients as any).first_name} ${(job[0].clients as any).last_name}` : "a client";
+          const notifTitle = `Late Clock-In — ${techName}`;
+          const notifBody = `${techName} clocked in late for ${clientName}'s job (scheduled ${arrivalWindow}).`;
+          await db.execute(
+            sql`INSERT INTO notifications (company_id, type, title, body, link, meta)
+              VALUES (${req.auth!.companyId}, 'late_clockin', ${notifTitle}, ${notifBody}, ${`/dispatch`}, ${JSON.stringify({ job_id, user_id: req.auth!.userId, tech_name: techName })}::jsonb)`
+          );
+        }
+      }
+    } catch (notifErr) {
+      console.error("[late_clockin notify] failed:", notifErr);
+    }
+
     return res.json({
       ...entry,
       distance_from_job_ft: distanceFt,

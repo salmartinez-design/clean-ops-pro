@@ -97,6 +97,18 @@ Qleno is a multi-tenant SaaS platform designed for residential and commercial cl
 - Customer profile has 5 tabs: client, property, jobs, admin, profitability (profitability visible to owner/office only via getTokenRole() check)
 - ProfitabilityTab component: KPI strip, period filters, revenue trend line chart (recharts LineChart), breakdown with horizontal bars, SVG health gauge, top services, rate-increase warning banner
 
+**Notification Center (completed April 2026):**
+- DB table: `notifications` (uuid PK, company_id, type varchar, title, body, link, meta jsonb, read boolean, created_at); index on (company_id, read, created_at DESC)
+- Drizzle schema: `lib/db/src/schema/notifications.ts` → `inAppNotificationsTable`
+- API routes (all owner/office only): `GET /api/notifications/inbox?limit=50&unread=true` → {data, unread_count}, `PATCH /api/notifications/inbox/read-all`, `PATCH /api/notifications/inbox/:id/read`
+- 3 auto-generated alert types:
+  - `new_booking`: triggered in public.ts after job INSERT (POST /api/public/book/confirm)
+  - `late_clockin`: triggered in timeclock.ts clock-in handler if now > scheduled_date start + 20 min
+  - `job_unassigned`: triggered in recurring-jobs.ts runRecurringJobGeneration() — jobs within 48h with no job_technicians entry
+- Frontend: Bell icon in DashboardLayout desktop nav (hidden from technicians), red badge with unread count (max "9+"), 380px dropdown panel (polling every 30s), click navigates + marks read, "Mark all read" button
+- `/notifications` full page: All/Unread tabs, 50-item list, mark-all-read, same row format as dropdown
+- Migration guard added to phes-data-migration.ts
+
 **Core Functionality & Feature Specifications:**
 - **Comprehensive Management:** KPI dashboard, dispatch board, employee, customer, and account management.
 - **Financial Tools:** Invoice generation, payroll processing, and quote management.

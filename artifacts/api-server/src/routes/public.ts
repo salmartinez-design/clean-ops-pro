@@ -744,6 +744,17 @@ router.post("/book/confirm", rateLimit, async (req, res) => {
     );
     const jobId = (jobResult.rows[0] as any).id;
 
+    // ── In-app notification: new booking ────────────────────────────────────
+    try {
+      const notifBody = `${first_name} ${last_name} booked a ${scopeName} for ${preferred_date || "an upcoming date"} — $${adjustedTotal.toFixed(2)}`;
+      await db.execute(
+        drizzleSql`INSERT INTO notifications (company_id, type, title, body, link, meta)
+          VALUES (${Number(company_id)}, 'new_booking', ${'New Booking — ' + first_name + ' ' + last_name}, ${notifBody}, ${'/customers'}, ${JSON.stringify({ job_id: jobId, client_name: `${first_name} ${last_name}` })}::jsonb)`
+      );
+    } catch (notifErr) {
+      console.error("[new_booking notify] failed:", notifErr);
+    }
+
     // ── Upsell accepted: create Job 2 (recurring start) + recurring_schedule + rate_lock ───
     let recurringJobId: number | null = null;
     if (upsellAcceptedVal && upsellCadenceVal && upsell_locked_rate) {
