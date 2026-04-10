@@ -406,14 +406,15 @@ export async function runCalculate(params: {
       `);
       const bundles = (bundleResult as any).rows ?? [];
       for (const bundle of bundles) {
-        const required: number[] = (bundle.required_ids ?? []).map((x: any) => parseInt(String(x)));
+        const rawRequired: number[] = (bundle.required_ids ?? []).map((x: any) => parseInt(String(x))).filter((n: number) => !isNaN(n));
+        const required: number[] = [...new Set(rawRequired)];
         const matched = required.filter(rid => validIds.includes(rid));
-        if (matched.length === required.length && matched.length > 0) {
+        if (required.length > 0 && matched.length === required.length) {
           const dv = parseFloat(String(bundle.discount_value));
           let disc = 0;
           if (bundle.discount_type === "flat_per_item") {
             disc = dv * matched.length;
-          } else if (bundle.discount_type === "flat") {
+          } else if (bundle.discount_type === "flat" || bundle.discount_type === "flat_total") {
             disc = dv;
           } else if (bundle.discount_type === "percentage") {
             disc = (dv / 100) * base_price;

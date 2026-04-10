@@ -104,6 +104,8 @@ interface CalcResult {
   minimum_bill: number;
   addons_total: number;
   addon_breakdown: Array<{ id: number; name: string; amount: number; price_type?: string }>;
+  bundle_discount: number;
+  bundle_breakdown: Array<{ name: string; discount: number }>;
   subtotal: number;
   discount_amount: number;
   discount_valid?: boolean;
@@ -1440,7 +1442,14 @@ export default function QuoteBuilderPage() {
                     </div>
                   ))}
 
-                  {calcResult.addons_total > 0 && (
+                  {calcResult.bundle_discount > 0 && calcResult.bundle_breakdown.map((b, i) => (
+                    <div key={i} className="flex justify-between text-green-600">
+                      <span>{b.name} Discount</span>
+                      <span>-${b.discount.toFixed(2)}</span>
+                    </div>
+                  ))}
+
+                  {calcResult.addons_total > 0 && calcResult.bundle_discount === 0 && (
                     <div className="flex justify-between text-[#6B7280]">
                       <span>Add-ons Total</span>
                       <span className="text-[#1A1917]">+${calcResult.addons_total.toFixed(2)}</span>

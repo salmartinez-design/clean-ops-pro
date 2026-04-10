@@ -1278,9 +1278,9 @@ export default function BookPage() {
       {calcResult.addon_breakdown.filter(a => a.amount !== 0).map(a => (
         <Row key={a.id} label={a.name.split(" — ")[0].split(" (")[0].trim()} value={`+$${Math.abs(a.amount).toFixed(2)}`} />
       ))}
-      {calcResult.bundle_discount > 0 && (
-        <Row label="Appliance Bundle Discount" value={`-$${calcResult.bundle_discount.toFixed(2)}`} green />
-      )}
+      {calcResult.bundle_discount > 0 && calcResult.bundle_breakdown.map((b, i) => (
+        <Row key={i} label={`${b.name} Discount`} value={`-$${b.discount.toFixed(2)}`} green />
+      ))}
       {calcResult.discount_amount > 0 && (
         <Row label="Discount code applied" value={`-$${calcResult.discount_amount.toFixed(2)}`} green />
       )}

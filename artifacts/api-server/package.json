@@ -7,7 +7,8 @@
     "dev": "NODE_ENV=development tsx ./src/index.ts",
     "build": "tsx ./build.ts",
     "start": "node dist/index.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:bundle": "tsx --test src/tests/bundle-discount.test.ts"
   },
   "dependencies": {
     "@types/multer": "^2.1.0",
@@ -28,6 +29,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@types/bcryptjs": "^3.0.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
@@ -35,6 +37,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "catalog:",
     "esbuild": "^0.27.3",
+    "playwright": "^1.59.1",
     "tsx": "catalog:"
   }
 }
