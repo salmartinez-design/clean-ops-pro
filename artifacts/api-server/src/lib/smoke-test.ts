@@ -24,7 +24,18 @@ async function getPhesCompanyId(): Promise<number> {
   return r.rows[0]?.id ?? 1;
 }
 
-export async function runSmokeTests(): Promise<{ passed: number; failed: number; total: number }> {
+export interface SmokeTestResult {
+  passed: number;
+  failed: number;
+  total: number;
+  duration_ms: number;
+  results: Array<{ name: string; status: string; error?: string; ms: number }>;
+}
+
+export async function runSmokeTests(manual = false): Promise<SmokeTestResult> {
+  if (manual) {
+    console.log(`[SMOKE] Manual run triggered at ${new Date().toISOString()}`);
+  }
   await ensureSmokeTestTable();
 
   const PHES_ID = await getPhesCompanyId();
@@ -107,8 +118,9 @@ export async function runSmokeTests(): Promise<{ passed: number; failed: number;
           `SELECT name, color FROM service_zones WHERE company_id = $1 AND $2 = ANY(zip_codes)`,
           [PHES_ID, "60453"]
         );
+        console.log(`[SMOKE ZONE] zip 60453 result:`, r.rows);
         if (r.rows.length === 0) throw new Error("No zone found for 60453");
-        if (!r.rows[0].color) throw new Error("Zone for 60453 has no color");
+        if (!r.rows[0].color) throw new Error(`Zone for 60453 has no color (name: ${r.rows[0].name})`);
       },
     },
     {
@@ -118,9 +130,10 @@ export async function runSmokeTests(): Promise<{ passed: number; failed: number;
           `SELECT name, color FROM service_zones WHERE company_id = $1 AND $2 = ANY(zip_codes)`,
           [PHES_ID, "60464"]
         );
+        console.log(`[SMOKE ZONE] zip 60464 result:`, r.rows);
         if (r.rows.length === 0) throw new Error("No zone found for 60464");
         if (r.rows[0].color?.toLowerCase() !== "#ffd700") {
-          throw new Error(`Wrong color for 60464: ${r.rows[0].color}`);
+          throw new Error(`Wrong color for 60464: ${r.rows[0].color} (zone: ${r.rows[0].name})`);
         }
       },
     },
@@ -223,5 +236,9 @@ export async function runSmokeTests(): Promise<{ passed: number; failed: number;
     console.error("[SMOKE] Failed to persist results to DB:", err.message);
   }
 
-  return { passed, failed, total: smokeTests.length };
+  const flatResults = results.map((r) =>
+    r.status === "fulfilled" ? r.value : { name: "unknown", status: "error", error: (r as any).reason?.message, ms: 0 }
+  );
+
+  return { passed, failed, total: smokeTests.length, duration_ms: duration, results: flatResults };
 }

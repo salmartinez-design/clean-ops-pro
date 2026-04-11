@@ -390,11 +390,39 @@ router.get("/smoke-tests", ...isSuperAdmin, async (_req, res) => {
 
 router.post("/smoke-tests/run", ...isSuperAdmin, async (_req, res) => {
   try {
-    const result = await runSmokeTests();
+    const result = await runSmokeTests(true);
     return res.json(result);
   } catch (err: any) {
     console.error("[admin] smoke-tests/run error:", err);
     return res.status(500).json({ error: "Internal Server Error", message: err.message });
+  }
+});
+
+/* ── AUDIT LOG HEALTH CHECK ──────────────────────────────────────── */
+router.post("/audit-test", ...isSuperAdmin, async (req, res) => {
+  try {
+    const { logAudit } = await import("../lib/audit.js");
+    await logAudit(req, "SMOKE_TEST", "system", "0", null, { test: true, timestamp: new Date().toISOString() });
+
+    const verify = await pool.query(
+      `SELECT id, company_id, performed_by, action, target_type, performed_at
+       FROM app_audit_log
+       WHERE action = 'SMOKE_TEST'
+       ORDER BY performed_at DESC LIMIT 1`
+    );
+
+    if (!verify.rows[0]) {
+      return res.json({ written: false, audit_logging_healthy: false, error: "Row not found after insert" });
+    }
+
+    return res.json({
+      written: true,
+      row: verify.rows[0],
+      audit_logging_healthy: true,
+    });
+  } catch (err: any) {
+    console.error("[admin] audit-test error:", err);
+    return res.status(500).json({ audit_logging_healthy: false, error: err.message });
   }
 });
 

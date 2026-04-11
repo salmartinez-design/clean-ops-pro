@@ -141,6 +141,8 @@ function SmokeTestWidget() {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [auditTesting, setAuditTesting] = useState(false);
+  const [auditResult, setAuditResult] = useState<{ healthy: boolean; msg: string } | null>(null);
 
   const fetchRuns = useCallback(() => {
     setLoading(true);
@@ -162,6 +164,25 @@ function SmokeTestWidget() {
     }
   };
 
+  const triggerAuditTest = async () => {
+    setAuditTesting(true);
+    setAuditResult(null);
+    try {
+      const r = await fetch("/api/admin/audit-test", { method: "POST", headers: getAuthHeaders() });
+      const d = await r.json();
+      if (d.audit_logging_healthy) {
+        const ts = d.row?.performed_at ? new Date(d.row.performed_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" }) : new Date().toLocaleTimeString();
+        setAuditResult({ healthy: true, msg: `Audit log write confirmed — ${ts}` });
+      } else {
+        setAuditResult({ healthy: false, msg: d.error || "Audit logging unhealthy" });
+      }
+    } catch {
+      setAuditResult({ healthy: false, msg: "Request failed" });
+    } finally {
+      setAuditTesting(false);
+    }
+  };
+
   const latest = runs[0];
   const allPassed = latest && latest.failed === 0;
   const fmt = (iso: string) => {
@@ -178,7 +199,7 @@ function SmokeTestWidget() {
       borderRadius: "10px",
       overflow: "hidden",
     }}>
-      <div style={{ padding: "16px 20px", borderBottom: "1px solid #F0EEE9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ padding: "16px 20px", borderBottom: "1px solid #F0EEE9", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
         <div>
           <p style={{ fontSize: "14px", fontWeight: 700, color: "#1A1917", margin: 0 }}>Last Deploy Health Check</p>
           {loading ? (
@@ -190,23 +211,40 @@ function SmokeTestWidget() {
           ) : (
             <p style={{ fontSize: "12px", color: "#9E9B94", margin: "2px 0 0" }}>No runs yet</p>
           )}
+          {auditResult && (
+            <p style={{ fontSize: "12px", color: auditResult.healthy ? "#16A34A" : "#DC2626", margin: "4px 0 0", fontWeight: 500 }}>
+              {auditResult.healthy ? "✓" : "✗"} {auditResult.msg}
+            </p>
+          )}
         </div>
-        <button
-          onClick={triggerRun}
-          disabled={running}
-          style={{ padding: "7px 14px", backgroundColor: running ? "#F3F4F6" : "#1A1917", color: running ? "#9E9B94" : "#FFFFFF", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: running ? "default" : "pointer" }}
-        >
-          {running ? "Running…" : "Run now"}
-        </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <button
+            onClick={triggerAuditTest}
+            disabled={auditTesting}
+            style={{ padding: "7px 14px", backgroundColor: "transparent", color: auditTesting ? "#9E9B94" : "#374151", border: "1px solid #D1D5DB", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: auditTesting ? "default" : "pointer" }}
+          >
+            {auditTesting ? "Testing…" : "Test audit logging"}
+          </button>
+          <button
+            onClick={triggerRun}
+            disabled={running}
+            style={{ padding: "7px 14px", backgroundColor: running ? "#F3F4F6" : "#1A1917", color: running ? "#9E9B94" : "#FFFFFF", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: running ? "default" : "pointer" }}
+          >
+            {running ? "Running…" : "Run now"}
+          </button>
+        </div>
       </div>
 
       {latest && !allPassed && (
         <div style={{ padding: "10px 20px", backgroundColor: "#FEF2F2", borderBottom: "1px solid #FECACA" }}>
           <p style={{ fontSize: 12, color: "#DC2626", margin: 0, fontWeight: 600 }}>Failed tests:</p>
           {(latest.results || []).filter(r => r.status === "fail").map(r => (
-            <p key={r.name} style={{ fontSize: 12, color: "#DC2626", margin: "2px 0 0" }}>
-              ✗ {r.name}{r.error ? ` — ${r.error}` : ""}
-            </p>
+            <div key={r.name} style={{ margin: "4px 0 0" }}>
+              <p style={{ fontSize: 12, color: "#DC2626", margin: 0 }}>✗ {r.name}</p>
+              {r.error && (
+                <p style={{ fontSize: 11, color: "#A32D2D", margin: "1px 0 0 12px" }}>→ {r.error}</p>
+              )}
+            </div>
           ))}
         </div>
       )}
