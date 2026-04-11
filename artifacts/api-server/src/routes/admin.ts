@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
+import { db, pool } from "@workspace/db";
 import {
   usersTable,
   companiesTable,
@@ -8,6 +8,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, sql, and, inArray, gte, desc } from "drizzle-orm";
 import { requireAuth, requireRole, signToken } from "../lib/auth.js";
+import { runSmokeTests } from "../lib/smoke-test.js";
 import type { Request, Response, NextFunction } from "express";
 
 const router = Router();
@@ -366,6 +367,34 @@ router.delete("/articles/:id", ...isSuperAdmin, async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+/* ── SMOKE TEST RESULTS ──────────────────────────────────────────── */
+router.get("/smoke-tests", ...isSuperAdmin, async (_req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT id, run_at, environment, total_tests, passed, failed, results, duration_ms
+      FROM smoke_test_results
+      ORDER BY run_at DESC
+      LIMIT 5
+    `);
+    return res.json({ runs: r.rows });
+  } catch (err: any) {
+    // Table may not exist yet (first deploy)
+    if (err.code === "42P01") return res.json({ runs: [] });
+    console.error("[admin] smoke-tests fetch error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.post("/smoke-tests/run", ...isSuperAdmin, async (_req, res) => {
+  try {
+    const result = await runSmokeTests();
+    return res.json(result);
+  } catch (err: any) {
+    console.error("[admin] smoke-tests/run error:", err);
+    return res.status(500).json({ error: "Internal Server Error", message: err.message });
   }
 });
 

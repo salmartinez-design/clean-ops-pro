@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { quotesTable, clientsTable, quoteScopesTable } from "@workspace/db/schema";
 import { eq, and, desc, count, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
+import { logAudit } from "../lib/audit.js";
 import { getBranchByZip } from "../lib/branchRouter";
 
 const router = Router();
@@ -197,6 +198,7 @@ router.post("/", requireAuth, requireRole("owner", "admin", "office"), async (re
       branch: quoteBranch,
     } as any).returning();
 
+    logAudit(req, "CREATE", "quote", q.id, null, { status: q.status, total_price: q.total_price });
     return res.status(201).json(q);
   } catch (err) {
     console.error("Create quote error:", err);
@@ -233,6 +235,8 @@ router.patch("/:id", requireAuth, requireRole("owner", "admin", "office"), async
       .returning();
 
     if (!q) return res.status(404).json({ error: "Not found" });
+    const auditAction = updates.status === "draft" ? "DRAFT_SAVED" : "UPDATE";
+    logAudit(req, auditAction, "quote", id, null, { status: q.status, total_price: q.total_price });
     return res.json(q);
   } catch (err) {
     console.error("Update quote error:", err);
@@ -306,6 +310,7 @@ router.post("/:id/convert", requireAuth, requireRole("owner", "admin", "office")
       .where(and(eq(quotesTable.id, id), eq(quotesTable.company_id, req.auth!.companyId)))
       .returning();
     if (!q) return res.status(404).json({ error: "Not found" });
+    logAudit(req, "CONVERTED", "quote", id, null, { status: "booked", total_price: q.total_price });
     // Stop quote_followup enrollment (non-blocking)
     import("../services/followUpService.js").then(({ stopEnrollmentsForQuote }) => {
       stopEnrollmentsForQuote(id, "booked").catch(() => {});
@@ -320,6 +325,7 @@ router.delete("/:id", requireAuth, requireRole("owner", "admin", "office"), asyn
   try {
     const id = parseInt(req.params.id);
     await db.delete(quotesTable).where(and(eq(quotesTable.id, id), eq(quotesTable.company_id, req.auth!.companyId)));
+    logAudit(req, "DELETE", "quote", id, null, null);
     return res.json({ success: true });
   } catch (err) {
     return res.status(500).json({ error: "Internal Server Error" });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { AdminLayout } from "@/components/layout/admin-layout";
 import { getAuthHeaders } from "@/lib/auth";
 
@@ -125,6 +125,139 @@ function TenantList() {
   );
 }
 
+interface SmokeRun {
+  id: string;
+  run_at: string;
+  environment: string;
+  total_tests: number;
+  passed: number;
+  failed: number;
+  duration_ms: number;
+  results: Array<{ name: string; status: string; error?: string; ms: number }>;
+}
+
+function SmokeTestWidget() {
+  const [runs, setRuns] = useState<SmokeRun[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const fetchRuns = useCallback(() => {
+    setLoading(true);
+    fetch("/api/admin/smoke-tests", { headers: getAuthHeaders() })
+      .then(r => r.json())
+      .then(d => { setRuns(d.runs ?? []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { fetchRuns(); }, [fetchRuns]);
+
+  const triggerRun = async () => {
+    setRunning(true);
+    try {
+      await fetch("/api/admin/smoke-tests/run", { method: "POST", headers: getAuthHeaders() });
+      fetchRuns();
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const latest = runs[0];
+  const allPassed = latest && latest.failed === 0;
+  const fmt = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) + " " +
+      d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  };
+
+  return (
+    <div style={{
+      backgroundColor: "#FFFFFF",
+      border: "1px solid #E5E2DC",
+      borderLeft: latest ? (allPassed ? "4px solid #16A34A" : "4px solid #DC2626") : "4px solid #D1D5DB",
+      borderRadius: "10px",
+      overflow: "hidden",
+    }}>
+      <div style={{ padding: "16px 20px", borderBottom: "1px solid #F0EEE9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <p style={{ fontSize: "14px", fontWeight: 700, color: "#1A1917", margin: 0 }}>Last Deploy Health Check</p>
+          {loading ? (
+            <p style={{ fontSize: "12px", color: "#9E9B94", margin: "2px 0 0" }}>Loading...</p>
+          ) : latest ? (
+            <p style={{ fontSize: "12px", color: allPassed ? "#16A34A" : "#DC2626", margin: "2px 0 0", fontWeight: 500 }}>
+              Last run: {fmt(latest.run_at)} · {latest.passed}/{latest.total_tests} passed · {latest.duration_ms}ms
+            </p>
+          ) : (
+            <p style={{ fontSize: "12px", color: "#9E9B94", margin: "2px 0 0" }}>No runs yet</p>
+          )}
+        </div>
+        <button
+          onClick={triggerRun}
+          disabled={running}
+          style={{ padding: "7px 14px", backgroundColor: running ? "#F3F4F6" : "#1A1917", color: running ? "#9E9B94" : "#FFFFFF", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: running ? "default" : "pointer" }}
+        >
+          {running ? "Running…" : "Run now"}
+        </button>
+      </div>
+
+      {latest && !allPassed && (
+        <div style={{ padding: "10px 20px", backgroundColor: "#FEF2F2", borderBottom: "1px solid #FECACA" }}>
+          <p style={{ fontSize: 12, color: "#DC2626", margin: 0, fontWeight: 600 }}>Failed tests:</p>
+          {(latest.results || []).filter(r => r.status === "fail").map(r => (
+            <p key={r.name} style={{ fontSize: 12, color: "#DC2626", margin: "2px 0 0" }}>
+              ✗ {r.name}{r.error ? ` — ${r.error}` : ""}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {runs.length > 0 && (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+            <thead>
+              <tr style={{ background: "#FAFAF9" }}>
+                {["Date", "Passed", "Failed", "Duration"].map(h => (
+                  <th key={h} style={{ padding: "8px 16px", textAlign: "left", fontWeight: 600, color: "#6B7280", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #F0EEE9" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {runs.map((run, i) => {
+                const ok = run.failed === 0;
+                const failedTests = (run.results || []).filter(r => r.status === "fail");
+                return (
+                  <tr key={run.id} style={{ background: i % 2 === 0 ? "#FFFFFF" : "#FAFAF9", borderBottom: "1px solid #F5F3F0" }}>
+                    <td style={{ padding: "8px 16px", color: "#374151", whiteSpace: "nowrap" }}>{fmt(run.run_at)}</td>
+                    <td style={{ padding: "8px 16px", color: "#16A34A", fontWeight: 600 }}>{run.passed}/{run.total_tests}</td>
+                    <td style={{ padding: "8px 16px" }}>
+                      {run.failed > 0 ? (
+                        <span
+                          style={{ color: "#DC2626", fontWeight: 600, cursor: "pointer", textDecoration: "underline dotted" }}
+                          onClick={() => setExpanded(expanded === run.id ? null : run.id)}
+                        >
+                          {run.failed} ⚠
+                        </span>
+                      ) : (
+                        <span style={{ color: "#9E9B94" }}>0</span>
+                      )}
+                      {expanded === run.id && failedTests.length > 0 && (
+                        <div style={{ marginTop: 4, fontSize: 11, color: "#DC2626" }}>
+                          {failedTests.map(t => <div key={t.name}>✗ {t.name}</div>)}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: "8px 16px", color: "#374151" }}>{run.duration_ms}ms</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const PURPLE = "#7F77DD";
 const PURPLE_RGB = "127, 119, 221";
 
@@ -212,6 +345,9 @@ export default function AdminDashboard() {
               </div>
             </div>
           )}
+
+          {/* Last Deploy Health Check */}
+          <SmokeTestWidget />
 
           {/* Tenant List */}
           <TenantList />

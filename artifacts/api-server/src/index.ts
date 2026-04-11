@@ -5,6 +5,7 @@ import { runPhesDataMigration } from "./phes-data-migration";
 import { runReminderCron, runReviewRequestCron } from "./services/notificationService.js";
 import { runRateLockNightlyChecks } from "./utils/rateLock.js";
 import { processDueEnrollments } from "./services/followUpService.js";
+import { runSmokeTests } from "./lib/smoke-test.js";
 
 const port = Number(process.env.PORT) || 3000;
 
@@ -111,4 +112,13 @@ app.listen(port, "0.0.0.0", () => {
   startRecurringJobCron();
   startNotificationCron();
   startFollowUpCron();
+
+  // Post-deploy smoke tests — 3 s delay to let DB settle after deploy
+  if (process.env.NODE_ENV === "production") {
+    setTimeout(() => {
+      runSmokeTests().catch((err) => {
+        console.error("[SMOKE] Smoke test runner failed:", err.message);
+      });
+    }, 3000);
+  }
 });

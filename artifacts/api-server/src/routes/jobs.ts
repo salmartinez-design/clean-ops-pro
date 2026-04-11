@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { jobsTable, clientsTable, usersTable, jobPhotosTable, timeclockTable, invoicesTable, scorecardsTable, serviceZonesTable, serviceZoneEmployeesTable, companiesTable, accountsTable, accountRateCardsTable, accountPropertiesTable, paymentsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, count, desc, sql, notExists, inArray, isNotNull } from "drizzle-orm";
 import { requireAuth } from "../lib/auth.js";
+import { logAudit } from "../lib/audit.js";
 import { generateJobCompletionPdf } from "../lib/generate-job-pdf.js";
 import { geocodeAddress } from "../lib/geocode.js";
 import { resolveZoneForZip } from "./zones.js";
@@ -131,6 +132,7 @@ router.post("/", requireAuth, async (req, res) => {
       .returning();
 
     const jobId = newJob[0].id;
+    logAudit(req, "CREATE", "job", jobId, null, newJob[0]);
     // Stop any active post_job_retention enrollment for this client (non-blocking)
     if (client_id) {
       import("../services/followUpService.js").then(({ stopEnrollmentsForClient }) => {
@@ -657,6 +659,7 @@ router.put("/:id", requireAuth, async (req, res) => {
       return res.status(404).json({ error: "Not Found", message: "Job not found" });
     }
 
+    logAudit(req, "UPDATE", "job", jobId, null, updated[0]);
     return res.json({
       ...updated[0],
       client_name: "",
@@ -679,6 +682,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
         eq(jobsTable.id, jobId),
         eq(jobsTable.company_id, req.auth!.companyId)
       ));
+    logAudit(req, "DELETE", "job", jobId, null, null);
     return res.json({ success: true, message: "Job deleted" });
   } catch (err) {
     console.error("Delete job error:", err);

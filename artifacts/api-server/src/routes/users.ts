@@ -4,6 +4,7 @@ import { usersTable, scorecardsTable, additionalPayTable, jobsTable, clientsTabl
 import { eq, and, sql, avg, count, desc, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { requireAuth, requireRole } from "../lib/auth.js";
+import { logAudit } from "../lib/audit.js";
 
 const router = Router();
 
@@ -76,6 +77,7 @@ router.post("/", requireAuth, requireRole("owner", "admin"), async (req, res) =>
       .returning();
 
     const { password_hash: _, ...safeUser } = newUser[0];
+    logAudit(req, "CREATE_EMPLOYEE", "employee", safeUser.id, null, safeUser);
     return res.status(201).json({ ...safeUser, productivity_pct: null });
   } catch (err) {
     console.error("Create user error:", err);
@@ -188,6 +190,8 @@ router.put("/:id", requireAuth, requireRole("owner", "admin", "office"), async (
     }
 
     const { password_hash: _, ...safeUser } = updated[0];
+    const action = role && role !== req.body._prevRole ? "ROLE_CHANGED" : "UPDATE_EMPLOYEE";
+    logAudit(req, action, "employee", userId, null, { role: safeUser.role, is_active: safeUser.is_active });
     return res.json({ ...safeUser, productivity_pct: null });
   } catch (err) {
     console.error("Update user error:", err);
@@ -205,6 +209,7 @@ router.delete("/:id", requireAuth, requireRole("owner", "admin"), async (req, re
         eq(usersTable.id, userId),
         eq(usersTable.company_id, req.auth!.companyId)
       ));
+    logAudit(req, "DELETE_EMPLOYEE", "employee", userId, null, { is_active: false });
     return res.json({ success: true, message: "User deactivated" });
   } catch (err) {
     console.error("Delete user error:", err);

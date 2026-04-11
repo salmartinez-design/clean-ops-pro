@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { invoicesTable, clientsTable, jobsTable, paymentsTable, notificationLogTable, usersTable, companiesTable } from "@workspace/db/schema";
 import { eq, and, desc, count, sum, sql, lt, isNull, or, ne, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
+import { logAudit } from "../lib/audit.js";
 import { syncInvoice, syncPayment, queueSync } from "../services/quickbooks-sync.js";
 import { sendNotification } from "../services/notificationService.js";
 
@@ -236,6 +237,7 @@ router.post("/", requireAuth, requireRole("owner", "admin", "office"), async (re
 
     const invNumber = await getNextInvoiceNumber(req.auth!.companyId, newInvoice.id);
     await db.update(invoicesTable).set({ invoice_number: invNumber }).where(eq(invoicesTable.id, newInvoice.id));
+    logAudit(req, "CREATE", "invoice", newInvoice.id, null, { total, client_id: finalClientId, job_id: job_id || null });
 
     // QB sync (fire and forget)
     queueSync(() => syncInvoice(req.auth!.companyId, newInvoice.id));
@@ -570,6 +572,8 @@ router.post("/:id/mark-paid", requireAuth, requireRole("owner", "admin", "office
       status: "sent",
       metadata: { invoice_id: invoiceId, amount: payAmount, method } as any,
     });
+
+    logAudit(req, "PAYMENT_CHARGED", "invoice", invoiceId, null, { amount: payAmount, method, invoice_id: invoiceId });
 
     // QB sync (fire and forget)
     queueSync(async () => {

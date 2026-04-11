@@ -9,6 +9,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, and, ilike, or, count, sum, desc, sql, gte, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
+import { logAudit } from "../lib/audit.js";
 import { syncCustomer, queueSync } from "../services/quickbooks-sync.js";
 import { resolveZoneForZip } from "./zones.js";
 import crypto from "crypto";
@@ -208,6 +209,11 @@ router.post("/", requireAuth, async (req, res) => {
       ...(geo && { lat: geo.lat, lng: geo.lng }),
       ...(zoneId && { zone_id: zoneId }),
     }).returning();
+
+    // Audit log
+    if (newClient[0]) {
+      logAudit(req, "CREATE", "client", newClient[0].id, null, newClient[0]);
+    }
 
     // QB sync (fire and forget)
     if (newClient[0]) {
@@ -454,6 +460,8 @@ router.put("/:id", requireAuth, async (req, res) => {
     }).where(and(eq(clientsTable.id, clientId), eq(clientsTable.company_id, req.auth!.companyId))).returning();
     if (!updated[0]) return res.status(404).json({ error: "Not Found" });
 
+    logAudit(req, "UPDATE", "client", clientId, null, updated[0]);
+
     // QB sync (fire and forget)
     queueSync(() => syncCustomer(req.auth!.companyId, clientId));
 
@@ -469,6 +477,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
   try {
     const clientId = parseInt(req.params.id);
     await db.delete(clientsTable).where(and(eq(clientsTable.id, clientId), eq(clientsTable.company_id, req.auth!.companyId)));
+    logAudit(req, "DELETE", "client", clientId, null, null);
     return res.json({ success: true });
   } catch (err) {
     console.error("Delete client error:", err);
