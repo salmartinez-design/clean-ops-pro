@@ -385,11 +385,11 @@ export default function Dashboard() {
 
   // Status chips — navigate to /dispatch?status=<key>
   const STATUS_CARDS = [
-    { key: 'in_progress', label: 'In Progress', bg: '#DBEAFE', color: '#1E40AF', dispatchKey: 'in_progress', accent: undefined },
-    { key: 'scheduled',   label: 'Scheduled',   bg: '#F3F4F6', color: '#374151', dispatchKey: 'scheduled',   accent: undefined },
-    { key: 'complete',    label: 'Complete',     bg: '#DCFCE7', color: '#1D9E75', dispatchKey: 'complete',   accent: undefined },
-    { key: 'flagged',     label: 'Flagged',      bg: '#FEE2E2', color: '#D85A30', dispatchKey: 'flagged',    accent: '#D85A30' },
-    { key: 'unassigned',  label: 'Unassigned',   bg: '#FEF0E7', color: '#E24B4A', dispatchKey: 'unassigned', accent: '#E24B4A' },
+    { key: 'in_progress', label: 'In Progress', bg: '#E6F1FB', color: '#1E40AF', dispatchKey: 'in_progress', accent: undefined },
+    { key: 'scheduled',   label: 'Scheduled',   bg: '#F7F6F3', color: '#1A1917', dispatchKey: 'scheduled',   accent: undefined },
+    { key: 'complete',    label: 'Complete',     bg: '#EAF3DE', color: '#1D9E75', dispatchKey: 'complete',   accent: undefined },
+    { key: 'flagged',     label: 'Flagged',      bg: '#FAECE7', color: '#D85A30', dispatchKey: 'flagged',    accent: '#D85A30' },
+    { key: 'unassigned',  label: 'Unassigned',   bg: '#FCEBEB', color: '#E24B4A', dispatchKey: 'unassigned', accent: '#E24B4A' },
   ];
 
   // Intelligence strip — hide if all values are dashes
@@ -444,20 +444,20 @@ export default function Dashboard() {
             </div>
             <p style={{ fontSize: 13, color: '#6B6860', margin: '4px 0 0', fontFamily: FF }}>{todayDate}</p>
           </div>
-          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'row', gap: 20, alignItems: 'center' }}>
             {canAdmin && (
-              <button onClick={() => setShowCloseDay(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', backgroundColor: 'rgba(255,255,255,0.7)', color: '#1A1917', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: FF }}>
+              <button onClick={() => setShowCloseDay(true)} style={{ alignSelf: 'center', marginLeft: 4, display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', backgroundColor: 'rgba(255,255,255,0.7)', color: '#1A1917', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: FF }}>
                 <Calendar size={14} /> Close Day
               </button>
             )}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-              <span style={{ display: 'block', fontSize: 11, fontWeight: 500, color: '#4A4845', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, fontFamily: FF }}>Revenue this week</span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 120 }}>
+              <span style={{ display: 'block', fontSize: 11, fontWeight: 500, color: '#4A4845', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4, fontFamily: FF }}>Revenue this week</span>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                 <span style={{ fontSize: 28, fontWeight: 600, color: '#1A1917', fontFamily: FF, lineHeight: 1 }}>
                   {kpis != null ? (kpis.week_revenue > 0 ? fmt$(kpis.week_revenue) : '—') : '—'}
                 </span>
                 {kpis?.week_delta != null && (
-                  <span style={{ fontSize: 13, fontWeight: 500, color: kpis.week_delta >= 0 ? '#166534' : '#A32D2D', marginLeft: 2, fontFamily: FF }}>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: kpis.week_delta >= 0 ? '#166534' : '#A32D2D', fontFamily: FF }}>
                     {kpis.week_delta >= 0 ? '+' : ''}{kpis.week_delta}%
                   </span>
                 )}
@@ -700,8 +700,8 @@ function StatusChip({ label, value, bg, color, accentColor, onClick }: { label: 
         flexShrink: 0, minWidth: 130,
         minHeight: 90,
         backgroundColor: bg,
-        border: hovered ? '1px solid #5B9BD5' : `1px solid ${color}22`,
-        borderLeft: hasAccent ? `4px solid ${accentColor}` : (hovered ? '1px solid #5B9BD5' : `1px solid ${color}22`),
+        border: hovered ? '1px solid #5B9BD5' : '0.5px solid #E5E2DC',
+        borderLeft: hasAccent ? `4px solid ${accentColor}` : (hovered ? '1px solid #5B9BD5' : '0.5px solid #E5E2DC'),
         borderRadius: hasAccent ? '0 12px 12px 0' : 12,
         padding: hasAccent ? '20px 16px 20px 14px' : '20px 16px',
         cursor: 'pointer',
