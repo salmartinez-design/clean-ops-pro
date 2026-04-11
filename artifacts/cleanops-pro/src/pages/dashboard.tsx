@@ -435,28 +435,32 @@ export default function Dashboard() {
         }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <p style={{ fontSize: isMobile ? 18 : 22, fontWeight: 500, color: '#1A1917', margin: 0, fontFamily: FF }}>{greeting}</p>
+              <p style={{ fontSize: isMobile ? 20 : 24, fontWeight: 500, color: '#1A1917', margin: 0, fontFamily: FF }}>{greeting}</p>
               {activeBranch && (
                 <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--brand)', background: 'var(--brand-dim)', padding: '2px 8px', borderRadius: 10, letterSpacing: '0.03em', fontFamily: FF }}>
                   {activeBranch.name}
                 </span>
               )}
             </div>
-            <p style={{ fontSize: 13, color: '#6B6860', margin: 0, fontFamily: FF }}>{todayDate}</p>
+            <p style={{ fontSize: 13, color: '#6B6860', margin: '4px 0 0', fontFamily: FF }}>{todayDate}</p>
           </div>
-          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
             {canAdmin && (
               <button onClick={() => setShowCloseDay(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', backgroundColor: 'rgba(255,255,255,0.7)', color: '#1A1917', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: FF }}>
                 <Calendar size={14} /> Close Day
               </button>
             )}
-            <div style={{ textAlign: 'right' }}>
-              <p style={{ fontSize: 11, fontWeight: 500, color: '#4A4845', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 3px', fontFamily: FF }}>Revenue this week</p>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+              <span style={{ display: 'block', fontSize: 11, fontWeight: 500, color: '#4A4845', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, fontFamily: FF }}>Revenue this week</span>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                <span style={{ fontSize: 24, fontWeight: 500, color: '#1A1917', fontFamily: FF }}>
+                <span style={{ fontSize: 28, fontWeight: 600, color: '#1A1917', fontFamily: FF, lineHeight: 1 }}>
                   {kpis != null ? (kpis.week_revenue > 0 ? fmt$(kpis.week_revenue) : '—') : '—'}
                 </span>
-                <DeltaBadge delta={kpis?.week_delta ?? null} />
+                {kpis?.week_delta != null && (
+                  <span style={{ fontSize: 13, fontWeight: 500, color: kpis.week_delta >= 0 ? '#166534' : '#A32D2D', marginLeft: 2, fontFamily: FF }}>
+                    {kpis.week_delta >= 0 ? '+' : ''}{kpis.week_delta}%
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -686,24 +690,27 @@ export default function Dashboard() {
 
 function StatusChip({ label, value, bg, color, accentColor, onClick }: { label: string; value: number; bg: string; color: string; accentColor?: string; onClick: () => void }) {
   const [hovered, setHovered] = useState(false);
+  const hasAccent = Boolean(accentColor);
   return (
     <button
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        flexShrink: 0, width: 150, minHeight: 80, minWidth: 130,
+        flexShrink: 0, minWidth: 130,
+        minHeight: 90,
         backgroundColor: bg,
         border: hovered ? '1px solid #5B9BD5' : `1px solid ${color}22`,
-        borderLeft: accentColor ? `3px solid ${accentColor}` : (hovered ? '1px solid #5B9BD5' : `1px solid ${color}22`),
-        borderRadius: accentColor ? '0 8px 8px 0' : 8,
-        padding: '16px 20px',
-        cursor: 'pointer', textAlign: 'left',
+        borderLeft: hasAccent ? `4px solid ${accentColor}` : (hovered ? '1px solid #5B9BD5' : `1px solid ${color}22`),
+        borderRadius: hasAccent ? '0 12px 12px 0' : 12,
+        padding: hasAccent ? '20px 16px 20px 14px' : '20px 16px',
+        cursor: 'pointer',
+        display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
         fontFamily: FF, transition: 'border-color 0.15s',
       }}
     >
-      <p style={{ fontSize: 32, fontWeight: 600, color, margin: '0 0 6px', lineHeight: 1, fontFamily: FF }}>{value}</p>
-      <p style={{ fontSize: 12, fontWeight: 500, color: '#4A4845', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, fontFamily: FF }}>{label}</p>
+      <p style={{ fontSize: 36, fontWeight: 600, color, margin: 0, lineHeight: 1, fontFamily: FF }}>{value}</p>
+      <p style={{ fontSize: 12, fontWeight: 500, color: '#4A4845', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '8px 0 0', fontFamily: FF }}>{label}</p>
     </button>
   );
 }
