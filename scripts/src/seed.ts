@@ -280,7 +280,6 @@ async function seed() {
       company_id: company.id,
       client_id: clients[1].id,
       assigned_user_id: tech2.id,
-      status: "in_progress" as any,
       status: "in_progress",
       scheduled_date: dateStr(0),
       scheduled_time: "09:30",
