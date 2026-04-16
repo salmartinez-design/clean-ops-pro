@@ -305,18 +305,55 @@ router.post("/:id/accept", requireAuth, requireRole("owner", "admin", "office"),
 router.post("/:id/convert", requireAuth, requireRole("owner", "admin", "office"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    const companyId = req.auth!.companyId;
+    const { scheduled_date, scheduled_time, assigned_user_id } = req.body || {};
+
+    // Mark quote as booked
     const [q] = await db.update(quotesTable)
       .set({ status: "booked" })
-      .where(and(eq(quotesTable.id, id), eq(quotesTable.company_id, req.auth!.companyId)))
+      .where(and(eq(quotesTable.id, id), eq(quotesTable.company_id, companyId)))
       .returning();
     if (!q) return res.status(404).json({ error: "Not found" });
-    logAudit(req, "CONVERTED", "quote", id, null, { status: "booked", total_price: q.total_price });
+
+    // Create the actual job
+    const jobDate = scheduled_date || new Date().toISOString().split("T")[0];
+    const jobResult = await db.execute(sql`
+      INSERT INTO jobs (
+        company_id, client_id, scheduled_date, scheduled_time,
+        service_type, base_fee, status, assigned_user_id,
+        frequency, notes, quote_id, created_at
+      ) VALUES (
+        ${companyId},
+        ${q.client_id || null},
+        ${jobDate},
+        ${scheduled_time || null},
+        ${q.scope_id ? (await db.execute(sql`SELECT name FROM pricing_scopes WHERE id = ${q.scope_id} LIMIT 1`)).rows[0]?.name || 'Cleaning' : 'Cleaning'},
+        ${q.total_price || '0'},
+        'scheduled',
+        ${assigned_user_id || null},
+        ${q.frequency || 'onetime'},
+        ${q.internal_memo || null},
+        ${id},
+        NOW()
+      ) RETURNING id
+    `);
+    const jobId = (jobResult.rows[0] as any)?.id;
+
+    // Link job back to quote
+    if (jobId) {
+      await db.execute(sql`UPDATE quotes SET booked_job_id = ${jobId} WHERE id = ${id}`);
+    }
+
+    logAudit(req, "CONVERTED", "quote", id, null, { status: "booked", total_price: q.total_price, job_id: jobId });
+
     // Stop quote_followup enrollment (non-blocking)
     import("../services/followUpService.js").then(({ stopEnrollmentsForQuote }) => {
       stopEnrollmentsForQuote(id, "booked").catch(() => {});
     });
-    return res.json({ success: true, quote: q, message: "Quote converted. Create a job to complete." });
+
+    return res.json({ success: true, quote: q, job_id: jobId, message: "Quote converted and job created." });
   } catch (err) {
+    console.error("Convert quote error:", err);
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });

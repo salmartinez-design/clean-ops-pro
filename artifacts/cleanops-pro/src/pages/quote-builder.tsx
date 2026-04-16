@@ -148,6 +148,7 @@ export default function QuoteBuilderPage() {
   // ── Section 2: Multi-scope selection ────────────────────────────────────
   const [selectedScopes, setSelectedScopes] = useState<SelectedScopeState[]>([]);
   const [selectedDate, setSelectedDate] = useState("");
+  const [selectedTime, setSelectedTime] = useState("09:00");
 
   // ── Section 3: Notes + discount + photos ─────────────────────────────────
   const [notes, setNotes] = useState("");
@@ -672,9 +673,16 @@ export default function QuoteBuilderPage() {
       qc.invalidateQueries({ queryKey: ["quote-stats"] });
       const savedId = result?.id ?? id;
       if (thenConvert && savedId) {
-        await apiFetch(`/api/quotes/${savedId}/convert`, { method: "POST" });
+        await apiFetch(`/api/quotes/${savedId}/convert`, {
+          method: "POST",
+          body: {
+            scheduled_date: selectedDate || undefined,
+            scheduled_time: selectedTime || undefined,
+            assigned_user_id: selectedTechId || undefined,
+          },
+        });
         toast.success("Quote converted to job.");
-        navigate("/jobs");
+        navigate(selectedDate ? `/dispatch?date=${selectedDate}` : "/jobs");
       } else if (status === "sent") {
         toast.success(isEdit ? "Quote sent" : "Quote created and marked as sent.");
         navigate(`/quotes/${savedId}`);
@@ -2196,6 +2204,12 @@ export default function QuoteBuilderPage() {
                   <div style={{ flex: 1 }}>
                     <Label className="text-xs">Scheduled Date</Label>
                     <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
+                      style={{ width: "100%", height: 36, border: "1px solid #E5E2DC", borderRadius: 8, padding: "0 10px", fontSize: 13, fontFamily: FF, outline: "none", background: "#FFF", marginTop: 4 }}
+                    />
+                  </div>
+                  <div style={{ width: 120 }}>
+                    <Label className="text-xs">Start Time</Label>
+                    <input type="time" value={selectedTime} onChange={e => setSelectedTime(e.target.value)}
                       style={{ width: "100%", height: 36, border: "1px solid #E5E2DC", borderRadius: 8, padding: "0 10px", fontSize: 13, fontFamily: FF, outline: "none", background: "#FFF", marginTop: 4 }}
                     />
                   </div>
