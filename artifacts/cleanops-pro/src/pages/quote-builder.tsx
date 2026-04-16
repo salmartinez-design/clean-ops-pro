@@ -198,6 +198,7 @@ export default function QuoteBuilderPage() {
   const [quickBookPrice, setQuickBookPrice] = useState<number | null>(null);
   const [hourlyExpanded, setHourlyExpanded] = useState(false);
   const [hourlySubType, setHourlySubType] = useState<string | null>(null);
+  const [callNotesOpen, setCallNotesOpen] = useState(false);
 
   // ── Mobile ───────────────────────────────────────────────────────────────
   const isMobile = useIsMobile();
@@ -1405,81 +1406,60 @@ export default function QuoteBuilderPage() {
                   </div>
                 </div>
 
-                {/* Address verification indicator */}
-                {address.trim().length > 5 && addressVerified === true && (
-                  <div style={{ background: "#EAF3DE", border: "1px solid #639922", borderRadius: 6, padding: "6px 12px", fontSize: 12, color: "#3B6D11" }}>
-                    Address verified{addressFormatted ? ` — ${addressFormatted}` : ""}
-                  </div>
-                )}
-                {address.trim().length > 5 && addressVerified === false && (
-                  <div style={{ background: "#FAEEDA", border: "1px solid #BA7517", borderRadius: 6, padding: "6px 12px", fontSize: 12, color: "#854F0B" }}>
-                    Address not verified — select from suggestions to confirm
+                {/* Inline address verification + zone pill row */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minHeight: 20 }}>
+                  {address.trim().length > 5 && addressVerified === true && (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "#3B6D11", fontFamily: FF }}>
+                      <Check style={{ width: 13, height: 13 }} /> Verified
+                    </span>
+                  )}
+                  {address.trim().length > 5 && addressVerified === false && (
+                    <span style={{ fontSize: 11, color: "#854F0B", fontFamily: FF }}>
+                      Not verified — select from suggestions
+                    </span>
+                  )}
+                  {checkingZip && <span style={{ fontSize: 11, color: "#9E9B94", fontFamily: FF }}>Checking zone...</span>}
+                  {!checkingZip && zipZone && zipZone !== "uncovered" && (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "1px 8px", borderRadius: 10, fontSize: 10, fontWeight: 600, background: `${zipZone.color || "#639922"}18`, color: zipZone.color || "#639922", border: `1px solid ${zipZone.color || "#639922"}40`, fontFamily: FF }}>
+                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: zipZone.color || "#639922" }} />
+                      {zipZone.name}
+                    </span>
+                  )}
+                </div>
+                {!checkingZip && zipZone === "uncovered" && zipCode.trim().length === 5 && (
+                  <div style={{ borderLeft: "3px solid #A32D2D", paddingLeft: 10, fontSize: 12, color: "#791F1F", fontFamily: FF }}>
+                    We don't currently service {zipCode}. Quote can still be saved.
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, fontSize: 12, color: "#6B6860", cursor: "pointer" }}>
+                      <Checkbox checked={zoneOverride} onCheckedChange={v => setZoneOverride(Boolean(v))} />
+                      Override — office confirmed.
+                    </label>
                   </div>
                 )}
 
                 {/* Unit / Suite / Access Instructions */}
                 <div>
                   <Label className="text-xs">Unit, Suite, or Additional Access Instructions</Label>
-                  <Input value={unitSuite} onChange={e => setUnitSuite(e.target.value)} placeholder="e.g. Apt 2B, gate code #1234, leave key under mat…" className="mt-1" />
+                  <Input value={unitSuite} onChange={e => setUnitSuite(e.target.value)} placeholder="e.g. Apt 2B, gate code #1234, leave key under mat..." className="mt-1" />
                 </div>
 
-                {/* Zip zone banners */}
-                {checkingZip && <div style={{ fontSize: 12, color: "#9E9B94" }}>Checking service area...</div>}
-                {!checkingZip && zipZone && zipZone !== "uncovered" && (() => {
-                  const c = zipZone.color || "#639922";
-                  const r = parseInt(c.slice(1, 3), 16);
-                  const g = parseInt(c.slice(3, 5), 16);
-                  const b = parseInt(c.slice(5, 7), 16);
-                  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-                  const textColor = lum > 0.55 ? "#2D2B28" : c;
-                  return (
-                    <div style={{ background: `rgba(${r},${g},${b},0.12)`, border: `1px solid ${c}`, borderRadius: 6, padding: "8px 12px", fontSize: 12, fontWeight: 600, color: textColor }}>
-                      Zone: {zipZone.name} — We service this area.
-                    </div>
-                  );
-                })()}
-                {!checkingZip && zipZone === "uncovered" && zipCode.trim().length === 5 && (
-                  <div>
-                    <div style={{ background: "#FCEBEB", border: "1px solid #A32D2D", borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#791F1F" }}>
-                      We don't currently service {zipCode}. This quote can still be saved — confirm with the office before proceeding.
-                    </div>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 13, color: "#6B6860", cursor: "pointer" }}>
-                      <Checkbox checked={zoneOverride} onCheckedChange={v => setZoneOverride(Boolean(v))} />
-                      Override — office confirmed we will service this zip.
-                    </label>
-                  </div>
-                )}
-
-                {/* Suggested Technicians (Phase 1 — zone match) */}
+                {/* Compact tech suggestion row */}
                 {suggestedTechs.length > 0 && !zoneOverride && (
-                  <div style={{ background: "#F7F6F3", border: "1px solid #E5E2DC", borderRadius: 8, padding: 12 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#6B6860", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Suggested Technicians</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {suggestedTechs.map(tech => {
-                        const isSel = selectedTechId === tech.id;
-                        return (
-                          <div key={tech.id} onClick={() => setSelectedTechId(isSel ? null : tech.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 6, cursor: "pointer", border: isSel ? "2px solid var(--brand)" : "1px solid #E5E2DC", background: isSel ? "rgba(0,201,160,0.05)" : "#FFF" }}>
-                            <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--brand)", display: "flex", alignItems: "center", justifyContent: "center", color: "#FFF", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{tech.name.charAt(0).toUpperCase()}</div>
-                            <div style={{ flex: 1, fontSize: 13, fontWeight: isSel ? 700 : 500, color: "#1A1917" }}>{tech.name}</div>
-                            <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 600, background: `${tech.zone_color}20`, color: tech.zone_color }}>
-                              <div style={{ width: 5, height: 5, borderRadius: "50%", background: tech.zone_color }} />{tech.zone_name}
-                            </div>
-                            <div style={{ fontSize: 11, color: "#9E9B94", flexShrink: 0 }}>In zone</div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 11, color: "#9E9B94", fontFamily: FF }}>Zone techs:</span>
+                    {suggestedTechs.map(tech => {
+                      const isSel = selectedTechId === tech.id;
+                      return (
+                        <button key={tech.id} onClick={() => setSelectedTechId(isSel ? null : tech.id)}
+                          style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 14, fontSize: 12, fontWeight: isSel ? 600 : 400, border: isSel ? "1.5px solid var(--brand)" : "1px solid #E5E2DC", background: isSel ? "#EAF9F4" : "#FFF", color: "#1A1917", cursor: "pointer", fontFamily: FF }}>
+                          <span style={{ width: 18, height: 18, borderRadius: "50%", background: isSel ? "var(--brand)" : "#E5E2DC", display: "flex", alignItems: "center", justifyContent: "center", color: isSel ? "#FFF" : "#6B6860", fontSize: 9, fontWeight: 700 }}>{tech.name.charAt(0)}</span>
+                          {tech.name}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
-                {zoneOverride && (
-                  <div style={{ padding: "8px 12px", borderRadius: 8, background: "#F7F6F3", border: "1px solid #E5E2DC", fontSize: 12, color: "#9E9B94" }}>
-                    No zone match — technician assignment will be manual.
-                  </div>
-                )}
-                {!checkingZip && suggestedTechs.length === 0 && zipZone && zipZone !== "uncovered" && (
-                  <div style={{ padding: "8px 12px", borderRadius: 8, background: "#F7F6F3", border: "1px solid #E5E2DC", fontSize: 12, color: "#9E9B94" }}>
-                    No techs assigned to this zone — job will be unassigned.
-                  </div>
+                {!checkingZip && suggestedTechs.length === 0 && zipZone && zipZone !== "uncovered" && !zoneOverride && (
+                  <span style={{ fontSize: 11, color: "#9E9B94", fontFamily: FF }}>No techs in zone — will be unassigned</span>
                 )}
 
                 {/* How did you hear about us? — only for new leads */}
@@ -1508,17 +1488,17 @@ export default function QuoteBuilderPage() {
                   </div>
                 )}
 
-                {/* ── Preferred Tech pill (existing client only) ── */}
+                {/* ── Preferred Tech — compact inline row ── */}
                 {selectedClientId && preferredTech && (
-                  <div style={{ background: "#EBF4FF", border: "1px solid #5B9BD5", borderRadius: 6, padding: "8px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                    <span style={{ fontSize: 12, color: "#185FA5", fontFamily: FF }}>
-                      Preferred tech: <strong>{preferredTech.full_name}</strong> — assigned to most of this client's jobs
-                    </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 11, color: "#9E9B94", fontFamily: FF }}>Preferred:</span>
                     <button
-                      onClick={() => setSelectedTechId(preferredTech.id)}
-                      style={{ fontSize: 11, color: "var(--brand)", background: "none", border: "1px solid var(--brand)", borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontFamily: FF, flexShrink: 0, whiteSpace: "nowrap" }}
+                      onClick={() => setSelectedTechId(selectedTechId === preferredTech.id ? null : preferredTech.id)}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 14, fontSize: 12, fontWeight: selectedTechId === preferredTech.id ? 600 : 400, border: selectedTechId === preferredTech.id ? "1.5px solid var(--brand)" : "1px solid #E5E2DC", background: selectedTechId === preferredTech.id ? "#EAF9F4" : "#FFF", color: "#1A1917", cursor: "pointer", fontFamily: FF }}
                     >
-                      {selectedTechId === preferredTech.id ? "✓ Selected" : "Use this tech"}
+                      <span style={{ width: 18, height: 18, borderRadius: "50%", background: selectedTechId === preferredTech.id ? "var(--brand)" : "#5B9BD5", display: "flex", alignItems: "center", justifyContent: "center", color: "#FFF", fontSize: 9, fontWeight: 700 }}>{preferredTech.full_name.charAt(0)}</span>
+                      {preferredTech.full_name}
+                      {selectedTechId === preferredTech.id && <Check style={{ width: 12, height: 12, color: "var(--brand)" }} />}
                     </button>
                   </div>
                 )}
@@ -2242,6 +2222,57 @@ export default function QuoteBuilderPage() {
                 </div>
               )}
 
+              {/* ── Schedule & Assign (for Convert to Job) ── */}
+              <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 16, marginTop: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#6B6860", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10, fontFamily: FF }}>
+                  Schedule &amp; Assign
+                </div>
+                <div className="flex gap-3" style={{ marginBottom: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <Label className="text-xs">Scheduled Date</Label>
+                    <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
+                      style={{ width: "100%", height: 36, border: "1px solid #E5E2DC", borderRadius: 8, padding: "0 10px", fontSize: 13, fontFamily: FF, outline: "none", background: "#FFF", marginTop: 4 }}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <Label className="text-xs">Assign Technician</Label>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+                      {/* Preferred tech shortcut */}
+                      {preferredTech && (
+                        <button
+                          onClick={() => setSelectedTechId(selectedTechId === preferredTech.id ? null : preferredTech.id)}
+                          style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 14, fontSize: 12, fontWeight: selectedTechId === preferredTech.id ? 600 : 400, border: selectedTechId === preferredTech.id ? "1.5px solid var(--brand)" : "1px solid #E5E2DC", background: selectedTechId === preferredTech.id ? "#EAF9F4" : "#FFF", color: "#1A1917", cursor: "pointer", fontFamily: FF }}
+                        >
+                          <span style={{ width: 18, height: 18, borderRadius: "50%", background: selectedTechId === preferredTech.id ? "var(--brand)" : "#5B9BD5", display: "flex", alignItems: "center", justifyContent: "center", color: "#FFF", fontSize: 9, fontWeight: 700 }}>{preferredTech.full_name.charAt(0)}</span>
+                          {preferredTech.full_name}
+                          {selectedTechId === preferredTech.id && <Check style={{ width: 12, height: 12, color: "var(--brand)" }} />}
+                        </button>
+                      )}
+                      {/* Zone techs */}
+                      {suggestedTechs.filter(t => t.id !== preferredTech?.id).map(tech => {
+                        const isSel = selectedTechId === tech.id;
+                        return (
+                          <button key={tech.id} onClick={() => setSelectedTechId(isSel ? null : tech.id)}
+                            style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 14, fontSize: 12, fontWeight: isSel ? 600 : 400, border: isSel ? "1.5px solid var(--brand)" : "1px solid #E5E2DC", background: isSel ? "#EAF9F4" : "#FFF", color: "#1A1917", cursor: "pointer", fontFamily: FF }}
+                          >
+                            <span style={{ width: 18, height: 18, borderRadius: "50%", background: isSel ? "var(--brand)" : "#E5E2DC", display: "flex", alignItems: "center", justifyContent: "center", color: isSel ? "#FFF" : "#6B6860", fontSize: 9, fontWeight: 700 }}>{tech.name.charAt(0)}</span>
+                            {tech.name}
+                          </button>
+                        );
+                      })}
+                      {!preferredTech && suggestedTechs.length === 0 && (
+                        <span style={{ fontSize: 12, color: "#9E9B94", fontFamily: FF, padding: "4px 0" }}>No techs available — will be unassigned</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {!selectedDate && (
+                  <div style={{ fontSize: 11, color: "#BA7517", fontFamily: FF, marginBottom: 8 }}>
+                    Select a date to convert to a scheduled job.
+                  </div>
+                )}
+              </div>
+
               <div className="flex justify-between mt-4">
                 <Button size="sm" variant="ghost" onClick={() => setActiveSection(3)}>Back</Button>
                 <div className="flex gap-2">
@@ -2249,10 +2280,10 @@ export default function QuoteBuilderPage() {
                     <Save className="w-3.5 h-3.5" /> Save Draft
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => save("sent")} disabled={saving || !finalScopeId} className="gap-1.5">
-                    <SendHorizonal className="w-3.5 h-3.5" /> Save & Send Quote
+                    <SendHorizonal className="w-3.5 h-3.5" /> Save &amp; Send Quote
                   </Button>
-                  <Button size="sm" onClick={() => save("draft", true)} disabled={saving || !canConvert} style={{ background: "var(--brand)", color: "#FFF" }} className="gap-1.5 hover:opacity-90">
-                    <ArrowRight className="w-3.5 h-3.5" /> Save & Convert to Job
+                  <Button size="sm" onClick={() => save("draft", true)} disabled={saving || !canConvert || !selectedDate} style={{ background: !selectedDate ? "#D1D5DB" : "var(--brand)", color: "#FFF", cursor: !selectedDate ? "not-allowed" : "pointer" }} className="gap-1.5 hover:opacity-90">
+                    <ArrowRight className="w-3.5 h-3.5" /> Save &amp; Convert to Job
                   </Button>
                 </div>
               </div>
