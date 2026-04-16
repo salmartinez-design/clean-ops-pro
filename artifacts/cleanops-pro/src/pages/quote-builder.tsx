@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/popover";
 import {
   ArrowLeft, Save, SendHorizonal, ArrowRight, ChevronDown,
-  User, Home, Calculator, PlusSquare, AlertCircle, CheckCircle2,
+  User, Home, Calculator, PlusSquare, AlertCircle, CheckCircle2, Check,
   X, Phone, ImagePlus, Loader2, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
