@@ -40,6 +40,7 @@
 - Schaumburg branch does NOT migrate from MaidCentral
 - Seed files must always use ON CONFLICT DO UPDATE — never plain INSERT
 - COMMS_ENABLED=false gate must never be bypassed — all SMS and email are suppressed until explicitly flipped to true in Railway env vars
+- EXCEPTION: Contact form at /api/contact must bypass COMMS_ENABLED gate — it is a direct inbound lead, not an automated communication
 - Never mix the Ares project with Qleno/Phes
 
 ## Database Rules

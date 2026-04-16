@@ -67,6 +67,7 @@ import payrollSettingsRouter from "./payroll-settings.js";
 import complianceSettingsRouter from "./compliance-settings.js";
 import subscriptionRouter from "./subscription.js";
 import referralsRouter from "./referrals.js";
+import contactRouter from "./contact.js";
 
 const router: IRouter = Router();
 
@@ -138,5 +139,6 @@ router.use("/payroll-settings", payrollSettingsRouter);
 router.use("/compliance-settings", complianceSettingsRouter);
 router.use("/subscription", subscriptionRouter);
 router.use("/referrals", referralsRouter);
+router.use("/contact", contactRouter);
 
 export default router;

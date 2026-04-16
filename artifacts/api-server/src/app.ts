@@ -109,6 +109,20 @@ app.use("/api/job-sms", messageLimiter);
 app.use("/api", generalLimiter);
 app.use("/api", router);
 
+// ── Landing Page ────────────────────────────────────────────────────────────
+const landingDir = path.resolve(__appDir, "../../../landing");
+if (fs.existsSync(landingDir)) {
+  app.get("/", (_req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.sendFile(path.join(landingDir, "index.html"));
+  });
+  app.use("/landing", express.static(landingDir, { maxAge: "10m" }));
+  // Serve privacy.html at /privacy
+  app.get("/privacy", (_req: Request, res: Response) => {
+    res.sendFile(path.join(landingDir, "privacy.html"));
+  });
+}
+
 // ── Frontend Static Serving (Production) ─────────────────────────────────────
 if (process.env.NODE_ENV === "production") {
   const frontendDist = path.resolve(__appDir, "../../cleanops-pro/dist/public");

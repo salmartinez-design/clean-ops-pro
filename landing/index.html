@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Qleno — Software for Residential Cleaning Businesses</title>
+  <meta name="description" content="Your cleaning business deserves better software. Online booking, recurring schedules, and team management — starting at $100/month flat. No per-user fees.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #F7F6F3;
+      --card: #FFFFFF;
+      --text: #1A1917;
+      --text-secondary: #6B6860;
+      --border: #E5E2DC;
+      --accent: #2D9B83;
+      --accent-hover: #247f6b;
+      --accent-light: #e8f7f3;
+      --dark: #1A1917;
+      --font: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ── Nav ─────────────────────────────────────────────────── */
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 20px 24px;
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+
+    .nav-brand svg { flex-shrink: 0; }
+
+    .wordmark {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.5px;
+    }
+
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .nav-login {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    .nav-login:hover { color: var(--text); }
+
+    .btn-primary {
+      display: inline-block;
+      background: var(--accent);
+      color: #fff;
+      font-family: var(--font);
+      font-size: 15px;
+      font-weight: 600;
+      padding: 12px 28px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+
+    .btn-primary:hover { background: var(--accent-hover); }
+
+    .btn-large {
+      font-size: 17px;
+      padding: 16px 40px;
+      border-radius: 10px;
+    }
+
+    /* ── Hero ────────────────────────────────────────────────── */
+    .hero {
+      text-align: center;
+      max-width: 740px;
+      margin: 72px auto 0;
+      padding: 0 24px;
+    }
+
+    .hero-eyebrow {
+      display: inline-block;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--accent);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+
+    .hero h1 {
+      font-size: 52px;
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -1.5px;
+      margin-bottom: 24px;
+    }
+
+    .hero p {
+      font-size: 18px;
+      color: var(--text-secondary);
+      max-width: 580px;
+      margin: 0 auto 40px;
+      line-height: 1.7;
+    }
+
+    .hero-cta { margin-bottom: 16px; }
+
+    .hero-link {
+      display: inline-block;
+      font-size: 15px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 2px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .hero-link:hover {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    /* ── Pain Section ────────────────────────────────────────── */
+    .pain {
+      background: var(--dark);
+      color: #fff;
+      margin-top: 100px;
+      padding: 80px 24px;
+    }
+
+    .pain h2 {
+      text-align: center;
+      font-size: 36px;
+      font-weight: 700;
+      margin-bottom: 48px;
+      letter-spacing: -0.5px;
+    }
+
+    .pain-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+      max-width: 1120px;
+      margin: 0 auto;
+    }
+
+    .pain-item {
+      text-align: center;
+      padding: 32px 24px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+    }
+
+    .pain-item p {
+      font-size: 17px;
+      line-height: 1.6;
+      color: rgba(255,255,255,0.85);
+    }
+
+    /* ── Features ────────────────────────────────────────────── */
+    .features {
+      max-width: 1120px;
+      margin: 100px auto 0;
+      padding: 0 24px;
+    }
+
+    .features h2 {
+      text-align: center;
+      font-size: 36px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      letter-spacing: -0.5px;
+    }
+
+    .features > p {
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 17px;
+      margin-bottom: 48px;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+    }
+
+    .feature-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 36px 32px;
+    }
+
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      background: var(--accent-light);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+
+    .feature-icon svg {
+      width: 24px;
+      height: 24px;
+      stroke: var(--accent);
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .feature-card h3 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .feature-card p {
+      font-size: 15px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    /* ── Social Proof ────────────────────────────────────────── */
+    .proof {
+      background: var(--accent-light);
+      margin-top: 100px;
+      padding: 56px 24px;
+      text-align: center;
+    }
+
+    .proof h3 {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 12px;
+      letter-spacing: -0.5px;
+      max-width: 700px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .proof p {
+      font-size: 16px;
+      color: var(--text-secondary);
+    }
+
+    /* ── Pricing ─────────────────────────────────────────────── */
+    .pricing {
+      max-width: 1120px;
+      margin: 100px auto 0;
+      padding: 0 24px;
+    }
+
+    .pricing h2 {
+      text-align: center;
+      font-size: 36px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      letter-spacing: -0.5px;
+    }
+
+    .pricing > p {
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 17px;
+      margin-bottom: 48px;
+    }
+
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+
+    .pricing-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 36px 32px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .pricing-card.featured {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+
+    .badge {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--accent);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 16px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+
+    .pricing-card .plan-name {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .pricing-card .plan-desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
+    }
+
+    .pricing-card .price {
+      font-size: 44px;
+      font-weight: 800;
+      letter-spacing: -1.5px;
+      margin-bottom: 4px;
+    }
+
+    .pricing-card .price span {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      letter-spacing: 0;
+    }
+
+    .pricing-card .price-note {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+    }
+
+    .pricing-card .feature-list {
+      list-style: none;
+      margin-bottom: 28px;
+      flex-grow: 1;
+    }
+
+    .pricing-card .feature-list li {
+      font-size: 14px;
+      color: var(--text-secondary);
+      padding: 6px 0;
+      border-bottom: 1px solid var(--bg);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pricing-card .feature-list li::before {
+      content: '';
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      background: var(--accent-light);
+      border-radius: 50%;
+      flex-shrink: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%232D9B83' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'%3E%3C/polyline%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: center;
+    }
+
+    .pricing-card .btn-primary {
+      text-align: center;
+      width: 100%;
+    }
+
+    /* ── Contact ─────────────────────────────────────────────── */
+    .contact {
+      max-width: 640px;
+      margin: 100px auto 0;
+      padding: 0 24px;
+    }
+
+    .contact h2 {
+      text-align: center;
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 48px;
+      letter-spacing: -0.5px;
+    }
+
+    .contact-form {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 36px 32px;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 16px;
+    }
+
+    .form-row .form-group { margin-bottom: 0; }
+
+    .form-group label {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .form-group input,
+    .form-group textarea {
+      font-family: var(--font);
+      font-size: 15px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus {
+      border-color: var(--accent);
+    }
+
+    .form-group textarea {
+      resize: vertical;
+      min-height: 100px;
+    }
+
+    .form-status {
+      text-align: center;
+      font-size: 15px;
+      margin-top: 16px;
+      display: none;
+    }
+
+    .form-status.success { color: var(--accent); display: block; }
+    .form-status.error { color: #c0392b; display: block; }
+
+    .contact-form .btn-primary {
+      width: 100%;
+      margin-top: 8px;
+    }
+
+    /* ── Footer ──────────────────────────────────────────────── */
+    footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 60px 24px 48px;
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    footer a {
+      color: var(--text-secondary);
+      text-decoration: none;
+    }
+
+    footer a:hover { color: var(--text); }
+
+    .footer-right {
+      display: flex;
+      gap: 24px;
+    }
+
+    /* ── Responsive ──────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .hero { margin-top: 48px; }
+      .hero h1 { font-size: 34px; letter-spacing: -1px; }
+      .hero p { font-size: 16px; }
+      .pain { margin-top: 72px; padding: 56px 24px; }
+      .pain h2 { font-size: 28px; }
+      .pain-grid { grid-template-columns: 1fr; }
+      .features-grid {
+        grid-template-columns: 1fr;
+      }
+      .pricing-grid {
+        grid-template-columns: 1fr;
+        max-width: 400px;
+        margin: 0 auto;
+      }
+      .features, .pricing, .contact { margin-top: 72px; }
+      .form-row { grid-template-columns: 1fr; }
+      footer {
+        flex-direction: column;
+        gap: 16px;
+        text-align: center;
+      }
+      .nav-right .btn-primary { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav>
+    <a href="/" class="nav-brand">
+      <svg width="36" height="36" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="256" cy="256" r="240" fill="#3DDC97"/>
+        <g fill="#FFFFFF">
+          <path fill-rule="evenodd" d="M 256 112 a 128 128 0 1 1 0 256 a 128 128 0 1 1 0 -256 z M 256 176 a 64 64 0 1 0 0 128 a 64 64 0 1 0 0 -128 z"/>
+          <rect x="300" y="316" width="64" height="26" rx="13" transform="rotate(45 332 329)"/>
+        </g>
+        <g stroke="#FFFFFF" stroke-width="14" stroke-linecap="round" fill="none">
+          <line x1="396" y1="116" x2="438" y2="74"/>
+          <line x1="420" y1="168" x2="470" y2="150"/>
+          <line x1="348" y1="92" x2="366" y2="42"/>
+        </g>
+      </svg>
+      <span class="wordmark">Qleno</span>
+    </a>
+    <div class="nav-right">
+      <a href="https://app.qleno.com/login" class="nav-login">Login</a>
+      <a href="https://app.qleno.com/register" class="btn-primary">Start Free</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <span class="hero-eyebrow">Built by a cleaning business owner</span>
+    <h1>Your cleaning business deserves better software</h1>
+    <p>Qleno gives you everything you need to run and grow your cleaning business for $100/month flat. No per-user fees, no surprise charges, no contracts.</p>
+    <div class="hero-cta">
+      <a href="https://app.qleno.com/register" class="btn-primary btn-large">Start Free &mdash; 30 Days, No Credit Card</a>
+    </div>
+    <a href="#features" class="hero-link">See how it works</a>
+  </section>
+
+  <!-- Pain Section -->
+  <section class="pain">
+    <div class="container">
+      <h2>Sound familiar?</h2>
+      <div class="pain-grid">
+        <div class="pain-item">
+          <p>You're paying hundreds a month for software that wasn't built for small teams</p>
+        </div>
+        <div class="pain-item">
+          <p>Every time you hire someone, your software bill goes up</p>
+        </div>
+        <div class="pain-item">
+          <p>You're still texting clients and managing schedules in spreadsheets</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features" id="features">
+    <h2>Everything you need to run and grow your business</h2>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        </div>
+        <h3>Online Booking</h3>
+        <p>Clients book and pay directly from your website. Jobs appear on your dispatch board automatically.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        </div>
+        <h3>Recurring Schedules</h3>
+        <p>Set up weekly and biweekly clients once. Qleno generates every future job automatically.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <h3>Team Management</h3>
+        <p>Manage technician schedules, commissions, and performance all in one place.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        </div>
+        <h3>No Per-User Fees</h3>
+        <p>One flat monthly rate no matter how many employees you add. Your bill never surprises you.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Social Proof -->
+  <section class="proof">
+    <h3>Cleaning businesses on Qleno report an average 32% revenue increase in their first year</h3>
+    <p>Flat-rate pricing. No contracts. Cancel anytime.</p>
+  </section>
+
+  <!-- Pricing -->
+  <section class="pricing" id="pricing">
+    <h2>Simple pricing. No surprises.</h2>
+    <p>Every plan includes a 30-day free trial. No credit card required.</p>
+    <div class="pricing-grid">
+      <div class="pricing-card">
+        <div class="plan-name">Solo</div>
+        <div class="plan-desc">Perfect for owner-operators</div>
+        <div class="price">$100<span>/mo</span></div>
+        <div class="price-note">1 user</div>
+        <ul class="feature-list">
+          <li>Online booking widget</li>
+          <li>Recurring schedules</li>
+          <li>Dispatch board</li>
+          <li>Commission tracking</li>
+        </ul>
+        <a href="https://app.qleno.com/register" class="btn-primary">Start Free Trial</a>
+      </div>
+      <div class="pricing-card featured">
+        <div class="badge">Most popular</div>
+        <div class="plan-name">Team</div>
+        <div class="plan-desc">For growing cleaning businesses</div>
+        <div class="price">$200<span>/mo</span></div>
+        <div class="price-note">2 - 15 employees</div>
+        <ul class="feature-list">
+          <li>Online booking widget</li>
+          <li>Recurring schedules</li>
+          <li>Dispatch board</li>
+          <li>Commission tracking</li>
+        </ul>
+        <a href="https://app.qleno.com/register" class="btn-primary">Start Free Trial</a>
+      </div>
+      <div class="pricing-card">
+        <div class="plan-name">Pro</div>
+        <div class="plan-desc">For established operations</div>
+        <div class="price">$250<span>/mo</span></div>
+        <div class="price-note">16+ employees</div>
+        <ul class="feature-list">
+          <li>Online booking widget</li>
+          <li>Recurring schedules</li>
+          <li>Dispatch board</li>
+          <li>Commission tracking</li>
+        </ul>
+        <a href="https://app.qleno.com/register" class="btn-primary">Start Free Trial</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Contact -->
+  <section class="contact" id="contact">
+    <h2>Have questions? We'll get back to you within 24 hours.</h2>
+    <form class="contact-form" id="contactForm">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="firstName">First Name</label>
+          <input type="text" id="firstName" name="firstName" required>
+        </div>
+        <div class="form-group">
+          <label for="lastName">Last Name</label>
+          <input type="text" id="lastName" name="lastName" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="businessName">Business Name</label>
+        <input type="text" id="businessName" name="businessName">
+      </div>
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required>
+      </div>
+      <div class="form-group">
+        <label for="message">Message</label>
+        <textarea id="message" name="message" required></textarea>
+      </div>
+      <button type="submit" class="btn-primary btn-large">Send Message</button>
+      <div class="form-status" id="formStatus"></div>
+    </form>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div>&copy; 2026 Qleno</div>
+    <div class="footer-right">
+      <a href="/privacy">Privacy Policy</a>
+      <a href="mailto:hello@qleno.com">hello@qleno.com</a>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById('contactForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const status = document.getElementById('formStatus');
+      const btn = this.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      status.className = 'form-status';
+      status.textContent = '';
+
+      try {
+        const res = await fetch('/api/contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            firstName: this.firstName.value,
+            lastName: this.lastName.value,
+            businessName: this.businessName.value,
+            email: this.email.value,
+            message: this.message.value
+          })
+        });
+
+        if (!res.ok) throw new Error('Failed to send');
+
+        status.className = 'form-status success';
+        status.textContent = 'Message sent! We will get back to you within 24 hours.';
+        this.reset();
+      } catch (err) {
+        status.className = 'form-status error';
+        status.textContent = 'Something went wrong. Please email us at hello@qleno.com instead.';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Send Message';
+      }
+    });
+  </script>
+
+</body>
+</html>
