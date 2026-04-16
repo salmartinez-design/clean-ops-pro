@@ -763,11 +763,15 @@ export default function QuoteBuilderPage() {
     setQuickBookPrice(null);
     setPreferredTech(null);
     setRecentServices([]);
-    setAddressVerified(null);
-    setAddressFormatted("");
-    // Geocode client address to verify it
-    const fullAddr = [c.address, c.zip].filter(Boolean).join(", ");
-    if (fullAddr) geocodeVerify(fullAddr);
+    // Existing client with an address on file — trust it, skip geocode verification.
+    // Only geocode-verify when the address is later changed to a new one.
+    if (c.address) {
+      setAddressVerified(true);
+      setAddressFormatted([c.address, c.zip].filter(Boolean).join(", "));
+    } else {
+      setAddressVerified(null);
+      setAddressFormatted("");
+    }
     apiFetch(`/api/clients/${c.id}/quote-context`)
       .then((data: any) => {
         setPreferredTech(data.preferred_technician || null);

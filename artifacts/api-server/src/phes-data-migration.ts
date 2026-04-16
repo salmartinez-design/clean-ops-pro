@@ -310,30 +310,31 @@ async function runZoneSync(): Promise<void> {
 
   type ZoneSpec = { name: string; location: string; color: string; zip_codes: string[] };
 
+  // Colors synced from MaidCentral (2026-04-16)
   const OAK_LAWN_ZONES: ZoneSpec[] = [
-    { name: "Chicago Central",                     location: "oak_lawn",   color: "#F1D0A4", zip_codes: ["60632","60633","60615","60653","60608","60616","60623","60804","60638"] },
-    { name: "Chicago Downtown/Loop Zone",           location: "oak_lawn",   color: "#4B8083", zip_codes: ["60605","60654","60601","60661","60606","60602","60603","60604","60699","60611","60610","60607"] },
-    { name: "Chicago North Residential Zone",       location: "oak_lawn",   color: "#CCF518", zip_codes: ["60622","60642","60614","60647","60651","60639","60641","60634"] },
-    { name: "Chicago South",                        location: "oak_lawn",   color: "#D34DCB", zip_codes: ["60628","60617","60619","60649","60620","60637"] },
-    { name: "Chicago West Side",                    location: "oak_lawn",   color: "#FF7F50", zip_codes: ["60624","60644","60512"] },
-    { name: "Company Zone",                         location: "oak_lawn",   color: "#F7DAE9", zip_codes: ["60453","60803","60655","60415","60456","60465","60482","60643","60805","60459","60455","60454"] },
-    { name: "Homer Glen/Lemont/Burr Ridge",         location: "oak_lawn",   color: "#00C5CD", zip_codes: ["60491","60439","60527"] },
+    { name: "Chicago Central",                     location: "oak_lawn",   color: "#7D00A8", zip_codes: ["60632","60609","60615","60653","60608","60616","60623","60804","60638"] },
+    { name: "Chicago Downtown/Loop Zone",           location: "oak_lawn",   color: "#4B0082", zip_codes: ["60605","60654","60601","60661","60606","60602","60603","60604","60699","60611","60610","60607"] },
+    { name: "Chicago North Residential Zone",       location: "oak_lawn",   color: "#EC6F16", zip_codes: ["60622","60642","60614","60647","60651","60639","60641","60634"] },
+    { name: "Chicago South",                        location: "oak_lawn",   color: "#D400C8", zip_codes: ["60628","60617","60619","60649","60620","60637"] },
+    { name: "Chicago West Side",                    location: "oak_lawn",   color: "#FF7F50", zip_codes: ["60624","60644","60612"] },
+    { name: "Company Zone",                         location: "oak_lawn",   color: "#FF00A8", zip_codes: ["60453","60418","60803","60652","60655","60415","60457","60456","60465","60482","60643","60805","60459","60455","60454"] },
+    { name: "Homer Glen/Lemont/Burr Ridge",         location: "oak_lawn",   color: "#FF8D69", zip_codes: ["60491","60439","60527"] },
     { name: "Homewood/Harvey",                      location: "oak_lawn",   color: "#8C0000", zip_codes: ["60430","60426","60429"] },
-    { name: "La Grange/Hodgkins/Berwyn",            location: "oak_lawn",   color: "#00D0FF", zip_codes: ["60534","60402","60304","60513","60546","60130","60141","60155","60526","60154","60523","60558","60501"] },
-    { name: "Lake View/Lincoln Square/Lincolnwood", location: "oak_lawn",   color: "#A97A00", zip_codes: ["60625","60646","60630","60659","60640","60660","60626","60645","60712","60618","60613","60657","60076"] },
-    { name: "Maywood/Northlake/Schiller Park",      location: "oak_lawn",   color: "#7F6669", zip_codes: ["60176","60131","60164","60163","60162","60706","60171","60165","60153","60305","60707","60302","60301"] },
-    { name: "Naperville/Woodridge/Lisle",           location: "oak_lawn",   color: "#F1B9F7", zip_codes: ["60540","60532","60517","60565","60516","60561"] },
-    { name: "Norridge/Park Ridge/Des Plaines",      location: "oak_lawn",   color: "#4FF30A", zip_codes: ["60068","60018","60666","60656","60053"] },
-    { name: "South Suburbs",                        location: "oak_lawn",   color: "#FF7200", zip_codes: ["60409","60633","60472","60827","46311","60411","60430","60429","60422","60476","60426","60469","60473"] },
-    { name: "Southwest Suburbs",                    location: "oak_lawn",   color: "#17C9D3", zip_codes: ["60441","60446","60440","60490","60439","60527","60480","60491","60458","60451","60423"] },
-    { name: "Tinley/Orlando/Palos Park",            location: "oak_lawn",   color: "#F7D7D0", zip_codes: ["60464","60463","60445","60452","60477","60467","60462","60487","60466"] },
-    { name: "Westmont/Lombard/Elmhurst",            location: "oak_lawn",   color: "#00B8FF", zip_codes: ["60559","60514","60521","60515","60148","60126","60181"] },
+    { name: "La Grange/Hodgkins/Berwyn",            location: "oak_lawn",   color: "#8D00FF", zip_codes: ["60534","60402","60304","60513","60546","60130","60141","60155","60526","60154","60525","60558","60501"] },
+    { name: "Lake View/Lincoln Square/Lincolnwood", location: "oak_lawn",   color: "#0A7A09", zip_codes: ["60625","60646","60630","60659","60640","60660","60626","60645","60712","60618","60613","60657","60076"] },
+    { name: "Maywood/Northlake/Schiller Park",      location: "oak_lawn",   color: "#FF6666", zip_codes: ["60176","60131","60164","60163","60162","60104","60160","60706","60171","60165","60153","60305","60707","60302","60301"] },
+    { name: "Naperville/Woodridge/Lisle",           location: "oak_lawn",   color: "#FEB9FF", zip_codes: ["60540","60532","60517","60565","60516","60561"] },
+    { name: "Norridge/Park Ridge/Des Plaines",      location: "oak_lawn",   color: "#00F20A", zip_codes: ["60016","60068","60631","60018","60666","60656","60706","60053"] },
+    { name: "South Suburbs",                        location: "oak_lawn",   color: "#FF0000", zip_codes: ["60409","60633","60406","60472","60827","46311","60411","46324","60430","60429","60422","60428","60478","60426","60469","60473"] },
+    { name: "Southwest Suburbs",                    location: "oak_lawn",   color: "#FFC900", zip_codes: ["60441","60446","60440","60490","60439","60527","60480","60491","60458","60451","60423"] },
+    { name: "Tinley/Orlando/Palos Park",            location: "oak_lawn",   color: "#FFD700", zip_codes: ["60464","60463","60445","60452","60477","60467","60462","60487","60466"] },
+    { name: "Westmont/Lombard/Elmhurst",            location: "oak_lawn",   color: "#D988FF", zip_codes: ["60559","60514","60521","60523","60515","60148","60126","60181"] },
   ];
 
   const SCHAUMBURG_ZONES: ZoneSpec[] = [
     { name: "Barrington / Streamwood / Elgin",             location: "schaumburg", color: "#42F411", zip_codes: ["60010","60011","60107","60120","60172","60179","60192","60201"] },
     { name: "Elk Grove / Des Plaines / Buffalo Grove",     location: "schaumburg", color: "#FFB200", zip_codes: ["60009","60017","60019","60089","60090","60007"] },
-    { name: "Schaumburg / Palatine / Arlington Heights",   location: "schaumburg", color: "#E06569", zip_codes: ["60159","60168","60169","60173","60193","60194","60195","60196","60004","60005","60006","60008","60038","60055","60056","60067","60074","60078","60094","60095"] },
+    { name: "Schaumburg / Palatine / Arlington Heights",   location: "schaumburg", color: "#00E6FF", zip_codes: ["60159","60168","60169","60173","60193","60194","60195","60196","60004","60005","60006","60008","60038","60055","60056","60067","60074","60078","60094","60095"] },
   ];
 
   const allZones = [...OAK_LAWN_ZONES, ...SCHAUMBURG_ZONES];

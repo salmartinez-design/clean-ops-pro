@@ -108,12 +108,15 @@ export function GlobalSearch({ onClose }: Props) {
                 return (
                   <button key={c.id} onClick={() => go(`/customers/${c.id}`)}
                     style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'10px 16px', background: active ? '#F5F4F1' : 'none', border:'none', cursor:'pointer', textAlign:'left', fontFamily:'inherit' }}>
-                    <div style={{ width:32, height:32, borderRadius:16, background:'#EBF4FF', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                      <User size={15} color="#5B9BD5"/>
+                    <div style={{ width:32, height:32, borderRadius:16, background: c.zone_color ? `${c.zone_color}22` : '#EBF4FF', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, border: c.zone_color ? `2px solid ${c.zone_color}` : 'none' }}>
+                      {c.zone_color
+                        ? <span style={{ width:10, height:10, borderRadius:'50%', background: c.zone_color, display:'inline-block' }}/>
+                        : <User size={15} color="#5B9BD5"/>
+                      }
                     </div>
-                    <div>
+                    <div style={{ flex:1, minWidth:0 }}>
                       <p style={{ fontSize:13, fontWeight:600, color:'#1A1917', margin:0 }}>{c.first_name} {c.last_name}</p>
-                      <p style={{ fontSize:11, color:'#9E9B94', margin:0 }}>{c.address || c.email || c.phone}</p>
+                      <p style={{ fontSize:11, color:'#9E9B94', margin:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.address || c.email || c.phone}{c.zone_name ? ` · ${c.zone_name}` : ''}</p>
                     </div>
                   </button>
                 );

@@ -23,6 +23,9 @@ router.get("/", requireAuth, async (req, res) => {
         phone: clientsTable.phone,
         address: clientsTable.address,
         city: clientsTable.city,
+        zip: clientsTable.zip,
+        zone_color: sql<string | null>`(SELECT sz.color FROM service_zones sz WHERE sz.company_id = ${clientsTable.company_id} AND sz.is_active = true AND ${clientsTable.zip} = ANY(sz.zip_codes) LIMIT 1)`,
+        zone_name: sql<string | null>`(SELECT sz.name FROM service_zones sz WHERE sz.company_id = ${clientsTable.company_id} AND sz.is_active = true AND ${clientsTable.zip} = ANY(sz.zip_codes) LIMIT 1)`,
       })
         .from(clientsTable)
         .where(and(
