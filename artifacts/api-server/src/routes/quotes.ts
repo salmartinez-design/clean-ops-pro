@@ -317,31 +317,39 @@ router.post("/:id/convert", requireAuth, requireRole("owner", "admin", "office")
 
     // Create the actual job
     const jobDate = scheduled_date || new Date().toISOString().split("T")[0];
+    // Look up scope name
+    let scopeName = "Cleaning";
+    if (q.scope_id) {
+      const scopeResult = await db.execute(sql`SELECT name FROM pricing_scopes WHERE id = ${q.scope_id} LIMIT 1`);
+      scopeName = (scopeResult.rows[0] as any)?.name || "Cleaning";
+    }
+
     const jobResult = await db.execute(sql`
       INSERT INTO jobs (
         company_id, client_id, scheduled_date, scheduled_time,
         service_type, base_fee, status, assigned_user_id,
-        frequency, notes, quote_id, created_at
+        frequency, notes, created_at
       ) VALUES (
         ${companyId},
         ${q.client_id || null},
         ${jobDate},
         ${scheduled_time || null},
-        ${q.scope_id ? (await db.execute(sql`SELECT name FROM pricing_scopes WHERE id = ${q.scope_id} LIMIT 1`)).rows[0]?.name || 'Cleaning' : 'Cleaning'},
+        ${scopeName},
         ${q.total_price || '0'},
         'scheduled',
         ${assigned_user_id || null},
         ${q.frequency || 'onetime'},
         ${q.internal_memo || null},
-        ${id},
         NOW()
       ) RETURNING id
     `);
     const jobId = (jobResult.rows[0] as any)?.id;
 
-    // Link job back to quote
+    // Link job back to quote (safe — column may not exist yet)
     if (jobId) {
-      await db.execute(sql`UPDATE quotes SET booked_job_id = ${jobId} WHERE id = ${id}`);
+      try {
+        await db.execute(sql`UPDATE quotes SET booked_job_id = ${jobId} WHERE id = ${id}`);
+      } catch { /* column may not exist */ }
     }
 
     logAudit(req, "CONVERTED", "quote", id, null, { status: "booked", total_price: q.total_price, job_id: jobId });

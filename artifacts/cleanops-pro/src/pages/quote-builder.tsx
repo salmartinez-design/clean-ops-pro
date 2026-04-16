@@ -2207,11 +2207,18 @@ export default function QuoteBuilderPage() {
                       style={{ width: "100%", height: 36, border: "1px solid #E5E2DC", borderRadius: 8, padding: "0 10px", fontSize: 13, fontFamily: FF, outline: "none", background: "#FFF", marginTop: 4 }}
                     />
                   </div>
-                  <div style={{ width: 120 }}>
+                  <div style={{ width: 140 }}>
                     <Label className="text-xs">Start Time</Label>
-                    <input type="time" value={selectedTime} onChange={e => setSelectedTime(e.target.value)}
-                      style={{ width: "100%", height: 36, border: "1px solid #E5E2DC", borderRadius: 8, padding: "0 10px", fontSize: 13, fontFamily: FF, outline: "none", background: "#FFF", marginTop: 4 }}
-                    />
+                    <select value={selectedTime} onChange={e => setSelectedTime(e.target.value)}
+                      style={{ width: "100%", height: 36, border: "1px solid #E5E2DC", borderRadius: 8, padding: "0 8px", fontSize: 13, fontFamily: FF, outline: "none", background: "#FFF", marginTop: 4, cursor: "pointer" }}>
+                      {["7:00 AM","7:30 AM","8:00 AM","8:30 AM","9:00 AM","9:30 AM","10:00 AM","10:30 AM","11:00 AM","11:30 AM","12:00 PM","12:30 PM","1:00 PM","1:30 PM","2:00 PM","2:30 PM","3:00 PM","3:30 PM","4:00 PM","4:30 PM","5:00 PM"].map(t => {
+                        const [time, ampm] = t.split(" ");
+                        const [h, m] = time.split(":");
+                        const h24 = ampm === "PM" && h !== "12" ? parseInt(h) + 12 : ampm === "AM" && h === "12" ? 0 : parseInt(h);
+                        const val = `${String(h24).padStart(2,"0")}:${m}`;
+                        return <option key={val} value={val}>{t}</option>;
+                      })}
+                    </select>
                   </div>
                   <div style={{ flex: 1 }}>
                     <Label className="text-xs">Assign Technician</Label>
