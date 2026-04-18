@@ -1,5 +1,5 @@
 import { db } from "@workspace/db";
-import { recurringSchedulesTable, jobsTable, clientsTable } from "@workspace/db/schema";
+import { recurringSchedulesTable, jobsTable, clientsTable, companiesTable } from "@workspace/db/schema";
 import { eq, and, sql, inArray, gte, lte } from "drizzle-orm";
 
 const DAYS_AHEAD = 60;
@@ -163,7 +163,14 @@ export async function generateJobsFromSchedule(
 export async function generateRecurringJobs(
   companyId: number,
   daysAhead = DAYS_AHEAD
-): Promise<{ jobs_created: number; schedules_processed: number; skipped_duplicates: number; unassigned_jobs: number }> {
+): Promise<{ jobs_created: number; schedules_processed: number; skipped_duplicates: number; unassigned_jobs: number; skipped?: boolean; reason?: string }> {
+  // Per-tenant disable flag — skip this company if their engine is off
+  const company = await db.select().from(companiesTable).where(eq(companiesTable.id, companyId)).limit(1);
+  if (!company[0] || !company[0].recurring_engine_enabled) {
+    console.log(`[recurring-engine] Skipping company_id=${companyId} — engine disabled for this tenant`);
+    return { jobs_created: 0, schedules_processed: 0, skipped_duplicates: 0, unassigned_jobs: 0, skipped: true, reason: "tenant_disabled" };
+  }
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const horizon = addDays(today, daysAhead);

@@ -219,6 +219,9 @@ async function runBookingSchemaGuard(): Promise<void> {
     ` },
     { label: "CREATE idx_job_technicians_job_id", stmt: `CREATE INDEX IF NOT EXISTS idx_job_technicians_job_id ON job_technicians(job_id)` },
     { label: "CREATE idx_job_technicians_user_id", stmt: `CREATE INDEX IF NOT EXISTS idx_job_technicians_user_id ON job_technicians(user_id)` },
+
+    // ── Per-tenant recurring engine flag (2026-04-17) ───────────────────────
+    { label: "companies.recurring_engine_enabled", stmt: `ALTER TABLE companies ADD COLUMN IF NOT EXISTS recurring_engine_enabled BOOLEAN NOT NULL DEFAULT true` },
   ];
 
   for (const { label, stmt } of guards) {

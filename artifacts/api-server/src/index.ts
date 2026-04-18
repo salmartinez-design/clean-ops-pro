@@ -103,13 +103,22 @@ function startFollowUpCron() {
 // Start listening immediately so health checks pass, then seed in the background
 app.listen(port, "0.0.0.0", () => {
   console.log("Server running on port", process.env.PORT || 3000);
+  const recurringEngineEnabled = process.env.RECURRING_ENGINE_ENABLED !== "false";
   seedIfNeeded()
     .then(() => runPhesDataMigration())
-    .then(() => runRecurringJobGeneration())
+    .then(() => {
+      if (recurringEngineEnabled) return runRecurringJobGeneration();
+      console.log("[recurring-engine] Startup generation SKIPPED via RECURRING_ENGINE_ENABLED=false env var");
+    })
     .catch((err) => {
       console.error("[startup] Background init error:", err);
     });
-  startRecurringJobCron();
+  if (recurringEngineEnabled) {
+    startRecurringJobCron();
+    console.log("[recurring-engine] Cron started");
+  } else {
+    console.log("[recurring-engine] Cron DISABLED via RECURRING_ENGINE_ENABLED=false env var");
+  }
   startNotificationCron();
   startFollowUpCron();
 
