@@ -47,3 +47,12 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+migration/
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Per-developer tool config (contains absolute paths)
+.claude/
