@@ -265,6 +265,28 @@ export default function QuoteBuilderPage() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  // ── Pre-select client from ?client_id= on mount (when opened from customer profile) ──
+  useEffect(() => {
+    if (isEdit || selectedClientId) return; // editing existing quote, or already picked
+    const params = new URLSearchParams(window.location.search);
+    const cid = parseInt(params.get("client_id") || "");
+    if (!cid || isNaN(cid)) return;
+    (async () => {
+      try {
+        const client = await apiFetch(`/api/clients/${cid}`);
+        if (!client || !client.id) return;
+        setSelectedClientId(client.id);
+        const displayName = client.company_name || `${client.first_name || ""} ${client.last_name || ""}`.trim();
+        setClientSearch(displayName);
+        setLeadFirstName(client.first_name || "");
+        setLeadLastName(client.last_name || "");
+        setLeadEmail(client.email || "");
+        setLeadPhone(client.phone || "");
+        setAddress(client.address || "");
+      } catch {}
+    })();
+  }, [isEdit]);
+
   // ── Restore existing quote ───────────────────────────────────────────────
   useEffect(() => {
     if (!existingQuote) return;

@@ -73,9 +73,24 @@ interface JobWizardProps {
   open: boolean;
   onClose: () => void;
   onCreated: () => void;
+  /**
+   * Optional preselected client. When provided, the wizard skips the
+   * "Type" and "Client" steps and jumps directly to the Details step.
+   * Used when opening the wizard from a client profile page — context
+   * is already known, no need to re-search.
+   */
+  preselectedClient?: {
+    id: number;
+    first_name?: string | null;
+    last_name?: string | null;
+    address?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    client_type?: string | null;
+  } | null;
 }
 
-export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
+export function JobWizard({ open, onClose, onCreated, preselectedClient }: JobWizardProps) {
   const { activeBranchId, branches } = useBranch();
   const [selectedBranchOverride, setSelectedBranchOverride] = useState<string | number>("all");
   const [step, setStep] = useState(0);
@@ -176,8 +191,30 @@ export function JobWizard({ open, onClose, onCreated }: JobWizardProps) {
       setSuggestions([]); setSuggestionsLoading(false); setSuggestionsDismissed(false);
     } else {
       setSelectedBranchOverride(activeBranchId);
+      // If opened from a client profile, skip type + client-search steps
+      if (preselectedClient) {
+        const isCommercial = preselectedClient.client_type === "commercial";
+        setClientType(isCommercial ? "commercial" : "residential");
+        if (!isCommercial) {
+          setSelectedClient({
+            id: preselectedClient.id,
+            first_name: preselectedClient.first_name || "",
+            last_name: preselectedClient.last_name || "",
+            address: preselectedClient.address || "",
+            phone: preselectedClient.phone || "",
+            email: preselectedClient.email || "",
+          });
+          setStep(2); // jump straight to Details
+        } else {
+          setSelectedAccount({
+            id: preselectedClient.id,
+            account_name: preselectedClient.first_name || "",
+          });
+          setStep(1); // Commercial still needs property selection — land on Step 1B
+        }
+      }
     }
-  }, [open]);
+  }, [open, preselectedClient?.id]);
 
   // Residential client search
   useEffect(() => {

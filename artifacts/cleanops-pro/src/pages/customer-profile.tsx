@@ -12,6 +12,7 @@ import {
   MessageCircle, RefreshCw, Activity, Upload, Image, Calendar, Clock, Wrench,
 } from "lucide-react";
 import { QuotesTab, PaymentsTab, QuickBooksTab, AttachmentsTab, CommLog2 } from "./customer-profile-tabs2";
+import { JobWizard } from "@/components/job-wizard";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -3924,6 +3925,7 @@ export default function CustomerProfilePage() {
   const [, params] = useRoute("/customers/:id");
   const clientId = parseInt(params?.id || "0");
   const qc = useQueryClient();
+  const [showJobWizard, setShowJobWizard] = useState(false);
 
   const { data: profile, isLoading, refetch: refetchProfile } = useQuery<any>({
     queryKey: ["client-profile", clientId],
@@ -4096,7 +4098,7 @@ export default function CustomerProfilePage() {
           )}
         </div>
         <div style={{ display: "flex", gap: 7, flexWrap: "wrap", flexShrink: 0 }}>
-          <button onClick={() => navigate(`/dispatch?client_id=${clientId}`)} style={{ padding: "7px 13px", background: "var(--brand)", border: "none", borderRadius: 8, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FF }}>Schedule Job</button>
+          <button onClick={() => setShowJobWizard(true)} style={{ padding: "7px 13px", background: "var(--brand)", border: "none", borderRadius: 8, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FF }}>Schedule Job</button>
           <button onClick={() => navigate(`/quotes/new?client_id=${clientId}`)} style={{ padding: "7px 13px", background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 8, color: "#1A1917", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: FF }}>Quote</button>
           <button onClick={() => setShowMessageDrawer(true)} style={{ padding: "7px 13px", background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 8, color: "#1A1917", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: FF }}>Message</button>
           <button onClick={() => setShowEditProfileDrawer(true)} style={{ padding: "7px 13px", background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 8, color: "#1A1917", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: FF }}>Edit</button>
@@ -4499,6 +4501,12 @@ export default function CustomerProfilePage() {
         {toast && <Toast message={toast.message} type={toast.type} onDone={() => setToast(null)} />}
         {showMessageDrawer && <SendMessageDrawer client={profile} onClose={() => setShowMessageDrawer(false)} onToast={showToast} />}
         {showEditProfileDrawer && <EditProfileDrawer client={profile} onClose={() => setShowEditProfileDrawer(false)} onSave={updateMut.mutateAsync} onToast={showToast} />}
+        <JobWizard
+          open={showJobWizard}
+          onClose={() => setShowJobWizard(false)}
+          onCreated={() => { setShowJobWizard(false); refetchProfile(); qc.invalidateQueries({ queryKey: ["client-job-history", clientId] }); showToast("Job scheduled"); }}
+          preselectedClient={profile ? { id: clientId, first_name: profile.first_name, last_name: profile.last_name, address: profile.address, phone: profile.phone, email: profile.email, client_type: profile.client_type } : null}
+        />
         <div style={{ display: "flex", flexDirection: "column", fontFamily: FF, background: "#F7F6F3", minHeight: "100dvh" }}>
           {/* Mobile hero (compact) */}
           <div style={{ background: "#FFFFFF", borderBottom: "1px solid #E5E2DC", padding: "12px 16px 0" }}>
@@ -4545,7 +4553,7 @@ export default function CustomerProfilePage() {
               <span>Visits: <strong style={{ color: "#1A1917" }}>{jhStats?.total_visits ?? 0}</strong></span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginBottom: 12 }}>
-              <button onClick={() => navigate(`/dispatch?client_id=${clientId}`)} style={{ padding: "9px", background: "var(--brand)", border: "none", borderRadius: 8, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: FF, minHeight: 40 }}>Schedule Job</button>
+              <button onClick={() => setShowJobWizard(true)} style={{ padding: "9px", background: "var(--brand)", border: "none", borderRadius: 8, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: FF, minHeight: 40 }}>Schedule Job</button>
               <button onClick={() => navigate(`/quotes/new?client_id=${clientId}`)} style={{ padding: "9px", background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 8, color: "#1A1917", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: FF, minHeight: 40 }}>Quote</button>
               <button onClick={() => setShowMessageDrawer(true)} style={{ padding: "9px", background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 8, color: "#1A1917", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: FF, minHeight: 40 }}>Message</button>
               <button onClick={() => setShowEditProfileDrawer(true)} style={{ padding: "9px", background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 8, color: "#1A1917", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: FF, minHeight: 40 }}>Edit</button>
@@ -4644,6 +4652,12 @@ export default function CustomerProfilePage() {
       {toast && <Toast message={toast.message} type={toast.type} onDone={() => setToast(null)} />}
       {showMessageDrawer && <SendMessageDrawer client={profile} onClose={() => setShowMessageDrawer(false)} onToast={showToast} />}
       {showEditProfileDrawer && <EditProfileDrawer client={profile} onClose={() => setShowEditProfileDrawer(false)} onSave={updateMut.mutateAsync} onToast={showToast} />}
+      <JobWizard
+        open={showJobWizard}
+        onClose={() => setShowJobWizard(false)}
+        onCreated={() => { setShowJobWizard(false); refetchProfile(); qc.invalidateQueries({ queryKey: ["client-job-history", clientId] }); showToast("Job scheduled"); }}
+        preselectedClient={profile ? { id: clientId, first_name: profile.first_name, last_name: profile.last_name, address: profile.address, phone: profile.phone, email: profile.email, client_type: profile.client_type } : null}
+      />
 
       <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", fontFamily: FF, background: "#F7F6F3" }}>
         {HeroStrip}
