@@ -43,8 +43,11 @@ function addMonths(date: Date, months: number): Date {
   return d;
 }
 
-function toDateStr(date: Date): string {
-  return date.toISOString().slice(0, 10);
+function toDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function parseDate(str: string): Date {
