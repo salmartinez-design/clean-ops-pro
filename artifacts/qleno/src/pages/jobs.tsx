@@ -1289,9 +1289,11 @@ function JobHoverCard({ job, assignedName }: { job: DispatchJob; assignedName?: 
         </div>
       </div>
 
-      {/* Team section */}
+      {/* Team / Technician section */}
       <div style={{ padding: "8px 16px 10px", borderTop: "1px solid #F0EEE9" }}>
-        <div style={{ fontSize: 10, fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>Team</div>
+        <div style={{ fontSize: 10, fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
+          {(job.technicians?.length ?? 0) > 1 ? `Team (${job.technicians!.length})` : "Technician"}
+        </div>
         {job.technicians && job.technicians.length > 0 ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {job.technicians.map((t, i) => (
@@ -1364,12 +1366,21 @@ function JobChip({ job, onClick, assignedName, isUnassigned }: { job: DispatchJo
         {job.clock_entry?.clock_in_at && <Clock size={9} style={{ color: sc.dot, flexShrink: 0 }} />}
         {job.after_photo_count > 0 && <Camera size={9} style={{ color: sc.dot, flexShrink: 0 }} />}
         {isRecurring && <Repeat size={9} style={{ color: sc.dot, flexShrink: 0 }} />}
-        <span style={{ fontSize: 11, fontWeight: 700, color: "#1A1917", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{job.client_name}</span>
+        <User size={10} style={{ color: isUnassigned ? "#D97706" : sc.dot, flexShrink: 0 }} />
+        <span style={{ fontSize: 11, fontWeight: 700, color: isUnassigned ? "#D97706" : "#1A1917", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {(() => {
+            const techs = job.technicians ?? [];
+            if (techs.length > 1) return `${techs[0].name.split(" ")[0]} +${techs.length - 1}`;
+            if (techs.length === 1) return techs[0].name;
+            return assignedName || "Unassigned";
+          })()}
+        </span>
       </div>
-      <span style={{ fontSize: 10, color: "#6B7280", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fmtSvc(job.service_type)}</span>
-      {width > 130 && (assignedName
-        ? <span style={{ fontSize: 9, color: "#9E9B94", display: "flex", alignItems: "center", gap: 3 }}><User size={8} />{assignedName}</span>
-        : <span style={{ fontSize: 9, color: "#9E9B94" }}>{fmtTime(job.scheduled_time)} – {fmtTime(minsToStr(timeToMins(job.scheduled_time) + job.duration_minutes))}</span>
+      <span style={{ fontSize: 10, color: "#6B7280", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{job.client_name}</span>
+      {width > 130 && (
+        <span style={{ fontSize: 9, color: "#9E9B94" }}>
+          {fmtSvc(job.service_type)} · {fmtTime(job.scheduled_time)} – {fmtTime(minsToStr(timeToMins(job.scheduled_time) + job.duration_minutes))}
+        </span>
       )}
       {hovered && !isDragging && <JobHoverCard job={job} assignedName={assignedName} />}
     </div>
