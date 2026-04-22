@@ -103,7 +103,7 @@ function Router() {
         <Route path="/accept-invite" component={AcceptInvitePage} />
         <Route path="/dashboard" component={Dashboard} />
         <Route path="/dispatch" component={JobsPage} />
-        <Route path="/jobs" component={JobsPage} />
+        <Route path="/jobs" component={JobsListPage} />
         <Route path="/jobs/list" component={JobsListPage} />
         <Route path="/employees/clocks" component={ClockMonitorPage} />
         <Route path="/employees/:id" component={EmployeeProfilePage} />

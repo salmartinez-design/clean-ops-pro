@@ -1,6 +1,6 @@
 import {
   LogOut, X, LayoutDashboard, CalendarDays,
-  Users, UserCheck, FileText, DollarSign,
+  Briefcase, Users, UserCheck, FileText, DollarSign,
   BarChart2, TrendingUp, FileText as FileTextIcon,
   BookOpen, Settings, AlertTriangle, HeartPulse, Building2,
   UserPlus,
@@ -45,9 +45,7 @@ const NAV_SECTIONS = [
     items: [
       { title: "Dashboard",      url: "/dashboard",  icon: LayoutDashboard },
       { title: "Dispatch Board", url: "/dispatch",    icon: CalendarDays },
-      // [2026-04-22] Jobs entry removed — same view as Dispatch Board, was
-      // confusing. /jobs and /jobs/list routes still exist in App.tsx so any
-      // external links continue to resolve.
+      { title: "Jobs",           url: "/jobs",       icon: Briefcase },
       { title: "Customers",      url: "/customers",  icon: Users },
       { title: "Accounts",       url: "/accounts",   icon: Building2, roles: ["owner", "admin", "office"] },
       { title: "Employees",      url: "/employees",  icon: UserCheck },
