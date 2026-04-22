@@ -197,6 +197,11 @@ type PlannedInsert = {
   base_fee: string;
 };
 
+export type FailedSchedule = {
+  schedule_id: number;
+  error: string;
+};
+
 export type RecurringRunResult = {
   // back-compat fields
   jobs_created: number;
@@ -218,6 +223,9 @@ export type RecurringRunResult = {
   total_occurrences_skipped_fee_guard?: number;
   planned_inserts?: PlannedInsert[];
   planned_inserts_total?: number;
+  // J3 — per-schedule resilience + advisory lock
+  failed_schedules?: FailedSchedule[];
+  skipped_due_to_lock?: boolean;
 };
 
 const SKIPPED_SCHEDULES_CAP = 200;
@@ -243,6 +251,31 @@ export async function generateRecurringJobs(
     };
   }
 
+  // J3 — per-company advisory lock. Two args to pg_try_advisory_lock form a
+  // 64-bit key (namespace constant + company_id). If another process already
+  // holds this lock, skip the run silently. This is the primary defense
+  // against the 5× concurrent startup cascade that caused the 2026-04-22
+  // overnight duplication incident.
+  const LOCK_NAMESPACE = 4242;
+  const lockResult = await db.execute(sql`
+    SELECT pg_try_advisory_lock(${LOCK_NAMESPACE}, ${companyId}) AS acquired
+  `);
+  const acquired = (lockResult.rows?.[0] as any)?.acquired;
+  if (!acquired) {
+    console.warn(
+      `[recurring-engine] company_id=${companyId}: ` +
+      `another process holds the lock — skipping this run.`
+    );
+    return {
+      jobs_created: 0, schedules_processed: 0, skipped_duplicates: 0, unassigned_jobs: 0,
+      skipped: true, reason: "lock_not_acquired",
+      inserted: 0, skipped_null_fee: 0, skipped_zero_fee: 0, skipped_schedules: [],
+      failed_schedules: [], skipped_due_to_lock: true,
+    };
+  }
+
+  try {
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const horizon = addDays(today, daysAhead);
@@ -251,13 +284,18 @@ export async function generateRecurringJobs(
 
   console.log(`[recurring-jobs] company=${companyId} window: ${todayStr} → ${horizonStr}`);
 
+  // J3 — deterministic schedule order so processing is reproducible across
+  // restarts and across concurrent processes. Without ORDER BY, different
+  // processes could hit different subsets on the same company and create
+  // partial-overlap inserts (the pattern we saw in the 2026-04-22 incident).
   const schedules = await db
     .select()
     .from(recurringSchedulesTable)
     .where(and(
       eq(recurringSchedulesTable.company_id, companyId),
       eq(recurringSchedulesTable.is_active, true)
-    ));
+    ))
+    .orderBy(recurringSchedulesTable.id);
 
   if (!schedules.length) {
     console.log(`[recurring-jobs] No active schedules for company ${companyId}`);
@@ -300,6 +338,11 @@ export async function generateRecurringJobs(
   let skippedNullFee = 0;
   let skippedZeroFee = 0;
   const skippedSchedules: SkippedSchedule[] = [];
+  // J3 — per-schedule failure tracking. One bad schedule no longer aborts the
+  // entire company run; we record the error and continue. Exposed in the
+  // RecurringRunResult so the API + cron logs surface bad rows instead of
+  // silently swallowing them.
+  const failedSchedules: FailedSchedule[] = [];
 
   // Dry-run accumulators — populated only when opts.dryRun
   let totalOccurrencesPlanned = 0;
@@ -307,90 +350,109 @@ export async function generateRecurringJobs(
   const plannedInserts: PlannedInsert[] = [];
 
   for (const schedule of schedules) {
-    // Guard: reject schedules with unusable base_fee. Prevents phantom $0 jobs
-    // like the 744 cleaned up in Session 1. Backfilling base_fee from MaidCentral
-    // rates or client-history median is a separate concern.
-    const feeRaw = schedule.base_fee;
-    const feeTrimmed = typeof feeRaw === "string" ? feeRaw.trim() : feeRaw;
-    const clientId = schedule.customer_id ?? null;
-    const clientName = clientId != null ? (clientNameMap[clientId] ?? null) : null;
+    try {
+      // Guard: reject schedules with unusable base_fee. Prevents phantom $0 jobs
+      // like the 744 cleaned up in Session 1. Backfilling base_fee from MaidCentral
+      // rates or client-history median is a separate concern.
+      const feeRaw = schedule.base_fee;
+      const feeTrimmed = typeof feeRaw === "string" ? feeRaw.trim() : feeRaw;
+      const clientId = schedule.customer_id ?? null;
+      const clientName = clientId != null ? (clientNameMap[clientId] ?? null) : null;
 
-    if (feeTrimmed == null || feeTrimmed === "") {
-      console.warn(`[recurring-engine] SKIP schedule id=${schedule.id} client=${clientId} — base_fee is NULL`);
-      skippedNullFee++;
-      if (skippedSchedules.length < SKIPPED_SCHEDULES_CAP) {
-        skippedSchedules.push({
-          schedule_id: schedule.id,
-          client_id: clientId,
-          client_name: clientName,
-          frequency: schedule.frequency,
-          reason: "null_fee",
-        });
+      if (feeTrimmed == null || feeTrimmed === "") {
+        console.warn(`[recurring-engine] SKIP schedule id=${schedule.id} client=${clientId} — base_fee is NULL`);
+        skippedNullFee++;
+        if (skippedSchedules.length < SKIPPED_SCHEDULES_CAP) {
+          skippedSchedules.push({
+            schedule_id: schedule.id,
+            client_id: clientId,
+            client_name: clientName,
+            frequency: schedule.frequency,
+            reason: "null_fee",
+          });
+        }
+        // In dry-run, also count what WOULD have been generated had the fee been set
+        if (dryRun) {
+          totalOccurrencesSkippedFeeGuard += generateOccurrences(schedule, today, horizon).length;
+        }
+        continue;
       }
-      // In dry-run, also count what WOULD have been generated had the fee been set
+
+      const feeNum = parseFloat(feeTrimmed);
+      if (!Number.isFinite(feeNum) || feeNum === 0) {
+        console.warn(`[recurring-engine] SKIP schedule id=${schedule.id} client=${clientId} — base_fee is 0`);
+        skippedZeroFee++;
+        if (skippedSchedules.length < SKIPPED_SCHEDULES_CAP) {
+          skippedSchedules.push({
+            schedule_id: schedule.id,
+            client_id: clientId,
+            client_name: clientName,
+            frequency: schedule.frequency,
+            reason: "zero_fee",
+          });
+        }
+        if (dryRun) {
+          totalOccurrencesSkippedFeeGuard += generateOccurrences(schedule, today, horizon).length;
+        }
+        continue;
+      }
+
+      const clientZip = clientZipMap[schedule.customer_id!] ?? null;
+      const bookingLocation = clientZip ? (zipLocationMap[clientZip] ?? null) : null;
+
       if (dryRun) {
-        totalOccurrencesSkippedFeeGuard += generateOccurrences(schedule, today, horizon).length;
+        // Compute but do not insert; do not update last_generated_date
+        const { rows, skipped } = await computeOccurrencesForSchedule(
+          schedule, today, horizon, bookingLocation, clientZip
+        );
+        totalSkipped += skipped;
+        totalOccurrencesPlanned += rows.length;
+        if (rows.length > 0) schedulesProcessed++;
+        for (const r of rows) {
+          if (plannedInserts.length >= PLANNED_INSERTS_CAP) break;
+          plannedInserts.push({
+            schedule_id: schedule.id,
+            client_id: clientId,
+            scheduled_date: String(r.scheduled_date),
+            base_fee: String(r.base_fee),
+          });
+        }
+        continue;
       }
-      continue;
-    }
 
-    const feeNum = parseFloat(feeTrimmed);
-    if (!Number.isFinite(feeNum) || feeNum === 0) {
-      console.warn(`[recurring-engine] SKIP schedule id=${schedule.id} client=${clientId} — base_fee is 0`);
-      skippedZeroFee++;
-      if (skippedSchedules.length < SKIPPED_SCHEDULES_CAP) {
-        skippedSchedules.push({
-          schedule_id: schedule.id,
-          client_id: clientId,
-          client_name: clientName,
-          frequency: schedule.frequency,
-          reason: "zero_fee",
-        });
-      }
-      if (dryRun) {
-        totalOccurrencesSkippedFeeGuard += generateOccurrences(schedule, today, horizon).length;
-      }
-      continue;
-    }
-
-    const clientZip = clientZipMap[schedule.customer_id!] ?? null;
-    const bookingLocation = clientZip ? (zipLocationMap[clientZip] ?? null) : null;
-
-    if (dryRun) {
-      // Compute but do not insert; do not update last_generated_date
-      const { rows, skipped } = await computeOccurrencesForSchedule(
+      const { created, skipped } = await generateJobsFromSchedule(
         schedule, today, horizon, bookingLocation, clientZip
       );
+
       totalSkipped += skipped;
-      totalOccurrencesPlanned += rows.length;
-      if (rows.length > 0) schedulesProcessed++;
-      for (const r of rows) {
-        if (plannedInserts.length >= PLANNED_INSERTS_CAP) break;
-        plannedInserts.push({
-          schedule_id: schedule.id,
-          client_id: clientId,
-          scheduled_date: String(r.scheduled_date),
-          base_fee: String(r.base_fee),
-        });
+      if (created > 0) {
+        totalCreated += created;
+        schedulesProcessed++;
+        if (!schedule.assigned_employee_id) unassignedJobs += created;
+
+        await db
+          .update(recurringSchedulesTable)
+          .set({ last_generated_date: todayStr })
+          .where(eq(recurringSchedulesTable.id, schedule.id));
       }
+    } catch (err: any) {
+      console.error(
+        `[recurring-engine] Schedule ${schedule.id} (client ${schedule.customer_id}) ` +
+        `failed — continuing with remaining schedules. Error:`, err?.message || err
+      );
+      failedSchedules.push({
+        schedule_id: schedule.id,
+        error: String(err?.message || err).slice(0, 500),
+      });
       continue;
     }
+  }
 
-    const { created, skipped } = await generateJobsFromSchedule(
-      schedule, today, horizon, bookingLocation, clientZip
+  if (failedSchedules.length > 0) {
+    console.error(
+      `[recurring-engine] company_id=${companyId}: ${failedSchedules.length} schedules ` +
+      `failed during generation:`, failedSchedules
     );
-
-    totalSkipped += skipped;
-    if (created > 0) {
-      totalCreated += created;
-      schedulesProcessed++;
-      if (!schedule.assigned_employee_id) unassignedJobs += created;
-
-      await db
-        .update(recurringSchedulesTable)
-        .set({ last_generated_date: todayStr })
-        .where(eq(recurringSchedulesTable.id, schedule.id));
-    }
   }
 
   const inserted = dryRun ? 0 : totalCreated;
@@ -411,6 +473,7 @@ export async function generateRecurringJobs(
     skipped_null_fee: skippedNullFee,
     skipped_zero_fee: skippedZeroFee,
     skipped_schedules: skippedSchedules,
+    failed_schedules: failedSchedules,
   };
 
   if (dryRun) {
@@ -424,6 +487,23 @@ export async function generateRecurringJobs(
   }
 
   return base;
+
+  } finally {
+    // J3 — always release the advisory lock, even on thrown exceptions.
+    // pg_advisory_unlock is idempotent per-session; a missed release would
+    // survive until the DB connection dies and is never catastrophic, but
+    // missing it under high restart pressure defeats the point of the lock.
+    try {
+      await db.execute(sql`
+        SELECT pg_advisory_unlock(${LOCK_NAMESPACE}, ${companyId})
+      `);
+    } catch (unlockErr) {
+      console.error(
+        `[recurring-engine] company_id=${companyId}: failed to release advisory lock:`,
+        unlockErr
+      );
+    }
+  }
 }
 
 export async function runRecurringJobGeneration() {

@@ -1,6 +1,6 @@
 import app from "./app";
 import { seedIfNeeded } from "./seed";
-import { runRecurringJobGeneration, startRecurringJobCron } from "./lib/recurring-jobs";
+import { startRecurringJobCron } from "./lib/recurring-jobs";
 import { runPhesDataMigration } from "./phes-data-migration";
 import { runReminderCron, runReviewRequestCron } from "./services/notificationService.js";
 import { runRateLockNightlyChecks } from "./utils/rateLock.js";
@@ -104,12 +104,13 @@ function startFollowUpCron() {
 app.listen(port, "0.0.0.0", () => {
   console.log("Server running on port", process.env.PORT || 3000);
   const recurringEngineEnabled = process.env.RECURRING_ENGINE_ENABLED !== "false";
+  // [2026-04-22 J3] Startup invocation of runRecurringJobGeneration() removed —
+  // Railway restart cascades caused 5x concurrent engine runs on the
+  // 2026-04-22 overnight cron, creating 270 duplicate rows. The engine now
+  // only fires via the 2 AM cron registered below. Seed + PHES data migration
+  // still run on every startup — they're idempotent.
   seedIfNeeded()
     .then(() => runPhesDataMigration())
-    .then(() => {
-      if (recurringEngineEnabled) return runRecurringJobGeneration();
-      console.log("[recurring-engine] Startup generation SKIPPED via RECURRING_ENGINE_ENABLED=false env var");
-    })
     .catch((err) => {
       console.error("[startup] Background init error:", err);
     });
