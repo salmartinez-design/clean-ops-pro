@@ -122,3 +122,18 @@ Not currently recommended until root cause is fixed.
 - No cleanup of the 270 overnight rows
 - No other DB writes
 - No engine restart attempts
+
+---
+
+## Addendum — defensive sweep (2026-04-22 13:58 CT)
+
+Additional defensive sweep: flipped Demo, Evinco, Schaumburg to false while investigating startup-run behavior.
+
+| id | Company | Flag before sweep | Flag after sweep |
+|---:|---|:-:|:-:|
+| 1 | Phes | false (Commit I) | false |
+| 2 | Demo Cleaning Co | true | **false** |
+| 3 | Evinco Services | true | **false** |
+| 4 | PHES Schaumburg | true | **false** |
+
+Transaction: `UPDATE companies SET recurring_engine_enabled = false WHERE recurring_engine_enabled = true` — 3 rows affected, committed cleanly. All 4 company engine flags now false. No active schedules or clients exist for the 3 non-PHES tenants, so operational impact is zero, but this closes the door on any "oh wait it was running for Evinco too" scenario during the investigation.
