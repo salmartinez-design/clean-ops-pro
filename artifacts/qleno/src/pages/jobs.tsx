@@ -2263,8 +2263,16 @@ export default function JobsPage() {
   }
 
   // ── DESKTOP VIEW ─────────────────────────────────────────────────────────────
+  // [AC] fullBleed skips DashboardLayout's <main> padding + `maxWidth: 1400;
+  // margin: 0 auto` wrapper. On wide monitors that wrapper was gutter-ing
+  // the Gantt with ~200+ px of dead space on each side, making the board
+  // feel floating and wasting horizontal space the timeline actually needs.
+  // Collapsed sidebar remains 56 px; expanded 220 px is still an absolute
+  // overlay so this page does not shift on hover. The dispatch top bar
+  // already carries `padding: 8px 16px` so a 16 px gutter from the sidebar
+  // edge is preserved.
   return (
-    <DashboardLayout>
+    <DashboardLayout fullBleed>
       <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
         <div style={{ display: "flex", height: "calc(100vh - 56px)", overflow: "hidden", fontFamily: FF, flexDirection: "column" }}>
 
