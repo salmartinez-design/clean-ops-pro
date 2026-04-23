@@ -10,7 +10,7 @@ import {
 } from "@dnd-kit/core";
 import {
   ChevronLeft, ChevronRight, ChevronDown, Plus, Clock, Camera, X, MapPin, User,
-  DollarSign, CheckCircle, AlertCircle, LayoutGrid, List, Calendar, Package,
+  DollarSign, CheckCircle, AlertCircle, LayoutGrid, List, Calendar,
   Building2, AlertTriangle, Repeat, Phone, MessageSquare, Send,
 } from "lucide-react";
 
@@ -53,7 +53,7 @@ const STATUS: Record<string, { bg: string; border: string; text: string; dot: st
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 interface ClockEntry { id: number; clock_in_at: string | null; clock_out_at: string | null; distance_from_job_ft: number | null; is_flagged: boolean; }
 interface JobTechCommission { user_id: number; name: string; is_primary: boolean; est_hours: number; calc_pay: number; final_pay: number; pay_override: number | null; }
-interface DispatchJob { id: number; client_id: number; client_name: string; client_phone?: string | null; client_zip?: string | null; client_notes?: string | null; client_payment_method?: string | null; address: string | null; assigned_user_id: number | null; assigned_user_name?: string; service_type: string; status: string; scheduled_date: string; scheduled_time: string | null; frequency: string; amount: number; duration_minutes: number; notes: string | null; office_notes?: string | null; before_photo_count: number; after_photo_count: number; clock_entry: ClockEntry | null; zone_id?: number | null; zone_color?: string | null; zone_name?: string | null; branch_id?: number | null; branch_name?: string | null; last_service_date?: string | null; account_id?: number | null; account_name?: string | null; billing_method?: string | null; hourly_rate?: number | null; estimated_hours?: number | null; actual_hours?: number | null; billed_hours?: number | null; billed_amount?: number | null; charge_failed_at?: string | null; charge_succeeded_at?: string | null; property_access_notes?: string | null; booking_location?: string | null; technicians?: JobTechCommission[]; est_hours_per_tech?: number | null; est_pay_per_tech?: number | null; company_res_pct?: number | null; }
+interface DispatchJob { id: number; client_id: number; client_name: string; client_phone?: string | null; client_zip?: string | null; client_notes?: string | null; client_payment_method?: string | null; address: string | null; assigned_user_id: number | null; assigned_user_name?: string; service_type: string; status: string; scheduled_date: string; scheduled_time: string | null; frequency: string; amount: number; duration_minutes: number; notes: string | null; office_notes?: string | null; before_photo_count: number; after_photo_count: number; clock_entry: ClockEntry | null; zone_id?: number | null; zone_color?: string | null; zone_name?: string | null; branch_id?: number | null; branch_name?: string | null; last_service_date?: string | null; account_id?: number | null; account_name?: string | null; billing_method?: string | null; hourly_rate?: number | null; estimated_hours?: number | null; actual_hours?: number | null; billed_hours?: number | null; billed_amount?: number | null; charge_failed_at?: string | null; charge_succeeded_at?: string | null; property_access_notes?: string | null; booking_location?: string | null; technicians?: JobTechCommission[]; est_hours_per_tech?: number | null; est_pay_per_tech?: number | null; company_res_pct?: number | null; /* [AF] completion lock state */ locked_at?: string | null; actual_end_time?: string | null; completed_by_user_id?: number | null; }
 interface Employee { id: number; name: string; role: string; jobs: DispatchJob[]; zone?: { zone_id: number; zone_color: string; zone_name: string } | null; time_off?: 'pto' | 'sick' | 'absent' | null; commission_rate?: number | null; }
 interface DispatchData { employees: Employee[]; unassigned_jobs: DispatchJob[]; }
 
@@ -445,23 +445,39 @@ function JobPanel({ job, employees, onClose, onUpdate, mobile }: {
       .then(r => r.json()).then(d => setTechList(d.employees || [])).catch(() => {}).finally(() => setTechLoading(false));
   }, [rescheduleOpen, rescheduleDate, rescheduleHour]);
 
-  // Add team member state
+  // [AF] Mark-complete inline confirmation — one-click → confirm → fire. The
+  // 2-stage interaction replaces the previous one-click button so accidental
+  // completion isn't a 1-pixel miss.
+  const [confirmComplete, setConfirmComplete] = useState(false);
+  const isLocked = !!job.locked_at || job.status === "complete" || job.status === "cancelled";
+  const completedAtLabel = (() => {
+    const t = job.actual_end_time || job.locked_at;
+    if (!t) return null;
+    try {
+      const d = new Date(t);
+      return d.toLocaleString("en-US", { timeZone: "America/Chicago", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    } catch { return null; }
+  })();
+
+  // [AF] Add team member state — now grouped by clock-in status ("Available"
+  // vs "Currently on a job") using /api/users/techs-with-status. The endpoint
+  // excludes already-assigned techs server-side via ?exclude=<ids>.
   const [addTechOpen, setAddTechOpen] = useState(false);
-  const [addTechList, setAddTechList] = useState<{ id: number; name: string; role: string }[]>([]);
+  type TechRow = { id: number; name: string; role: string; is_clocked_in: boolean; currently_at: string | null };
+  const [addTechList, setAddTechList] = useState<TechRow[]>([]);
   const [addTechLoading, setAddTechLoading] = useState(false);
   const [addTechBusy, setAddTechBusy] = useState(false);
 
   useEffect(() => {
     if (!addTechOpen) return;
     setAddTechLoading(true);
-    const existingIds = new Set((job.technicians ?? []).map(t => t.user_id));
+    const existingIds = new Set<number>();
+    for (const t of (job.technicians ?? [])) existingIds.add(t.user_id);
     if (job.assigned_user_id) existingIds.add(job.assigned_user_id);
-    fetch(`${_API3}/api/users?role=technician,team_lead&active=true`, { headers: { Authorization: `Bearer ${token}` } })
+    const excludeParam = existingIds.size ? `?exclude=${Array.from(existingIds).join(",")}` : "";
+    fetch(`${_API3}/api/users/techs-with-status${excludeParam}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
-      .then(d => {
-        const all = Array.isArray(d) ? d : (d.data ?? []);
-        setAddTechList(all.filter((u: any) => !existingIds.has(u.id)).map((u: any) => ({ id: u.id, name: `${u.first_name} ${u.last_name}`, role: u.role })));
-      })
+      .then(d => setAddTechList(Array.isArray(d?.data) ? d.data : []))
       .catch(() => setAddTechList([]))
       .finally(() => setAddTechLoading(false));
   }, [addTechOpen, job.id]);
@@ -484,34 +500,9 @@ function JobPanel({ job, employees, onClose, onUpdate, mobile }: {
     } finally { setAddTechBusy(false); }
   }
 
-  // Supply logging state
-  const [supplyName, setSupplyName] = useState("");
-  const [supplyQty, setSupplyQty] = useState("1");
-  const [supplyUnit, setSupplyUnit] = useState("units");
-  const [supplies, setSupplies] = useState<{ name: string; qty: string; unit: string }[]>([]);
-  const [supplyOpen, setSupplyOpen] = useState(false);
-
-  function addSupply() {
-    if (!supplyName.trim()) return;
-    setSupplies(p => [...p, { name: supplyName, qty: supplyQty, unit: supplyUnit }]);
-    setSupplyName("");
-    setSupplyQty("1");
-  }
-
-  async function logSupplies() {
-    if (supplies.length === 0) return;
-    const API2 = import.meta.env.BASE_URL.replace(/\/$/, "");
-    try {
-      await fetch(`${API2}/api/supplies/log`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ job_id: job.id, items: supplies }),
-      }).catch(() => {});
-      toast({ title: `${supplies.length} supply item${supplies.length > 1 ? "s" : ""} logged` });
-      setSupplies([]);
-      setSupplyOpen(false);
-    } catch {}
-  }
+  // [AF] Supply-logging state removed — drawer section pulled per cleanup.
+  // /api/supplies/log endpoint and supplies table remain in place so the
+  // feature can return later without schema churn.
 
   async function setStatus(s: string) {
     setBusy(true);
@@ -524,6 +515,15 @@ function JobPanel({ job, employees, onClose, onUpdate, mobile }: {
         });
         if (!r.ok) {
           const err = await r.json().catch(() => ({}));
+          // [AF] 409 = already complete/cancelled (server-side guard). Surface
+          // cleanly, close the confirm, and let onUpdate pull fresh state.
+          if (r.status === 409) {
+            toast({ title: "Already locked", description: (err as any).message || "This job is already complete or cancelled." });
+            setConfirmComplete(false);
+            onUpdate();
+            onClose();
+            return;
+          }
           throw new Error((err as any).message || "Failed to complete job");
         }
         const result = await r.json();
@@ -772,8 +772,9 @@ function JobPanel({ job, employees, onClose, onUpdate, mobile }: {
               <div style={{ marginTop: 4, fontSize: 11, color: "#9E9B94" }}>
                 Pool rate: {((job.company_res_pct ?? 0.35) * 100).toFixed(0)}% of job total
               </div>
-              <button onClick={() => setAddTechOpen(true)}
-                style={{ marginTop: 8, width: "100%", height: 32, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "#2D9B83", border: "1px dashed #2D9B83", borderRadius: 8, background: "transparent", cursor: "pointer", fontFamily: FF }}>
+              <button onClick={() => !isLocked && setAddTechOpen(true)}
+                disabled={isLocked}
+                style={{ marginTop: 8, width: "100%", height: 32, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 600, color: isLocked ? "#9E9B94" : "#2D9B83", border: `1px dashed ${isLocked ? "#D1D5DB" : "#2D9B83"}`, borderRadius: 8, background: "transparent", cursor: isLocked ? "not-allowed" : "pointer", fontFamily: FF, opacity: isLocked ? 0.6 : 1 }}>
                 <Plus size={12} /> Add Team Member
               </button>
             </PS>
@@ -788,27 +789,54 @@ function JobPanel({ job, employees, onClose, onUpdate, mobile }: {
                   <span style={{ fontSize: 15, fontWeight: 700, color: "#1A1917" }}>Add Team Member</span>
                   <button onClick={() => setAddTechOpen(false)} style={{ border: "none", background: "none", cursor: "pointer", color: "#9E9B94", padding: 4 }}><X size={16} /></button>
                 </div>
-                <div style={{ padding: "12px 20px", maxHeight: 300, overflowY: "auto" }}>
+                <div style={{ padding: "12px 20px", maxHeight: 360, overflowY: "auto" }}>
                   {addTechLoading ? (
                     <div style={{ padding: 20, textAlign: "center", color: "#9E9B94", fontSize: 13 }}>Loading technicians...</div>
                   ) : addTechList.length === 0 ? (
                     <div style={{ padding: 20, textAlign: "center", color: "#9E9B94", fontSize: 13 }}>No available technicians</div>
-                  ) : (
-                    addTechList.map(t => (
+                  ) : (() => {
+                    // [AF] Split into two groups: free right now vs currently on a job.
+                    // Alphabetized within each by first_name (endpoint already
+                    // returns in that order, but re-sort defensively so subtitle
+                    // changes on re-fetch don't desync ordering).
+                    const free = addTechList.filter(t => !t.is_clocked_in).sort((a, b) => a.name.localeCompare(b.name));
+                    const working = addTechList.filter(t => t.is_clocked_in).sort((a, b) => a.name.localeCompare(b.name));
+                    const groupHeader = (text: string) => (
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.05em", padding: "8px 2px 6px", marginTop: 4 }}>
+                        {text}
+                      </div>
+                    );
+                    const row = (t: TechRow) => (
                       <button key={t.id} onClick={() => addTechToJob(t.id)} disabled={addTechBusy}
                         style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 8px", border: "none", background: "transparent", cursor: addTechBusy ? "wait" : "pointer", borderRadius: 8, fontFamily: FF, textAlign: "left" }}
                         onMouseEnter={e => e.currentTarget.style.background = "#F7F6F3"}
                         onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                        <div style={{ width: 32, height: 32, borderRadius: "50%", backgroundColor: "#F0FDFB", color: "#2D9B83", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: "50%", backgroundColor: "#F0FDFB", color: "#2D9B83", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0, position: "relative" }}>
                           {t.name.split(" ").map(p => p[0]).join("").slice(0, 2)}
+                          {t.is_clocked_in && (
+                            <span style={{ position: "absolute", bottom: -1, right: -1, width: 10, height: 10, borderRadius: "50%", backgroundColor: "#22C55E", border: "2px solid #FFFFFF" }} title="Clocked in" />
+                          )}
                         </div>
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: "#1A1917" }}>{t.name}</div>
-                          <div style={{ fontSize: 11, color: "#9E9B94", textTransform: "capitalize" }}>{t.role.replace("_", " ")}</div>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "#1A1917", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
+                          <div style={{ fontSize: 11, color: "#9E9B94", textTransform: "capitalize" }}>{(t.role || "").replace("_", " ")}</div>
+                          {t.currently_at && (
+                            <div style={{ fontSize: 11, color: "#6B6860", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              Currently at: {t.currently_at}
+                            </div>
+                          )}
                         </div>
                       </button>
-                    ))
-                  )}
+                    );
+                    return (
+                      <>
+                        {free.length > 0 && groupHeader("Available")}
+                        {free.map(row)}
+                        {working.length > 0 && groupHeader("Currently on a job")}
+                        {working.map(row)}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </>
@@ -821,74 +849,52 @@ function JobPanel({ job, employees, onClose, onUpdate, mobile }: {
                 {assignedEmp?.name || job.assigned_user_name || "Unassigned"}
                 {commTechs.length > 1 && ` + ${commTechs.length - 1} more`}
               </div>
-              <button onClick={() => setAddTechOpen(true)}
-                style={{ width: "100%", height: 32, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "#2D9B83", border: "1px dashed #2D9B83", borderRadius: 8, background: "transparent", cursor: "pointer", fontFamily: FF }}>
+              <button onClick={() => !isLocked && setAddTechOpen(true)}
+                disabled={isLocked}
+                style={{ width: "100%", height: 32, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 600, color: isLocked ? "#9E9B94" : "#2D9B83", border: `1px dashed ${isLocked ? "#D1D5DB" : "#2D9B83"}`, borderRadius: 8, background: "transparent", cursor: isLocked ? "not-allowed" : "pointer", fontFamily: FF, opacity: isLocked ? 0.6 : 1 }}>
                 <Plus size={12} /> Add Team Member
               </button>
             </PS>
           )}
 
-          {/* Supply Log */}
-          <PS label="Supplies Used">
-            {supplyOpen ? (
-              <div style={{ border: "1px solid #E5E2DC", borderRadius: 8, padding: 12, backgroundColor: "#F8F7F4" }}>
-                <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                  <input value={supplyName} onChange={e => setSupplyName(e.target.value)} placeholder="Item name"
-                    style={{ flex: 2, height: 32, padding: "0 10px", border: "1px solid #E5E2DC", borderRadius: 6, fontSize: 12, fontFamily: FF, outline: "none" }} />
-                  <input value={supplyQty} onChange={e => setSupplyQty(e.target.value)} type="number" min="0.1" step="0.1" style={{ flex: 0, width: 52, height: 32, padding: "0 8px", border: "1px solid #E5E2DC", borderRadius: 6, fontSize: 12, outline: "none" }} />
-                  <select value={supplyUnit} onChange={e => setSupplyUnit(e.target.value)}
-                    style={{ flex: 0, width: 64, height: 32, border: "1px solid #E5E2DC", borderRadius: 6, fontSize: 11, background: "#FFFFFF" }}>
-                    <option value="units">units</option>
-                    <option value="oz">oz</option>
-                    <option value="bottles">bottles</option>
-                    <option value="rolls">rolls</option>
-                    <option value="bags">bags</option>
-                  </select>
-                  <button onClick={addSupply} style={{ width: 32, height: 32, backgroundColor: "var(--brand)", color: "#FFFFFF", border: "none", borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <Plus size={12} />
-                  </button>
-                </div>
-                {supplies.length > 0 && (
-                  <div style={{ marginBottom: 8 }}>
-                    {supplies.map((s, i) => (
-                      <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#1A1917", marginBottom: 3 }}>
-                        <span>{s.name}</span><span style={{ color: "#6B7280" }}>{s.qty} {s.unit}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div style={{ display: "flex", gap: 6 }}>
-                  <button onClick={() => { setSupplyOpen(false); setSupplies([]); }} style={{ fontSize: 11, color: "#9E9B94", border: "none", background: "none", cursor: "pointer", fontFamily: FF }}>Cancel</button>
-                  {supplies.length > 0 && (
-                    <button onClick={logSupplies} style={{ fontSize: 11, fontWeight: 600, color: "var(--brand)", border: "none", background: "none", cursor: "pointer", fontFamily: FF }}>
-                      Save {supplies.length} item{supplies.length > 1 ? "s" : ""}
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <button onClick={() => setSupplyOpen(true)}
-                style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "#6B7280", border: "1px dashed #D1D5DB", borderRadius: 6, background: "none", cursor: "pointer", padding: "6px 10px", fontFamily: FF }}>
-                <Package size={12} /> Log supplies used
-              </button>
-            )}
-          </PS>
+          {/* [AF] Supplies Used section removed per drawer cleanup. */}
         </div>
 
+        {/* [AF] Action footer. When isLocked (status=complete/cancelled or
+            locked_at set), Mark Complete is replaced with a muted "Completed
+            at ..." label and Reschedule / Cancel / Flag are disabled. */}
         <div style={{ padding: "12px 20px 20px", borderTop: "1px solid #EEECE7", display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
-          {job.status !== "complete" && (
-            <button onClick={() => setStatus("complete")} disabled={busy}
+          {isLocked ? (
+            <div style={{ flex: 1, minWidth: 100, padding: "10px 12px", border: "1px solid #E5E2DC", borderRadius: 8, backgroundColor: "#F8F7F4", color: "#6B6860", fontSize: 12, fontWeight: 600, fontFamily: FF, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              <CheckCircle size={13} color="#16A34A" />
+              {job.status === "cancelled"
+                ? "Cancelled"
+                : completedAtLabel ? `Completed at ${completedAtLabel}` : "Completed"}
+            </div>
+          ) : confirmComplete ? (
+            <>
+              <button onClick={() => setStatus("complete")} disabled={busy}
+                style={{ flex: 1, minWidth: 120, padding: "10px 12px", border: "none", borderRadius: 8, backgroundColor: "#16A34A", color: "#fff", fontSize: 13, fontWeight: 700, cursor: busy ? "wait" : "pointer", fontFamily: FF }}>
+                {busy ? "..." : "Yes, complete"}
+              </button>
+              <button onClick={() => setConfirmComplete(false)} disabled={busy}
+                style={{ padding: "10px 12px", border: "1px solid #E5E2DC", borderRadius: 8, backgroundColor: "#FFFFFF", color: "#6B7280", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FF }}>
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button onClick={() => setConfirmComplete(true)} disabled={busy}
               style={{ flex: 1, minWidth: 100, padding: "10px 12px", border: "none", borderRadius: 8, backgroundColor: "#22C55E", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: FF }}>
-              {busy ? "..." : "Mark Complete"}
+              Mark Complete
             </button>
           )}
-          {job.status !== "in_progress" && job.status !== "complete" && (
+          {!isLocked && job.status !== "in_progress" && !confirmComplete && (
             <button onClick={() => setStatus("in_progress")} disabled={busy}
               style={{ flex: 1, minWidth: 100, padding: "10px 12px", border: "1px solid #FCD34D", borderRadius: 8, backgroundColor: "#FEF3C7", color: "#92400E", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: FF }}>
               Start Job
             </button>
           )}
-          {job.status !== "flagged" && job.status !== "complete" && (
+          {!isLocked && job.status !== "flagged" && !confirmComplete && (
             <button onClick={() => setStatus("flagged")} disabled={busy}
               style={{ padding: "10px 12px", border: "1px solid #FCA5A5", borderRadius: 8, backgroundColor: "#FEE2E2", color: "#991B1B", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: FF }}>
               Flag
@@ -901,15 +907,18 @@ function JobPanel({ job, employees, onClose, onUpdate, mobile }: {
               <DollarSign size={13} /> Charge Client
             </button>
           )}
-          <button onClick={() => {
-            setRescheduleOpen(true); setRescheduleSuccess(""); setRescheduleReason(""); setRescheduleReasonOther("");
-            setRescheduleDate(job.scheduled_date || ""); setRescheduleHour(null);
-            setAvailSlots([]); setTechList([]); setSelectedTechId(job.assigned_user_id); setRescheduleCount(null);
-          }}
-            style={{ padding: "10px 12px", border: "1px solid #BFDBFE", borderRadius: 8, backgroundColor: "#EFF6FF", color: "#1D4ED8", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FF }}>
+          <button
+            disabled={isLocked}
+            onClick={() => {
+              if (isLocked) return;
+              setRescheduleOpen(true); setRescheduleSuccess(""); setRescheduleReason(""); setRescheduleReasonOther("");
+              setRescheduleDate(job.scheduled_date || ""); setRescheduleHour(null);
+              setAvailSlots([]); setTechList([]); setSelectedTechId(job.assigned_user_id); setRescheduleCount(null);
+            }}
+            style={{ padding: "10px 12px", border: `1px solid ${isLocked ? "#E5E2DC" : "#BFDBFE"}`, borderRadius: 8, backgroundColor: isLocked ? "#F8F7F4" : "#EFF6FF", color: isLocked ? "#9E9B94" : "#1D4ED8", fontSize: 13, fontWeight: 600, cursor: isLocked ? "not-allowed" : "pointer", fontFamily: FF, opacity: isLocked ? 0.6 : 1 }}>
             Reschedule
           </button>
-          {job.status !== "cancelled" && job.status !== "complete" && (
+          {!isLocked && (
             <button onClick={() => setCancelOpen(true)} disabled={busy}
               style={{ padding: "10px 12px", border: "1px solid #E5E2DC", borderRadius: 8, backgroundColor: "#F8F7F4", color: "#6B7280", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FF }}>
               Cancel Job

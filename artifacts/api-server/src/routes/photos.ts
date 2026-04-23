@@ -5,7 +5,16 @@ import { requireAuth } from "../lib/auth.js";
 const router = Router();
 const storage = new ObjectStorageService();
 
+// [AF] PHOTOS_ENABLED feature flag — disables upload ingest while before/after
+// photo workflow is paused. GET /objects/:path stays live so previously-uploaded
+// photos remain viewable; only new uploads are blocked.
+const photosEnabled = () => process.env.PHOTOS_ENABLED === "true";
+
 router.post("/request-url", requireAuth, async (req: Request, res: Response) => {
+  if (!photosEnabled()) {
+    res.status(503).json({ error: "feature_disabled", message: "Photo uploads are temporarily disabled (PHOTOS_ENABLED=false)." });
+    return;
+  }
   const { name, size, contentType } = req.body;
   if (!name || !contentType) {
     res.status(400).json({ error: "name and contentType are required" });

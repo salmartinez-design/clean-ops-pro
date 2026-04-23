@@ -48,6 +48,10 @@ export const jobsTable = pgTable("jobs", {
   notes: text("notes"),
   completion_pdf_url: text("completion_pdf_url"),
   completion_pdf_sent_at: timestamp("completion_pdf_sent_at"),
+  // [AF] Mark-complete flow — set atomically on Mark Complete click
+  actual_end_time: timestamp("actual_end_time"),
+  locked_at: timestamp("locked_at"),
+  completed_by_user_id: integer("completed_by_user_id"),
   job_lat: numeric("job_lat", { precision: 10, scale: 7 }),
   job_lng: numeric("job_lng", { precision: 10, scale: 7 }),
   geocode_failed: boolean("geocode_failed").notNull().default(false),

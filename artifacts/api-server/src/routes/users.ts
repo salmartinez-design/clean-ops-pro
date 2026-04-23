@@ -53,6 +53,79 @@ router.get("/", requireAuth, async (req, res) => {
   }
 });
 
+// [AF] GET /api/users/techs-with-status
+// Returns field technicians (role in technician/team_lead, is_active=true),
+// grouped by current clock-in state for the Add Team Member picker on the
+// dispatch drawer. `currently_at` is the client name of the job they're
+// clocked into, if any. Excludes users passed via ?exclude=1,2,3 (i.e. the
+// primary + already-added team members on the caller's job).
+//
+// Response shape:
+//   [{ id, first_name, last_name, name, role,
+//      is_clocked_in: bool, currently_at: string|null }]
+router.get("/techs-with-status", requireAuth, async (req, res) => {
+  try {
+    const companyId = req.auth!.companyId;
+    const excludeParam = (req.query.exclude as string | undefined) ?? "";
+    const excludeIds = excludeParam.split(",").map(s => parseInt(s.trim(), 10)).filter(n => Number.isFinite(n));
+
+    // Roles are a pg enum, so filter the list after fetch rather than build a
+    // complex or() chain. Small set (tens of rows) — no perf concern.
+    const rows = await db.execute(sql`
+      SELECT u.id, u.first_name, u.last_name, u.role,
+             -- Active clock-in for this user = any timeclock row with NULL
+             -- clock_out_at. Today-only filter by clock_in_at::date = CURRENT_DATE
+             -- (America/Chicago is handled at ingest; we just compare UTC dates
+             -- for the "free/working RIGHT NOW" display).
+             (SELECT tc.job_id FROM timeclock tc
+               WHERE tc.user_id = u.id
+                 AND tc.clock_out_at IS NULL
+               ORDER BY tc.clock_in_at DESC LIMIT 1) AS active_job_id
+        FROM users u
+       WHERE u.company_id = ${companyId}
+         AND u.is_active = true
+         AND u.role IN ('technician','team_lead')
+       ORDER BY u.first_name, u.last_name
+    `);
+
+    // Fetch client names for any active_job_ids (small set — typically < 30 techs).
+    const activeJobIds = Array.from(new Set((rows.rows as any[]).map(r => r.active_job_id).filter((v): v is number => typeof v === "number")));
+    const clientByJob = new Map<number, string>();
+    if (activeJobIds.length > 0) {
+      const jobRows = await db
+        .select({
+          job_id: jobsTable.id,
+          first_name: clientsTable.first_name,
+          last_name: clientsTable.last_name,
+        })
+        .from(jobsTable)
+        .leftJoin(clientsTable, eq(jobsTable.client_id, clientsTable.id))
+        .where(and(eq(jobsTable.company_id, companyId), sql`${jobsTable.id} = ANY(${activeJobIds})`));
+      for (const j of jobRows) {
+        clientByJob.set(j.job_id, `${j.first_name ?? ""} ${j.last_name ?? ""}`.trim() || "Unknown");
+      }
+    }
+
+    const excludeSet = new Set(excludeIds);
+    const data = (rows.rows as any[])
+      .filter(r => !excludeSet.has(r.id))
+      .map(r => ({
+        id: r.id,
+        first_name: r.first_name,
+        last_name: r.last_name,
+        name: `${r.first_name ?? ""} ${r.last_name ?? ""}`.trim(),
+        role: r.role,
+        is_clocked_in: r.active_job_id !== null,
+        currently_at: r.active_job_id ? (clientByJob.get(r.active_job_id) ?? null) : null,
+      }));
+
+    return res.json({ data });
+  } catch (err) {
+    console.error("techs-with-status error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 router.post("/", requireAuth, requireRole("owner", "admin"), async (req, res) => {
   try {
     const { email, first_name, last_name, role, pay_rate, pay_type, hire_date, phone } = req.body;

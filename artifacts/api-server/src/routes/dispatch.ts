@@ -124,6 +124,12 @@ router.get("/", requireAuth, async (req, res) => {
         property_city: accountPropertiesTable.city,
         property_access_notes: accountPropertiesTable.access_notes,
         office_notes: jobsTable.office_notes,
+        // [AF] Completion flow surface-area — drawer renders read-only state
+        // when locked_at is set. actual_end_time + completed_by render the
+        // "Completed at …" label below the Mark Complete slot.
+        locked_at: jobsTable.locked_at,
+        actual_end_time: jobsTable.actual_end_time,
+        completed_by_user_id: jobsTable.completed_by_user_id,
       })
       .from(jobsTable)
       .leftJoin(clientsTable, eq(jobsTable.client_id, clientsTable.id))
@@ -339,6 +345,11 @@ router.get("/", requireAuth, async (req, res) => {
         property_address: displayAddress,
         property_access_notes: j.property_access_notes ?? null,
         office_notes: j.office_notes ?? null,
+        // [AF] Completion / lock state — drawer renders read-only UI when
+        // locked_at is set.
+        locked_at: j.locked_at ?? null,
+        actual_end_time: j.actual_end_time ?? null,
+        completed_by_user_id: j.completed_by_user_id ?? null,
         clock_entry: clock ? {
           id: clock.id,
           clock_in_at: clock.clock_in_at,

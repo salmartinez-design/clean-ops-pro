@@ -710,24 +710,55 @@ router.post("/:id/complete", requireAuth, async (req, res) => {
         eq(jobPhotosTable.photo_type, "after")
       ));
 
-    if (afterPhotos[0].count < 1) {
+    // [AF] The "≥1 after photo" hard-block only fires when PHOTOS_ENABLED=true.
+    // With photos feature-flagged off we still report counts (for existing
+    // photos) but don't require one to complete. Re-enabling PHOTOS_ENABLED
+    // restores the gate automatically.
+    if (process.env.PHOTOS_ENABLED === "true" && afterPhotos[0].count < 1) {
       return res.status(400).json({
         error: "Bad Request",
         message: "At least 1 after photo required to complete job"
       });
     }
 
+    // [AF] Atomic completion UPDATE — also stamps actual_end_time, locked_at,
+    // and completed_by_user_id. locked_at is the signal to the drawer UI that
+    // this job is read-only (no more status changes, no more commission edits).
+    // Guard against double-complete: WHERE status != 'complete' so a second
+    // Mark Complete click is a no-op (rowcount=0 → 409 below).
+    const nowTs = new Date();
     const updated = await db
       .update(jobsTable)
-      .set({ status: "complete" })
+      .set({
+        status: "complete",
+        actual_end_time: nowTs,
+        locked_at: nowTs,
+        completed_by_user_id: req.auth!.userId,
+      })
       .where(and(
         eq(jobsTable.id, jobId),
-        eq(jobsTable.company_id, req.auth!.companyId)
+        eq(jobsTable.company_id, req.auth!.companyId),
+        sql`${jobsTable.status} NOT IN ('complete', 'cancelled')`,
       ))
       .returning();
 
     if (!updated[0]) {
-      return res.status(404).json({ error: "Not Found", message: "Job not found" });
+      // Either the job doesn't exist, belongs to another tenant, OR is already
+      // complete/cancelled. Probe to disambiguate for a clearer client message.
+      const [existing] = await db
+        .select({ status: jobsTable.status, locked_at: jobsTable.locked_at })
+        .from(jobsTable)
+        .where(and(eq(jobsTable.id, jobId), eq(jobsTable.company_id, req.auth!.companyId)))
+        .limit(1);
+      if (!existing) {
+        return res.status(404).json({ error: "Not Found", message: "Job not found" });
+      }
+      return res.status(409).json({
+        error: "Conflict",
+        message: `Job is already ${existing.status}.`,
+        status: existing.status,
+        locked_at: existing.locked_at,
+      });
     }
 
     // ── Hourly billing engine ─────────────────────────────────────────────
@@ -907,6 +938,21 @@ router.post("/:id/complete", requireAuth, async (req, res) => {
 
           autoInvoice = { id: newInv.id, status: newInv.status, total: newInv.total };
           invoiceCreated = true;
+
+          // [AF] Fire-and-forget QB invoice push. Enqueue a pending row in
+          // qb_sync_queue regardless of whether this tenant is QB-connected —
+          // the cron drain (syncAll) checks getValidToken() and no-ops cleanly
+          // for tenants without a connection, so queueing is always safe.
+          // Does NOT respect COMMS_ENABLED: QB push is accounting, not
+          // outbound customer comms.
+          try {
+            const { syncInvoice } = await import("../services/quickbooks-sync.js");
+            syncInvoice(companyId, newInv.id).catch(qbErr => {
+              console.error("[AF] QB invoice push error (non-fatal):", qbErr);
+            });
+          } catch (qbImportErr) {
+            console.error("[AF] QB sync module load error (non-fatal):", qbImportErr);
+          }
         }
       }
     } catch (invErr) {
@@ -1008,6 +1054,11 @@ router.get("/:id/photos", requireAuth, async (req, res) => {
 });
 
 router.post("/:id/photos", requireAuth, async (req, res) => {
+  // [AF] PHOTOS_ENABLED feature gate — blocks new photo uploads while the
+  // before/after workflow is paused. GETs + existing photo rows stay intact.
+  if (process.env.PHOTOS_ENABLED !== "true") {
+    return res.status(503).json({ error: "feature_disabled", message: "Photo uploads are temporarily disabled (PHOTOS_ENABLED=false)." });
+  }
   try {
     const jobId = parseInt(req.params.id);
     const { photo_type, data_url, lat, lng } = req.body;

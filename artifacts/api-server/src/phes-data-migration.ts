@@ -51,6 +51,10 @@ async function runBookingSchemaGuard(): Promise<void> {
     { label: "jobs.reminder_72h_sent",         stmt: "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS reminder_72h_sent BOOLEAN DEFAULT false" },
     { label: "jobs.reminder_24h_sent",         stmt: "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS reminder_24h_sent BOOLEAN DEFAULT false" },
     { label: "jobs.office_notes",              stmt: "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS office_notes TEXT" },
+    // [AF] Mark-complete flow columns — drawer "Mark Complete" sets these atomically
+    { label: "jobs.actual_end_time",           stmt: "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS actual_end_time TIMESTAMP" },
+    { label: "jobs.locked_at",                 stmt: "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS locked_at TIMESTAMP" },
+    { label: "jobs.completed_by_user_id",      stmt: "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS completed_by_user_id INTEGER" },
     // ── quotes extra columns ────────────────────────────────────────────────
     { label: "quotes.call_notes",              stmt: "ALTER TABLE quotes ADD COLUMN IF NOT EXISTS call_notes TEXT" },
     { label: "quotes.alternate_options",       stmt: "ALTER TABLE quotes ADD COLUMN IF NOT EXISTS alternate_options JSONB" },

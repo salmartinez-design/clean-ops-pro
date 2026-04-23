@@ -2085,7 +2085,10 @@ export default function QuoteBuilderPage() {
                   <Textarea value={officeMemo} onChange={e => setOfficeMemo(e.target.value)} placeholder="Office-only notes..." rows={3} className="mt-1 text-sm" />
                 </div>
 
-                {/* Photo upload section */}
+                {/* Photo upload section — gated by VITE_PHOTOS_ENABLED flag.
+                    When false (default), the section is hidden entirely so
+                    quote builder users don't see a broken upload path. */}
+                {import.meta.env.VITE_PHOTOS_ENABLED === "true" && (
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 500, color: "#1A1917", marginBottom: 2, fontFamily: FF }}>Photos</div>
                   <div style={{ fontSize: 11, color: "#9E9B94", marginBottom: 8, fontFamily: FF }}>Attach photos to this quote (property, damage, before/after).</div>
@@ -2147,6 +2150,7 @@ export default function QuoteBuilderPage() {
                     Add Photos
                   </button>
                 </div>
+                )}
               </div>
 
               <div className="flex justify-between mt-6">
