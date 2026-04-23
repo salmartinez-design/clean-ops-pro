@@ -61,48 +61,6 @@ function fmtTime(t: string | null): string {
   return `${h === 0 ? 12 : h > 12 ? h - 12 : h}:${String(m || 0).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 }
 function fmtSvc(s: string) { return s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()); }
-
-// [X] scopeLabel — card-facing "scope" label. Prefers frequency when the
-// job is recurring (Weekly / Biweekly / Every 4 Weeks), falls back to
-// service_type when one-off. Matches MC's Job Schedule card convention.
-function scopeLabel(job: { service_type?: string | null; frequency?: string | null }): string {
-  const FREQ: Record<string, string> = {
-    weekly: "Weekly",
-    biweekly: "Biweekly",
-    every_3_weeks: "Every 3 Weeks",
-    monthly: "Every 4 Weeks",
-  };
-  if (job.frequency && FREQ[job.frequency]) return FREQ[job.frequency];
-  const SVC: Record<string, string> = {
-    standard_clean: "Standard Clean",
-    deep_clean: "Deep Clean",
-    move_in: "Move In",
-    move_out: "Move Out",
-    move_in_out: "Move In/Out",
-    post_construction: "Post-Construction",
-    office_cleaning: "Office",
-    common_areas: "Common Areas",
-    retail_store: "Retail",
-    medical_office: "Medical Office",
-    recurring: "Recurring",
-  };
-  return SVC[job.service_type ?? ""] ?? fmtSvc(job.service_type ?? "");
-}
-
-// [X] Convert hex color to rgba string with alpha, for zone-color-at-N%
-// styling. Falls back to a neutral taupe when hex is null/invalid.
-function hexToRgba(hex: string | null | undefined, alpha: number): string {
-  const FALLBACK = `rgba(229, 226, 220, ${alpha})`; // #E5E2DC at alpha
-  if (!hex) return FALLBACK;
-  const h = hex.replace("#", "");
-  if (h.length !== 6) return FALLBACK;
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  if ([r, g, b].some(v => Number.isNaN(v))) return FALLBACK;
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
 function isDarkHex(hex?: string | null): boolean {
   if (!hex) return false;
   const h = hex.replace("#", "");
@@ -1565,47 +1523,32 @@ function JobHoverCard({ job, assignedName }: { job: DispatchJob; assignedName?: 
 
 // ─── DESKTOP: JOB CHIP ─────────────────────────────────────────────────────────
 function JobChip({ job, onClick, assignedName, isUnassigned }: { job: DispatchJob; onClick: (j: DispatchJob) => void; assignedName?: string; isUnassigned?: boolean }) {
-  // [X] `sc` (status color palette) no longer needed — border uses its own
-  // priority-based color logic below; zone-tinted bg replaces the
-  // status.bg fallback entirely. `assignedName` is still passed through
-  // to JobHoverCard (unassigned fallback display) but is not rendered in
-  // the card body itself.
+  const sc = STATUS[job.status] || STATUS.scheduled;
   const left = ((timeToMins(job.scheduled_time) - DAY_START) / 30) * SLOT_W;
   const width = Math.max(SLOT_W, (job.duration_minutes / 30) * SLOT_W);
   const isComplete = job.status === "complete";
   const isRecurring = job.frequency && job.frequency !== "on_demand";
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: `chip-${job.id}`, data: { job, originalLeft: left, type: isUnassigned ? "unassigned" : undefined }, disabled: isComplete });
 
-  // [X] Zone-tinted card (15% opacity) + status-driven 2px border per MC's
-  // Job Schedule convention. Border priority:
-  //   1. red  — late clock-in OR at-risk (today, past start−15min, no clock-in)
-  //   2. amber — in_progress
-  //   3. green — complete
-  //   4. zone color at 60% — scheduled (default)
-  // Text always dark (#1A1917) for readability on light tinted bg. Fallback
-  // when zone is missing: neutral taupe #E5E2DC at 15% + the same gray at
-  // 60% as border.
-  const todayKey = new Date().toISOString().split("T")[0];
-  const isLiveDay = job.scheduled_date === todayKey;
-  const nowMins = (() => { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); })();
-  const startMins = timeToMins(job.scheduled_time);
-  const isRisky = isLiveDay
-    && job.status !== "cancelled"
-    && job.status !== "complete"
-    && !job.clock_entry?.clock_in_at
-    && nowMins >= (startMins - 15);
-  const isInProgressStatus = job.status === "in_progress";
-
-  const bgColor = hexToRgba(job.zone_color, 0.15);
-  const borderColor =
-    isRisky ? "#DC2626" :
-    isInProgressStatus ? "#F59E0B" :
-    isComplete ? "#16A34A" :
-    hexToRgba(job.zone_color, 0.60);
-
-  const primaryText   = "#1A1917";
-  const secondaryText = "#4B5563";
-  const iconTint      = "#6B7280";
+  // [V] Zone color always drives the chip background; status is shown
+  // ONLY via the border. The two visual channels are now independent —
+  // zone = geography (where), status = state (what). Previously, chips
+  // without a resolved zone fell back to status-colored bg (which looked
+  // identical to status-colored border), making the status signal
+  // indistinguishable for unzoned jobs. A neutral light-grey fallback bg
+  // keeps the chip visible while making the status border the single
+  // source of truth for job state.
+  const hasZone = !!job.zone_color;
+  const bgColor = hasZone ? job.zone_color! : "#E5E7EB"; // neutral grey when no zone
+  const dark = hasZone ? isDarkHex(job.zone_color) : false;
+  const primaryText   = dark ? "#FFFFFF"              : "#1A1917";
+  const secondaryText = dark ? "rgba(255,255,255,0.88)" : "#4B5563";
+  const tertiaryText  = dark ? "rgba(255,255,255,0.72)" : "#6B7280";
+  const iconTint      = dark ? "rgba(255,255,255,0.88)" : "#6B7280";
+  // Border always = status color (sc.dot) — independent of zone. Bumped
+  // from 1px to 2px so the status signal stays visible on both light and
+  // dark zone backgrounds.
+  const borderColor   = sc.dot;
 
   const [hovered, setHovered] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1619,21 +1562,24 @@ function JobChip({ job, onClick, assignedName, isUnassigned }: { job: DispatchJo
       onMouseEnter={onEnter} onMouseLeave={onLeave}
       {...(isComplete ? {} : { ...listeners, ...attributes })}
       style={{ position: "absolute", top: 10, left, width, height: ROW_H - 20, borderRadius: 8, backgroundColor: bgColor, border: `2px solid ${borderColor}`, padding: "5px 7px", boxSizing: "border-box", overflow: "visible", cursor: isComplete ? "default" : isDragging ? "grabbing" : "grab", opacity: isDragging ? 0.3 : isComplete ? 0.7 : 1, transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined, zIndex: hovered ? 50 : isDragging ? 0 : 2, userSelect: "none", display: "flex", flexDirection: "column", justifyContent: "center", gap: 2, boxShadow: "0 1px 4px rgba(0,0,0,0.10)" }}>
-      {/* [X] Primary label: {client_name} · {scope}. Tech name stays on the
-          row axis only (initials + label on the left) — kept out of the
-          card body entirely, per MC's Job Schedule convention. Icons still
-          glance-signal clock-in, photos, and recurring frequency. */}
       <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
         {job.clock_entry?.clock_in_at && <Clock size={9} style={{ color: iconTint, flexShrink: 0 }} />}
         {job.after_photo_count > 0 && <Camera size={9} style={{ color: iconTint, flexShrink: 0 }} />}
         {isRecurring && <Repeat size={9} style={{ color: iconTint, flexShrink: 0 }} />}
+        <User size={10} style={{ color: iconTint, flexShrink: 0 }} />
         <span style={{ fontSize: 11, fontWeight: 700, color: primaryText, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {job.client_name} · {scopeLabel(job)}
+          {(() => {
+            const techs = job.technicians ?? [];
+            if (techs.length > 1) return `${techs[0].name.split(" ")[0]} +${techs.length - 1}`;
+            if (techs.length === 1) return techs[0].name;
+            return assignedName || "Unassigned";
+          })()}
         </span>
       </div>
+      <span style={{ fontSize: 10, color: secondaryText, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{job.client_name}</span>
       {width > 130 && (
-        <span style={{ fontSize: 10, color: secondaryText, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {fmtTime(job.scheduled_time)} – {fmtTime(minsToStr(timeToMins(job.scheduled_time) + job.duration_minutes))}
+        <span style={{ fontSize: 9, color: tertiaryText }}>
+          {fmtSvc(job.service_type)} · {fmtTime(job.scheduled_time)} – {fmtTime(minsToStr(timeToMins(job.scheduled_time) + job.duration_minutes))}
         </span>
       )}
       {hovered && !isDragging && <JobHoverCard job={job} assignedName={assignedName} />}
@@ -1773,10 +1719,12 @@ export default function JobsPage() {
 
   const [, forceUpdate] = useState(0);
 
-  // [X] W reverted — no toggle, no hidden jobs. Gantt timeline auto-fits
-  // to the day's actual jobs with 1h padding each side, clamped to a
-  // minimum 8am–6pm floor/ceiling. The auto-fit effect lives below, keyed
-  // on `data` so it recomputes whenever the schedule changes.
+  // [W] Business hours 9am-6pm default, with toggle to expand the timeline
+  // to cover jobs scheduled outside those hours. Per Sal's product call —
+  // replaces the previous company-setting based dispatch_start/end_hour
+  // load. The 9-6 default now applies to all tenants; the toggle expands
+  // the view when early or late jobs exist.
+  const [showOutsideHours, setShowOutsideHours] = useState(false);
 
   const load = useCallback(async () => {
     const id = ++refreshRef.current;
@@ -1798,12 +1746,18 @@ export default function JobsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // [X] Auto-fit timeline to the day's jobs. 1h padding each side,
-  // clamped to ≥ 8am–6pm. No toggle, no hidden jobs.
+  // [W] Recompute DAY_START / DAY_END based on business-hours toggle:
+  //   showOutsideHours = false  → 9am-6pm (business hours default)
+  //   showOutsideHours = true   → expanded to fit all jobs for the day,
+  //                               floor earliest to the hour, ceil latest to
+  //                               the hour; never narrower than 9am-6pm.
   useEffect(() => {
-    let earliestMin = 8 * 60;
-    let latestMin = 18 * 60;
-    if (data) {
+    const BIZ_START = 9 * 60;
+    const BIZ_END = 18 * 60;
+    let newStart = BIZ_START;
+    let newEnd = BIZ_END;
+
+    if (showOutsideHours && data) {
       const allJobs: DispatchJob[] = [
         ...(data.unassigned_jobs ?? []),
         ...((data.employees ?? []).flatMap(e => e.jobs ?? [])),
@@ -1813,23 +1767,41 @@ export default function JobsPage() {
         const parts = j.scheduled_time.split(":").map(Number);
         const t = (parts[0] || 0) * 60 + (parts[1] || 0);
         const end = t + (j.duration_minutes || 60);
-        if (t < earliestMin) earliestMin = t;
-        if (end > latestMin) latestMin = end;
+        if (t < newStart) newStart = Math.floor(t / 60) * 60;
+        if (end > newEnd) newEnd = Math.ceil(end / 60) * 60;
       }
     }
-    // Floor earliest to hour, ceil latest to hour, then ±1h padding.
-    const paddedStart = Math.max(0, Math.floor(earliestMin / 60) * 60 - 60);
-    const paddedEnd = Math.min(24 * 60, Math.ceil(latestMin / 60) * 60 + 60);
-    // Clamp to minimum 8am–6pm window.
-    const finalStart = Math.min(8 * 60, paddedStart);
-    const finalEnd = Math.max(18 * 60, paddedEnd);
-    if (DAY_START !== finalStart || DAY_END !== finalEnd) {
-      DAY_START = finalStart;
-      DAY_END = finalEnd;
+
+    if (DAY_START !== newStart || DAY_END !== newEnd) {
+      DAY_START = newStart;
+      DAY_END = newEnd;
       refreshTimeline();
       forceUpdate(n => n + 1);
     }
-  }, [data]);
+  }, [showOutsideHours, data]);
+
+  // [W] Derived job filter for business-hours default view. When toggle is
+  // OFF, exclude jobs whose scheduled_time falls outside 9am-6pm from the
+  // timeline (so out-of-hours chips don't render at negative positions).
+  // When toggle is ON, all jobs pass through (the effect above expanded
+  // the timeline to fit them).
+  const jobPassesHoursFilter = useCallback((j: DispatchJob): boolean => {
+    if (showOutsideHours) return true;
+    if (!j.scheduled_time) return true; // no time = assume unscheduled, show
+    const parts = j.scheduled_time.split(":").map(Number);
+    const t = (parts[0] || 0) * 60 + (parts[1] || 0);
+    return t >= 9 * 60 && t < 18 * 60;
+  }, [showOutsideHours]);
+
+  // Count of hidden out-of-hours jobs (surfaced as a banner when > 0)
+  const outsideHoursCount = ((): number => {
+    if (!data || showOutsideHours) return 0;
+    const allJobs: DispatchJob[] = [
+      ...(data.unassigned_jobs ?? []),
+      ...((data.employees ?? []).flatMap(e => e.jobs ?? [])),
+    ];
+    return allJobs.filter(j => !jobPassesHoursFilter(j)).length;
+  })();
 
   // Load zones for filter
   useEffect(() => {
@@ -1915,12 +1887,14 @@ export default function JobsPage() {
       jobs: e.jobs.filter(j => {
         if (selectedZoneFilter !== null && j.zone_id !== selectedZoneFilter) return false;
         if (selectedLocationFilter !== "all" && j.booking_location !== selectedLocationFilter) return false;
+        if (!jobPassesHoursFilter(j)) return false;
         return true;
       }),
     })),
     unassigned_jobs: data.unassigned_jobs.filter(j => {
       if (selectedZoneFilter !== null && j.zone_id !== selectedZoneFilter) return false;
       if (selectedLocationFilter !== "all" && j.booking_location !== selectedLocationFilter) return false;
+      if (!jobPassesHoursFilter(j)) return false;
       return true;
     }),
   } : null;
@@ -2120,6 +2094,37 @@ export default function JobsPage() {
 
               <button onClick={() => setSelectedDate(d => addDays(d, 1))} style={{ border: "1px solid #E5E2DC", background: "#FAFAF9", borderRadius: 6, padding: "5px 8px", cursor: "pointer", display: "flex", color: "#6B7280" }}><ChevronRight size={14} /></button>
               {!isToday && <button onClick={() => { const t = new Date(); t.setHours(0,0,0,0); setSelectedDate(t); }} style={{ border: "1px solid var(--brand)", background: "var(--brand-dim)", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "var(--brand)" }}>Today</button>}
+              {/* [W] Business-hours toggle — default view is 9am–6pm. When
+                   ON, expands the Gantt to fit any jobs scheduled outside
+                   those hours. Label shows the hidden count as a nudge. */}
+              <button
+                onClick={() => setShowOutsideHours(v => !v)}
+                title={showOutsideHours
+                  ? "Hide jobs outside 9 AM – 6 PM"
+                  : (outsideHoursCount > 0
+                    ? `Include ${outsideHoursCount} job${outsideHoursCount === 1 ? "" : "s"} scheduled outside 9 AM – 6 PM`
+                    : "Include jobs outside 9 AM – 6 PM")}
+                style={{
+                  border: showOutsideHours ? "1px solid var(--brand)" : "1px solid #E5E2DC",
+                  background: showOutsideHours ? "var(--brand-dim)" : "#FAFAF9",
+                  borderRadius: 6, padding: "5px 10px", cursor: "pointer",
+                  fontSize: 11, fontWeight: 700,
+                  color: showOutsideHours ? "var(--brand)" : "#6B7280",
+                  display: "flex", alignItems: "center", gap: 5,
+                }}
+              >
+                <Clock size={11} />
+                {showOutsideHours ? "All hours" : "9 AM – 6 PM"}
+                {!showOutsideHours && outsideHoursCount > 0 && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, color: "#D97706",
+                    backgroundColor: "#FEF3C7", padding: "0px 5px",
+                    borderRadius: 10, marginLeft: 2,
+                  }}>
+                    +{outsideHoursCount}
+                  </span>
+                )}
+              </button>
             </div>
 
             <div style={{ display: "flex", gap: 8, marginLeft: "auto", alignItems: "center", flexWrap: "nowrap" }}>
