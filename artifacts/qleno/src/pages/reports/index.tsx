@@ -4,6 +4,7 @@ import {
   TrendingUp, DollarSign, Banknote, Activity, UserCheck, Star,
   ReceiptText, Clipboard, Calendar, LayoutList, ClipboardList,
   AlertTriangle, FileText, Home, Users, ArrowRight, RefreshCw,
+  Briefcase,
 } from "lucide-react";
 
 const REPORT_GROUPS = [
@@ -21,6 +22,7 @@ const REPORT_GROUPS = [
     label: "Operations",
     color: "#10B981",
     reports: [
+      { title: "Job Log",              desc: "All jobs with filters, KPIs, and export.",               url: "/reports/jobs",             icon: Briefcase },
       { title: "Payroll Summary",      desc: "Employee earnings, hours, tips, and additional pay.",    url: "/reports/payroll",          icon: Banknote },
       { title: "Schedule Efficiency",  desc: "Allowed vs actual hours — time utilization by day.",    url: "/reports/efficiency",       icon: Calendar },
       { title: "Week in Review",       desc: "This week vs last week across all key metrics.",         url: "/reports/week-review",      icon: LayoutList },
@@ -56,7 +58,7 @@ export default function ReportsIndexPage() {
       <div style={{ padding: '24px 28px', maxWidth: 1200 }}>
         <div style={{ marginBottom: 28 }}>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#1A1917' }}>Reports</h1>
-          <p style={{ margin: '6px 0 0', fontSize: 14, color: '#6B7280' }}>17 reports covering financials, operations, client quality, and growth.</p>
+          <p style={{ margin: '6px 0 0', fontSize: 14, color: '#6B7280' }}>18 reports covering financials, operations, client quality, and growth.</p>
         </div>
 
         {REPORT_GROUPS.map(group => (

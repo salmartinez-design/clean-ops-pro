@@ -46,7 +46,7 @@ const STATUS: Record<string, { bg: string; border: string; text: string; dot: st
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 interface ClockEntry { id: number; clock_in_at: string | null; clock_out_at: string | null; distance_from_job_ft: number | null; is_flagged: boolean; }
 interface JobTechCommission { user_id: number; name: string; is_primary: boolean; est_hours: number; calc_pay: number; final_pay: number; pay_override: number | null; }
-interface DispatchJob { id: number; client_id: number; client_name: string; client_phone?: string | null; address: string | null; assigned_user_id: number | null; assigned_user_name?: string; service_type: string; status: string; scheduled_date: string; scheduled_time: string | null; frequency: string; amount: number; duration_minutes: number; notes: string | null; office_notes?: string | null; before_photo_count: number; after_photo_count: number; clock_entry: ClockEntry | null; zone_id?: number | null; zone_color?: string | null; zone_name?: string | null; account_id?: number | null; account_name?: string | null; billing_method?: string | null; hourly_rate?: number | null; estimated_hours?: number | null; billed_hours?: number | null; billed_amount?: number | null; charge_failed_at?: string | null; charge_succeeded_at?: string | null; property_access_notes?: string | null; booking_location?: string | null; technicians?: JobTechCommission[]; est_hours_per_tech?: number | null; est_pay_per_tech?: number | null; company_res_pct?: number | null; }
+interface DispatchJob { id: number; client_id: number; client_name: string; client_phone?: string | null; client_zip?: string | null; client_notes?: string | null; client_payment_method?: string | null; address: string | null; assigned_user_id: number | null; assigned_user_name?: string; service_type: string; status: string; scheduled_date: string; scheduled_time: string | null; frequency: string; amount: number; duration_minutes: number; notes: string | null; office_notes?: string | null; before_photo_count: number; after_photo_count: number; clock_entry: ClockEntry | null; zone_id?: number | null; zone_color?: string | null; zone_name?: string | null; branch_id?: number | null; branch_name?: string | null; last_service_date?: string | null; account_id?: number | null; account_name?: string | null; billing_method?: string | null; hourly_rate?: number | null; estimated_hours?: number | null; actual_hours?: number | null; billed_hours?: number | null; billed_amount?: number | null; charge_failed_at?: string | null; charge_succeeded_at?: string | null; property_access_notes?: string | null; booking_location?: string | null; technicians?: JobTechCommission[]; est_hours_per_tech?: number | null; est_pay_per_tech?: number | null; company_res_pct?: number | null; }
 interface Employee { id: number; name: string; role: string; jobs: DispatchJob[]; zone?: { zone_id: number; zone_color: string; zone_name: string } | null; time_off?: 'pto' | 'sick' | 'absent' | null; commission_rate?: number | null; }
 interface DispatchData { employees: Employee[]; unassigned_jobs: DispatchJob[]; }
 
@@ -1243,89 +1243,209 @@ function MiniCalendar({ value, onChange, jobDates }: { value: Date; onChange: (d
 }
 
 // ─── DESKTOP: JOB HOVER CARD ────────────────────────────────────────────────
+// [Q2] Status pill — colored chip next to client name
+const STATUS_PILL: Record<string, { bg: string; fg: string; label: string }> = {
+  scheduled:   { bg: "#DBEAFE", fg: "#1D4ED8", label: "Scheduled" },
+  in_progress: { bg: "#FEF3C7", fg: "#92400E", label: "In Progress" },
+  complete:    { bg: "#DCFCE7", fg: "#15803D", label: "Complete" },
+  cancelled:   { bg: "#F3F4F6", fg: "#6B7280", label: "Cancelled" },
+};
+
+// [Q2] Human-readable payment_method labels. `manual` returns null → hide section.
+function fmtPayment(pm: string | null | undefined): string | null {
+  if (!pm || pm === "manual") return null;
+  const MAP: Record<string, string> = {
+    card_on_file: "Credit Card",
+    check:        "Check",
+    zelle:        "Zelle",
+    net_30:       "Invoice (Net 30)",
+    cash:         "Cash",
+  };
+  return MAP[pm] ?? pm;
+}
+
+// [Q2] "Last service" relative-time helper
+function fmtRelativeDate(isoDate: string): string {
+  const then = new Date(isoDate + "T12:00:00"); // noon to avoid DST edges
+  const now = new Date();
+  const days = Math.floor((now.getTime() - then.getTime()) / 86400000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
+  if (days < 30) return `${Math.round(days / 7)} weeks ago`;
+  if (days < 365) return `${Math.round(days / 30)} months ago`;
+  return `${Math.round(days / 365)} years ago`;
+}
+
+// [Q2] Parse `act: 11:21 AM-1:25 PM` from jobs.notes (L4 import artifact).
+// Returns {start, end} times as strings, or null if no match.
+function parseActualTimes(notes: string | null | undefined): { start: string; end: string } | null {
+  if (!notes) return null;
+  const m = notes.match(/act:\s*(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*(\d{1,2}:\d{2}\s*[AP]M)/i);
+  return m ? { start: m[1], end: m[2] } : null;
+}
+
+// [Q2] Strip `[mc_import_phase* ...]` tags when rendering notes to the user.
+function stripImportTags(notes: string | null | undefined): string {
+  if (!notes) return "";
+  return notes.replace(/\[mc_import_phase[^\]]*\]/g, "").trim();
+}
+
 function JobHoverCard({ job, assignedName }: { job: DispatchJob; assignedName?: string }) {
   const endTime = minsToStr(timeToMins(job.scheduled_time) + job.duration_minutes);
-  const hrs = (job.duration_minutes / 60).toFixed(1);
+  const allowedH = job.duration_minutes / 60;
   const isRecurring = job.frequency && job.frequency !== "on_demand";
-  const clockedIn = job.clock_entry?.clock_in_at;
-  const clockStatus = clockedIn
-    ? (job.clock_entry?.clock_out_at ? "Clocked out" : "Clocked in")
-    : (job.status === "complete" ? "Complete" : "Not clocked in");
-  const clockColor = clockedIn
-    ? (job.clock_entry?.clock_out_at ? "#6B7280" : "#16A34A")
-    : (job.status === "complete" ? "#6B7280" : "#D97706");
+  const statusPill = STATUS_PILL[job.status] ?? STATUS_PILL.scheduled;
+  const actualTimes = parseActualTimes(job.notes);
+  const paymentLabel = fmtPayment(job.client_payment_method);
+  const entryInstructions = stripImportTags(job.client_notes) || null;
+  const liveClock = job.clock_entry;
+  const lastServiceRelative = job.last_service_date ? fmtRelativeDate(job.last_service_date) : null;
+  const officeNotesCleaned = stripImportTags(job.office_notes);
+
+  // Badge row shows zone color dot + branch + zone name (all optional)
+  const hasZoneBadge = !!(job.zone_name || job.branch_name);
+
+  const sectionBorder = "1px solid #F0EEE9";
+  const labelStyle: React.CSSProperties = {
+    fontSize: 10, fontWeight: 700, color: "#9E9B94",
+    textTransform: "uppercase" as const, letterSpacing: "0.05em", marginBottom: 4,
+  };
 
   return (
-    // [2026-04-22] Removed `onClick={e => e.stopPropagation()}` — it was
-    // swallowing clicks on the hover card without performing the advertised
-    // "Click to open full details" action. Native click-bubble now carries
-    // the event up to the parent JobChip which opens the drawer.
-    // Phone anchor still calls e.stopPropagation() below to preserve tel:
-    // dialing without triggering the drawer.
+    // Native click bubbles up to parent JobChip → opens JobPanel drawer.
+    // Phone anchor and in-card buttons use their own stopPropagation as needed.
     <div style={{
       position: "absolute", bottom: "calc(100% + 8px)", left: 0, zIndex: 100,
       width: 320, backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC",
       borderRadius: 12, boxShadow: "0 12px 40px rgba(0,0,0,0.14)",
       fontFamily: FF, padding: 0, overflow: "hidden",
     }}>
-      <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid #F0EEE9" }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: "#1A1917", marginBottom: 2 }}>{job.client_name}</div>
-        {job.address && <div style={{ fontSize: 12, color: "#6B6860", marginBottom: 6 }}>{job.address}</div>}
+      {/* ─── HEADER ─── */}
+      <div style={{ padding: "14px 16px 12px", borderBottom: sectionBorder }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#1A1917", flex: 1, minWidth: 0 }}>
+            {job.client_name}
+          </div>
+          <span style={{
+            flexShrink: 0, fontSize: 10, fontWeight: 700, padding: "2px 8px",
+            borderRadius: 10, backgroundColor: statusPill.bg, color: statusPill.fg,
+            textTransform: "uppercase" as const, letterSpacing: "0.03em",
+          }}>
+            {statusPill.label}
+          </span>
+        </div>
+        {job.address && (
+          <div style={{ fontSize: 12, color: "#6B6860", marginBottom: job.client_phone ? 6 : 0 }}>
+            {job.address}
+          </div>
+        )}
         {job.client_phone && (
           <a
             href={`tel:${job.client_phone}`}
             onClick={e => e.stopPropagation()}
-            style={{ fontSize: 12, color: "#2D9B83", textDecoration: "none", fontWeight: 600 }}
+            style={{ fontSize: 12, color: "#2D9B83", textDecoration: "none", fontWeight: 600, display: "inline-block" }}
           >
             {job.client_phone}
           </a>
         )}
+        {hasZoneBadge && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
+            {job.zone_color && (
+              <div style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: job.zone_color, flexShrink: 0 }} />
+            )}
+            {job.branch_name && (
+              <span style={{ fontSize: 11, fontWeight: 600, color: "#1A1917" }}>{job.branch_name}</span>
+            )}
+            {job.branch_name && job.zone_name && (
+              <span style={{ fontSize: 11, color: "#9E9B94" }}>·</span>
+            )}
+            {job.zone_name && (
+              <span style={{ fontSize: 11, color: "#6B6860" }}>{job.zone_name}</span>
+            )}
+          </div>
+        )}
       </div>
 
-      <div style={{ padding: "10px 16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 16px" }}>
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.04em" }}>Service</div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#1A1917", marginTop: 2 }}>{fmtSvc(job.service_type)}</div>
+      {/* ─── SERVICE + FREQUENCY + LAST SERVICE ─── */}
+      <div style={{ padding: "10px 16px", borderBottom: sectionBorder }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "#1A1917" }}>
+          {fmtSvc(job.service_type)}
+          <span style={{ color: "#9E9B94", fontWeight: 500, margin: "0 6px" }}>·</span>
+          {isRecurring ? fmtSvc(job.frequency) : "One Time"}
         </div>
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.04em" }}>Frequency</div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#1A1917", marginTop: 2 }}>{isRecurring ? fmtSvc(job.frequency) : "One Time"}</div>
+        {lastServiceRelative && (
+          <div style={{ fontSize: 11, color: "#6B6860", marginTop: 4 }}>
+            Last service: {job.last_service_date} ({lastServiceRelative})
+          </div>
+        )}
+      </div>
+
+      {/* ─── ENTRY INSTRUCTIONS (conditional) ─── */}
+      {entryInstructions && (
+        <div style={{ padding: "10px 16px", borderBottom: sectionBorder, backgroundColor: "#FFFBEB" }}>
+          <div style={{ ...labelStyle, color: "#92400E" }}>🔑 Entry</div>
+          <div style={{ fontSize: 12, color: "#1A1917", lineHeight: 1.4 }}>
+            {entryInstructions.length > 180 ? entryInstructions.slice(0, 180) + "…" : entryInstructions}
+          </div>
         </div>
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.04em" }}>Time</div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#1A1917", marginTop: 2 }}>{fmtTime(job.scheduled_time)} – {fmtTime(endTime)}</div>
+      )}
+
+      {/* ─── TIME BLOCK ─── */}
+      <div style={{ padding: "10px 16px", borderBottom: sectionBorder }}>
+        <div style={labelStyle}>Time</div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "#1A1917" }}>
+          Scheduled: {fmtTime(job.scheduled_time)} – {fmtTime(endTime)}
         </div>
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.04em" }}>Duration</div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#1A1917", marginTop: 2 }}>{hrs}h</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.04em" }}>Amount</div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#1A1917", marginTop: 2 }}>${(job.amount || 0).toFixed(0)}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.04em" }}>Clock Status</div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: clockColor, marginTop: 2 }}>{clockStatus}</div>
+        {actualTimes && (
+          <div style={{ fontSize: 12, color: "#6B6860", marginTop: 2 }}>
+            Actual: {actualTimes.start} – {actualTimes.end}
+            {job.actual_hours != null && (
+              <span style={{ marginLeft: 6, color: "#9E9B94" }}>({job.actual_hours.toFixed(2)}h)</span>
+            )}
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: "#9E9B94", marginTop: 2 }}>
+          Allowed: {allowedH.toFixed(2)}h
         </div>
       </div>
 
-      {/* Team / Technician section */}
-      <div style={{ padding: "8px 16px 10px", borderTop: "1px solid #F0EEE9" }}>
-        <div style={{ fontSize: 10, fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
+      {/* ─── TOTAL + PAYMENT ─── */}
+      <div style={{ padding: "10px 16px", borderBottom: sectionBorder, display: "grid", gridTemplateColumns: paymentLabel ? "1fr 1fr" : "1fr", gap: "0 16px" }}>
+        <div>
+          <div style={labelStyle}>Total</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#1A1917" }}>${(job.amount || 0).toFixed(2)}</div>
+        </div>
+        {paymentLabel && (
+          <div>
+            <div style={labelStyle}>Payment</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "#1A1917" }}>{paymentLabel}</div>
+          </div>
+        )}
+      </div>
+
+      {/* ─── TECHNICIAN (name only, no pay $) ─── */}
+      <div style={{ padding: "10px 16px", borderBottom: liveClock ? sectionBorder : undefined }}>
+        <div style={labelStyle}>
           {(job.technicians?.length ?? 0) > 1 ? `Team (${job.technicians!.length})` : "Technician"}
         </div>
         {job.technicians && job.technicians.length > 0 ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {job.technicians.map((t, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <div style={{ width: 22, height: 22, borderRadius: "50%", backgroundColor: t.is_primary ? "#DCFCE7" : "#F3F4F6", color: t.is_primary ? "#15803D" : "#6B7280", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700 }}>
-                    {t.name.split(" ").map(p => p[0]).join("").slice(0, 2)}
-                  </div>
-                  <span style={{ fontWeight: 600, color: "#1A1917" }}>{t.name}</span>
-                  {t.is_primary && <span style={{ fontSize: 9, color: "#9E9B94" }}>Primary</span>}
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                <div style={{
+                  width: 20, height: 20, borderRadius: "50%",
+                  backgroundColor: t.is_primary ? "#DCFCE7" : "#F3F4F6",
+                  color: t.is_primary ? "#15803D" : "#6B7280",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 9, fontWeight: 700, flexShrink: 0,
+                }}>
+                  {t.name.split(" ").map(p => p[0]).join("").slice(0, 2)}
                 </div>
-                <span style={{ fontWeight: 600, color: "#6B6860" }}>${(t.final_pay || t.calc_pay || 0).toFixed(0)}</span>
+                <span style={{ fontWeight: 600, color: "#1A1917" }}>{t.name}</span>
+                {t.is_primary && (job.technicians!.length > 1) && (
+                  <span style={{ fontSize: 9, color: "#9E9B94" }}>Primary</span>
+                )}
               </div>
             ))}
           </div>
@@ -1336,25 +1456,47 @@ function JobHoverCard({ job, assignedName }: { job: DispatchJob; assignedName?: 
         )}
       </div>
 
-      {/* Zone + notes */}
-      {(job.zone_name || job.office_notes) && (
-        <div style={{ padding: "8px 16px 12px", borderTop: "1px solid #F0EEE9" }}>
-          {job.zone_name && (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: job.office_notes ? 6 : 0 }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: job.zone_color || "#9E9B94" }} />
-              <span style={{ fontSize: 11, color: "#6B6860", fontWeight: 600 }}>{job.zone_name}</span>
-            </div>
-          )}
-          {job.office_notes && (
-            <div style={{ fontSize: 11, color: "#6B6860", fontStyle: "italic", lineHeight: 1.4 }}>
-              {job.office_notes.length > 120 ? job.office_notes.slice(0, 120) + "..." : job.office_notes}
-            </div>
-          )}
+      {/* ─── JOB CLOCKS (conditional — only when live clock entry exists) ─── */}
+      {liveClock && (
+        <div style={{ padding: "10px 16px", borderBottom: sectionBorder }}>
+          <div style={labelStyle}>Job Clocks</div>
+          <div style={{ fontSize: 12, color: "#1A1917", fontWeight: 500 }}>
+            {liveClock.clock_in_at && (
+              <div>
+                <span style={{ color: "#9E9B94" }}>In:</span>{" "}
+                {new Date(liveClock.clock_in_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                {liveClock.distance_from_job_ft != null && (
+                  <span style={{ color: "#9E9B94", marginLeft: 6 }}>
+                    ({Math.round(liveClock.distance_from_job_ft)} ft)
+                  </span>
+                )}
+              </div>
+            )}
+            {liveClock.clock_out_at && (
+              <div>
+                <span style={{ color: "#9E9B94" }}>Out:</span>{" "}
+                {new Date(liveClock.clock_out_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+              </div>
+            )}
+            {liveClock.is_flagged && (
+              <div style={{ color: "#D97706", fontWeight: 600, marginTop: 2 }}>Flagged</div>
+            )}
+          </div>
         </div>
       )}
 
-      <div style={{ padding: "8px 16px 12px", borderTop: "1px solid #F0EEE9", fontSize: 11, color: "#9E9B94", textAlign: "center" }}>
-        Click to open full details
+      {/* ─── OFFICE NOTES (optional, only when non-empty after tag strip) ─── */}
+      {officeNotesCleaned && (
+        <div style={{ padding: "8px 16px 10px", borderTop: sectionBorder }}>
+          <div style={{ fontSize: 11, color: "#6B6860", fontStyle: "italic", lineHeight: 1.4 }}>
+            {officeNotesCleaned.length > 120 ? officeNotesCleaned.slice(0, 120) + "…" : officeNotesCleaned}
+          </div>
+        </div>
+      )}
+
+      {/* ─── FOOTER ─── */}
+      <div style={{ padding: "8px 16px 12px", borderTop: sectionBorder, fontSize: 11, color: "#9E9B94", textAlign: "center" }}>
+        → Click for full details
       </div>
     </div>
   );

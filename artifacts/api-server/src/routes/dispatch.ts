@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, usersTable, clientsTable, timeclockTable, jobPhotosTable, serviceZonesTable, serviceZoneEmployeesTable, accountsTable, accountPropertiesTable, employeeAttendanceLogTable, employeeLeaveUsageTable } from "@workspace/db/schema";
+import { jobsTable, usersTable, clientsTable, timeclockTable, jobPhotosTable, serviceZonesTable, serviceZoneEmployeesTable, accountsTable, accountPropertiesTable, employeeAttendanceLogTable, employeeLeaveUsageTable, branchesTable } from "@workspace/db/schema";
 import { eq, and, count, sql, inArray } from "drizzle-orm";
 import { requireAuth } from "../lib/auth.js";
 
@@ -41,8 +41,12 @@ router.get("/", requireAuth, async (req, res) => {
         client_id: jobsTable.client_id,
         client_name: sql<string>`CASE WHEN ${jobsTable.account_id} IS NOT NULL THEN ${accountsTable.account_name} ELSE concat(${clientsTable.first_name}, ' ', ${clientsTable.last_name}) END`,
         client_phone: clientsTable.phone,
+        client_zip: clientsTable.zip,
         address: clientsTable.address,
         city: clientsTable.city,
+        // [Q2] New: surface notes + payment method on the client row for hover card
+        client_notes: clientsTable.notes,
+        client_payment_method: clientsTable.payment_method,
         assigned_user_id: jobsTable.assigned_user_id,
         service_type: jobsTable.service_type,
         status: jobsTable.status,
@@ -53,13 +57,43 @@ router.get("/", requireAuth, async (req, res) => {
         allowed_hours: jobsTable.allowed_hours,
         notes: jobsTable.notes,
         zone_id: jobsTable.zone_id,
-        zone_color: serviceZonesTable.color,
-        zone_name: serviceZonesTable.name,
+        // [Q2] Zone name/color — prefer direct JOIN (when jobs.zone_id set),
+        // fall back to deriving from clients.zip via service_zones.zip_codes
+        // array. MC-imported rows have jobs.zone_id NULL, so they use the
+        // fallback derivation automatically.
+        zone_color: sql<string | null>`COALESCE(
+          ${serviceZonesTable.color},
+          (SELECT z.color FROM service_zones z
+             WHERE z.company_id = ${companyId}
+               AND z.is_active = true
+               AND ${clientsTable.zip} = ANY(z.zip_codes)
+             LIMIT 1)
+        )`,
+        zone_name: sql<string | null>`COALESCE(
+          ${serviceZonesTable.name},
+          (SELECT z.name FROM service_zones z
+             WHERE z.company_id = ${companyId}
+               AND z.is_active = true
+               AND ${clientsTable.zip} = ANY(z.zip_codes)
+             LIMIT 1)
+        )`,
+        // [Q2] New: branch name from branches JOIN
+        branch_id: jobsTable.branch_id,
+        branch_name: branchesTable.name,
+        // [Q2] New: most-recent prior service date from job_history. Only
+        // counts rows strictly before this job's scheduled_date.
+        last_service_date: sql<string | null>`(
+          SELECT MAX(jh.job_date)::text FROM job_history jh
+           WHERE jh.company_id = ${companyId}
+             AND jh.customer_id = ${jobsTable.client_id}
+             AND jh.job_date < ${jobsTable.scheduled_date}
+        )`,
         account_id: jobsTable.account_id,
         account_name: accountsTable.account_name,
         billing_method: jobsTable.billing_method,
         hourly_rate: jobsTable.hourly_rate,
         estimated_hours: jobsTable.estimated_hours,
+        actual_hours: jobsTable.actual_hours,
         billed_hours: jobsTable.billed_hours,
         billed_amount: jobsTable.billed_amount,
         charge_failed_at: jobsTable.charge_failed_at,
@@ -75,6 +109,7 @@ router.get("/", requireAuth, async (req, res) => {
       .leftJoin(accountsTable, eq(jobsTable.account_id, accountsTable.id))
       .leftJoin(accountPropertiesTable, eq(jobsTable.account_property_id, accountPropertiesTable.id))
       .leftJoin(serviceZonesTable, eq(jobsTable.zone_id, serviceZonesTable.id))
+      .leftJoin(branchesTable, eq(jobsTable.branch_id, branchesTable.id))
       .where(and(
         eq(jobsTable.company_id, companyId),
         eq(jobsTable.scheduled_date, date),
@@ -240,6 +275,9 @@ router.get("/", requireAuth, async (req, res) => {
         client_id: j.client_id,
         client_name: j.client_name,
         client_phone: j.client_phone ?? null,
+        client_zip: j.client_zip ?? null,
+        client_notes: j.client_notes ?? null,
+        client_payment_method: j.client_payment_method ?? null,
         address: displayAddress,
         assigned_user_id: j.assigned_user_id,
         service_type: j.service_type,
@@ -255,11 +293,15 @@ router.get("/", requireAuth, async (req, res) => {
         zone_id: j.zone_id,
         zone_color: j.zone_color ?? null,
         zone_name: j.zone_name ?? null,
+        branch_id: j.branch_id ?? null,
+        branch_name: j.branch_name ?? null,
+        last_service_date: j.last_service_date ?? null,
         account_id: j.account_id ?? null,
         account_name: j.account_name ?? null,
         billing_method: j.billing_method ?? null,
         hourly_rate: j.hourly_rate ? parseFloat(j.hourly_rate) : null,
         estimated_hours: j.estimated_hours ? parseFloat(j.estimated_hours) : null,
+        actual_hours: j.actual_hours ? parseFloat(j.actual_hours) : null,
         billed_hours: j.billed_hours ? parseFloat(j.billed_hours) : null,
         billed_amount: j.billed_amount ? parseFloat(j.billed_amount) : null,
         charge_failed_at: j.charge_failed_at ?? null,

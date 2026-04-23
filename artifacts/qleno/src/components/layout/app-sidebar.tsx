@@ -122,8 +122,10 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
   const EXACT_MATCH_URLS = ['/dashboard', '/company', '/dispatch', '/jobs'];
   // [2026-04-22] The merged "Jobs" sidebar item is configured with
   // url='/dispatch' but should also highlight when the user is on /jobs or
-  // /jobs/list (both are route aliases for the list view). This map lets a
-  // single item light up across multiple urls.
+  // /jobs/list (both are route aliases). Q2 moved the flat list to
+  // /reports/jobs — but that one lives under the Reports section so it
+  // does NOT highlight Jobs (it highlights Reports instead, handled by
+  // the default prefix-match behavior on /reports).
   const MULTI_URL_HIGHLIGHT: Record<string, string[]> = {
     '/dispatch': ['/dispatch', '/jobs', '/jobs/list'],
   };

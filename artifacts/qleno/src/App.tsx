@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -103,8 +103,11 @@ function Router() {
         <Route path="/accept-invite" component={AcceptInvitePage} />
         <Route path="/dashboard" component={Dashboard} />
         <Route path="/dispatch" component={JobsPage} />
-        <Route path="/jobs" component={JobsListPage} />
-        <Route path="/jobs/list" component={JobsListPage} />
+        {/* [Q2] JobsListPage moved to /reports/jobs. Keep /jobs and /jobs/list
+            as redirects for old bookmarks. */}
+        <Route path="/jobs"><Redirect to="/reports/jobs" /></Route>
+        <Route path="/jobs/list"><Redirect to="/reports/jobs" /></Route>
+        <Route path="/reports/jobs" component={JobsListPage} />
         <Route path="/employees/clocks" component={ClockMonitorPage} />
         <Route path="/employees/:id" component={EmployeeProfilePage} />
         <Route path="/employees" component={EmployeesPage} />
