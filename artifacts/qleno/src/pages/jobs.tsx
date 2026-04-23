@@ -139,6 +139,88 @@ function hexToRgba(hex: string | null | undefined, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+// [Z] Strict 12-hour "H:MM AM/PM" parser. Returns null on invalid input.
+// Used for parsing company.business_hours — unlike timeToMins (which
+// falls back to DAY_START), this returns null so we can tell valid
+// times apart from parse failures.
+function strictParseAmpm(t: string): number | null {
+  const m = t.trim().match(/^(\d{1,2}):(\d{2})\s*([AP]M)$/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const mm = parseInt(m[2], 10);
+  const isPM = m[3].toUpperCase() === "PM";
+  if (h === 12) h = isPM ? 12 : 0;
+  else if (isPM) h += 12;
+  return h * 60 + mm;
+}
+
+// [Z] Per-weekday business hours. 0=Sunday ... 6=Saturday (matches
+// JS Date.getDay()). "closed" means the business is closed that day.
+type DayHours = { startMin: number; endMin: number } | "closed";
+type BusinessHoursMap = Map<number, DayHours>;
+
+const DAY_NAMES: Record<string, number> = {
+  sun: 0, sunday: 0,
+  mon: 1, monday: 1,
+  tue: 2, tues: 2, tuesday: 2,
+  wed: 3, wednesday: 3,
+  thu: 4, thur: 4, thurs: 4, thursday: 4,
+  fri: 5, friday: 5,
+  sat: 6, saturday: 6,
+};
+
+// [Z] Parse free-form company.business_hours text into a per-weekday map.
+// Accepted shapes (en-dash, em-dash, and hyphen all work):
+//   "Monday – Friday: 9:00 AM – 6:00 PM"
+//   "Saturday: 9:00 AM – 12:00 PM"
+//   "Sunday: Closed"
+//   "Mon-Fri: 9:00 AM - 6:00 PM"  (hyphen variant)
+// Missing or unparseable days simply don't get set in the map — the
+// caller decides the fallback (9-6 here).
+function parseBusinessHours(text: string | null | undefined): BusinessHoursMap {
+  const out: BusinessHoursMap = new Map();
+  if (!text) return out;
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  for (const line of lines) {
+    const colonIdx = line.indexOf(":");
+    if (colonIdx < 0) continue;
+    const daysPart = line.slice(0, colonIdx).trim();
+    const hoursPart = line.slice(colonIdx + 1).trim();
+
+    // Resolve days — either a range "Mon-Fri" or a single day "Saturday"
+    const rangeMatch = daysPart.match(/^(\w+)\s*[-–—]\s*(\w+)$/);
+    const daysForLine: number[] = [];
+    if (rangeMatch) {
+      const from = DAY_NAMES[rangeMatch[1].toLowerCase()];
+      const to = DAY_NAMES[rangeMatch[2].toLowerCase()];
+      if (from == null || to == null) continue;
+      let idx = from;
+      for (let safety = 0; safety < 8; safety++) {
+        daysForLine.push(idx);
+        if (idx === to) break;
+        idx = (idx + 1) % 7;
+      }
+    } else {
+      const d = DAY_NAMES[daysPart.toLowerCase()];
+      if (d == null) continue;
+      daysForLine.push(d);
+    }
+
+    // Parse hours — "Closed" or "H:MM AM – H:MM PM"
+    if (/^closed$/i.test(hoursPart)) {
+      for (const d of daysForLine) out.set(d, "closed");
+      continue;
+    }
+    const hMatch = hoursPart.match(/^(\d{1,2}:\d{2}\s*[AP]M)\s*[-–—]\s*(\d{1,2}:\d{2}\s*[AP]M)$/i);
+    if (!hMatch) continue;
+    const startMin = strictParseAmpm(hMatch[1]);
+    const endMin = strictParseAmpm(hMatch[2]);
+    if (startMin == null || endMin == null) continue;
+    for (const d of daysForLine) out.set(d, { startMin, endMin });
+  }
+  return out;
+}
+
 function isDarkHex(hex?: string | null): boolean {
   if (!hex) return false;
   const h = hex.replace("#", "");
@@ -1809,10 +1891,14 @@ export default function JobsPage() {
 
   const [, forceUpdate] = useState(0);
 
-  // [X] W reverted — no toggle, no hidden jobs. Gantt timeline auto-fits
-  // to the day's actual jobs with 1h padding each side, clamped to a
-  // minimum 8am–6pm floor/ceiling. The auto-fit effect lives below, keyed
-  // on `data` so it recomputes whenever the schedule changes.
+  // [Z] Business-hours-anchored window (replaces X's padding-based auto-fit).
+  // The day's default window comes from company.business_hours for the
+  // selected date's weekday (PHES: Mon-Fri 9-6, Sat 9-12, Sun closed).
+  // Sun (closed) and null-business_hours tenants fall back to 9-6.
+  // The window EXTENDS ONLY if a job starts before open or ends after
+  // close — extension is whole-hour floor/ceil, no padding. The window
+  // NEVER SHRINKS below the default even if all jobs fit inside 10-3.
+  const [businessHours, setBusinessHours] = useState<BusinessHoursMap>(new Map());
 
   const load = useCallback(async () => {
     const id = ++refreshRef.current;
@@ -1834,38 +1920,66 @@ export default function JobsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // [X] Auto-fit timeline to the day's jobs. 1h padding each side,
-  // clamped to ≥ 8am–6pm. No toggle, no hidden jobs.
+  // [Z] Load company business_hours once on mount. Used below to drive the
+  // per-day Gantt window with extend-on-outlier behavior.
   useEffect(() => {
-    let earliestMin = 8 * 60;
-    let latestMin = 18 * 60;
+    const _API = import.meta.env.BASE_URL.replace(/\/$/, "");
+    fetch(`${_API}/api/companies/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(c => {
+        if (c?.business_hours) setBusinessHours(parseBusinessHours(c.business_hours));
+      })
+      .catch(() => {});
+  }, [token]);
+
+  // [Z] Compute the Gantt window for the selected date:
+  //   1. Default = company business_hours for that weekday
+  //      (fallback to 9am–6pm when closed/null/unparseable)
+  //   2. Extend start to floor(earliest job start) if any job starts
+  //      before default open. Whole-hour, no padding.
+  //   3. Extend end to ceil(latest job end) if any job ends after
+  //      default close. Whole-hour, no padding.
+  //   4. NEVER shrinks below the default.
+  // Jobs with null scheduled_time are excluded from the min/max reduction
+  // (they still render; the old "return DAY_START for null" fallback in
+  // timeToMins places them at the Gantt's left edge — future work may add
+  // a "Not scheduled" row).
+  useEffect(() => {
+    const DEFAULT_START = 9 * 60;
+    const DEFAULT_END = 18 * 60;
+
+    const dow = selectedDate.getDay();
+    const biz = businessHours.get(dow);
+    let windowStart = DEFAULT_START;
+    let windowEnd = DEFAULT_END;
+    if (biz && biz !== "closed") {
+      windowStart = biz.startMin;
+      windowEnd = biz.endMin;
+    }
+    // For "closed" days (e.g. Sunday) or when business_hours is missing,
+    // fall back to 9-6 full day so overtime work still renders.
+
     if (data) {
       const allJobs: DispatchJob[] = [
         ...(data.unassigned_jobs ?? []),
         ...((data.employees ?? []).flatMap(e => e.jobs ?? [])),
       ];
       for (const j of allJobs) {
-        if (!j.scheduled_time) continue;
-        const parts = j.scheduled_time.split(":").map(Number);
-        const t = (parts[0] || 0) * 60 + (parts[1] || 0);
-        const end = t + (j.duration_minutes || 60);
-        if (t < earliestMin) earliestMin = t;
-        if (end > latestMin) latestMin = end;
+        if (!j.scheduled_time) continue; // exclude null times from min/max
+        const t = timeToMins(j.scheduled_time);
+        const end = t + (j.duration_minutes || 0);
+        if (t < windowStart) windowStart = Math.floor(t / 60) * 60;
+        if (end > windowEnd) windowEnd = Math.ceil(end / 60) * 60;
       }
     }
-    // Floor earliest to hour, ceil latest to hour, then ±1h padding.
-    const paddedStart = Math.max(0, Math.floor(earliestMin / 60) * 60 - 60);
-    const paddedEnd = Math.min(24 * 60, Math.ceil(latestMin / 60) * 60 + 60);
-    // Clamp to minimum 8am–6pm window.
-    const finalStart = Math.min(8 * 60, paddedStart);
-    const finalEnd = Math.max(18 * 60, paddedEnd);
-    if (DAY_START !== finalStart || DAY_END !== finalEnd) {
-      DAY_START = finalStart;
-      DAY_END = finalEnd;
+
+    if (DAY_START !== windowStart || DAY_END !== windowEnd) {
+      DAY_START = windowStart;
+      DAY_END = windowEnd;
       refreshTimeline();
       forceUpdate(n => n + 1);
     }
-  }, [data]);
+  }, [data, businessHours, selectedDate]);
 
   // Load zones for filter
   useEffect(() => {

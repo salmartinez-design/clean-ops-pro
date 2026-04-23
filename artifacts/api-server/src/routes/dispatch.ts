@@ -255,14 +255,23 @@ router.get("/", requireAuth, async (req, res) => {
     const mappedJobs = jobs.map(j => {
       const clock = clockMap.get(j.id);
       const photos = photoMap.get(j.id) || { before: 0, after: 0 };
-      const durationMinutes = j.allowed_hours ? Math.round(parseFloat(j.allowed_hours) * 60) : 120;
+      // Build commission data for this job (moved up — durationMinutes now
+      // depends on numTechs to divide team-aggregated allowed_hours into
+      // calendar time per job)
+      const jobTechs = techByJob.get(j.id) || [];
+      const numTechsForDur = jobTechs.length || 1;
+      // [Z] MC's allowed_hours is TEAM-AGGREGATED (e.g. 11.25 across 2
+      // techs = 5.625h calendar time). Divide by tech count so the Gantt
+      // chip reflects actual calendar time, not summed tech-hours.
+      // For single-tech jobs, numTechs=1 → no-op. Minimum 30 min so a
+      // badly-configured alwd_hours=0.5 on a team doesn't collapse.
+      const durationMinutes = j.allowed_hours
+        ? Math.max(30, Math.round((parseFloat(j.allowed_hours) / numTechsForDur) * 60))
+        : 120;
       const isCommercial = !!j.account_id;
       const displayAddress = isCommercial
         ? (j.property_address ? `${j.property_address}${j.property_city ? `, ${j.property_city}` : ""}` : null)
         : (j.address ? `${j.address}${j.city ? `, ${j.city}` : ""}` : null);
-
-      // Build commission data for this job
-      const jobTechs = techByJob.get(j.id) || [];
       const jobTotal = j.billed_amount ? parseFloat(j.billed_amount) : (j.base_fee ? parseFloat(j.base_fee) : 0);
       const estHours = j.estimated_hours ? parseFloat(j.estimated_hours) : 0;
       const numTechs = jobTechs.length || 1;
