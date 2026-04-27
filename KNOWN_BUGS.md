@@ -194,4 +194,39 @@ before matching. One-line change:
 ```typescript
 s = s.replace(/&amp;/gi, "&").replace(/&#?[a-z0-9]+;/gi, ""); // or use he/entities lib
 ```
+
+---
+
+## AH commercial-pricing — three parallel models in the codebase (2026-04-27)
+
+**Severity:** Low — not blocking; design debt
+
+AH ships per-client commercial hourly rates via `clients.commercial_hourly_rate`.
+This makes the codebase have **three** parallel commercial-pricing models that
+should eventually be consolidated:
+
+1. **`clients.commercial_hourly_rate`** (NEW, AH) — per-client hourly rate.
+   Used for single-location commercial clients like Jaira Estrada at
+   National Able Network. The edit-job modal reads this when
+   `client_type='commercial'`. Mirror column on
+   `recurring_schedules.commercial_hourly_rate` cascades to spawned jobs.
+2. **`accounts` + `account_rate_cards`** — per-account hourly rates,
+   per-service-type. The "right" model for multi-property accounts (e.g.
+   Daniel Walter PPM, KMA, Cucci). PHES doesn't currently use this
+   (commercial clients live in `clients` with company name jammed into
+   `first_name`).
+3. **`pricing_scopes` (e.g. Commercial Cleaning)** — tenant-wide hourly
+   rate. The pricing engine still reads from here for residential hourly
+   scopes and for any client without a personal rate set.
+
+**When to consolidate:** when PHES (or any tenant) onboards a true
+multi-location commercial account, model #2 becomes necessary. At that
+point, migrate model #1 → model #2: synthesize an `accounts` row per
+existing commercial client (or a shared "PHES Commercial" account) and
+move `commercial_hourly_rate` → `account_rate_cards.rate_amount`.
+
+**Won't fix (intentionally):** the spec smell where `clients.first_name`
+holds company names is left alone — see "Schema smell — commercial
+clients stored in first_name" entry above. Backfill into `accounts` is
+a separate project.
 Apply this BEFORE the existing normalization steps so all downstream logic sees clean strings.

@@ -6,6 +6,15 @@
 // Modal calls POST /api/pricing/calculate as inputs change. base_fee is the
 // only persisted pricing value; manual_rate_override flips when user types
 // a custom rate.
+//
+// [AH] Commercial fork. When the client is client_type='commercial' the
+// modal swaps the service section: shows the 6 commercial service_types as
+// a dropdown (instead of pricing_scopes), an editable hourly rate input
+// (prefilled from clients.commercial_hourly_rate), and filters add-ons to
+// show only Parking Fee. Pricing is computed client-side as
+// hourly_rate × allowed_hours + parking. No round-trip to /pricing/calculate
+// since the math is trivial. PATCH submits with `hourly_rate` so the server
+// can cascade to recurring_schedules.commercial_hourly_rate and future jobs.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { X, AlertTriangle, Loader2 } from "lucide-react";
 import { useAuthStore } from "@/lib/auth";
@@ -31,7 +40,18 @@ export interface EditableJob {
   status: string;
   locked_at?: string | null;
   assigned_user_id: number | null;
+  hourly_rate?: number | string | null;
 }
+
+// [AH] Commercial service_type enum values. Matches jobs.ts:14 enum.
+const COMMERCIAL_SERVICE_TYPES: Array<{ value: string; label: string }> = [
+  { value: "office_cleaning", label: "Office Cleaning" },
+  { value: "common_areas",    label: "Common Areas" },
+  { value: "retail_store",    label: "Retail Store" },
+  { value: "medical_office",  label: "Medical Office" },
+  { value: "ppm_turnover",    label: "PPM Turnover" },
+  { value: "post_event",      label: "Post Event" },
+];
 
 export interface TeamCandidate {
   id: number;
@@ -143,6 +163,19 @@ export default function EditJobModal({
   const [manualOpen, setManualOpen] = useState(false);
   const [manualValue, setManualValue] = useState<string>(String(initialBaseFee));
 
+  // [AH] Commercial state. clientType is 'residential' until the client
+  // profile loads. clientLoaded gates rendering so we don't flash residential
+  // UI for a commercial client. commercialServiceType holds the dropdown
+  // value (one of COMMERCIAL_SERVICE_TYPES). hourlyRate is editable per-visit;
+  // clientDefaultRate stores the saved client default for the helper text.
+  const [clientLoaded, setClientLoaded] = useState(false);
+  const [clientType, setClientType] = useState<"residential" | "commercial">("residential");
+  const [clientDefaultRate, setClientDefaultRate] = useState<number | null>(null);
+  const [commercialServiceType, setCommercialServiceType] = useState<string>(job.service_type);
+  const [hourlyRate, setHourlyRate] = useState<number>(
+    job.hourly_rate != null ? Number(job.hourly_rate) : 0
+  );
+
   const [calcResult, setCalcResult] = useState<CalcResponse | null>(null);
   const [calcBusy, setCalcBusy] = useState(false);
   const [calcError, setCalcError] = useState<string>("");
@@ -153,8 +186,41 @@ export default function EditJobModal({
 
   const [saving, setSaving] = useState(false);
 
-  // ── Load scopes once ────────────────────────────────────────────────────
+  // [AH] Load client (resolve commercial vs residential) BEFORE scopes/addons.
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${API}/api/clients/${job.client_id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await r.json();
+        if (cancelled) return;
+        const ct = d?.client_type === "commercial" ? "commercial" : "residential";
+        setClientType(ct);
+        const def = d?.commercial_hourly_rate != null ? Number(d.commercial_hourly_rate) : null;
+        setClientDefaultRate(def);
+        // If the job already has hourly_rate, keep that. Otherwise fall back
+        // to the client default. If neither, leave at 0 (validation will block save).
+        if (ct === "commercial" && (job.hourly_rate == null || Number(job.hourly_rate) <= 0) && def != null && def > 0) {
+          setHourlyRate(def);
+        }
+      } catch {
+        // Best-effort — falls through to residential default.
+      } finally {
+        if (!cancelled) setClientLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [API, token, job.client_id, job.hourly_rate]);
+
+  const isCommercial = clientType === "commercial";
+
+  // ── Load scopes once ────────────────────────────────────────────────────
+  // Skipped for commercial clients (modal uses the commercial dropdown instead).
+  useEffect(() => {
+    if (!clientLoaded) return;
+    if (isCommercial) { setScopesLoading(false); return; }
     let cancelled = false;
     (async () => {
       try {
@@ -179,21 +245,32 @@ export default function EditJobModal({
       }
     })();
     return () => { cancelled = true; };
-  }, [API, token, job.service_type, toast]);
+  }, [API, token, job.service_type, toast, clientLoaded, isCommercial]);
 
   // ── Load addons whenever scope changes ─────────────────────────────────
+  // For commercial: load /api/pricing/addons (full list) and filter to
+  // Parking Fee client-side. For residential: load addons for the chosen
+  // scope_id.
   useEffect(() => {
-    if (scopeId == null) return;
+    if (!clientLoaded) return;
+    if (!isCommercial && scopeId == null) return;
     let cancelled = false;
     setAddonsLoading(true);
     (async () => {
       try {
-        const r = await fetch(`${API}/api/pricing/scopes/${scopeId}/addons`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const url = isCommercial
+          ? `${API}/api/pricing/addons`
+          : `${API}/api/pricing/scopes/${scopeId}/addons`;
+        const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
         const d = await r.json();
         const rows: PricingAddon[] = Array.isArray(d) ? d : (d.data ?? d.rows ?? []);
-        if (!cancelled) setAvailableAddons(rows);
+        if (cancelled) return;
+        if (isCommercial) {
+          // [AH] Per decision 2: filter client-side by name. Parking Fee only.
+          setAvailableAddons(rows.filter(a => /^parking fee$/i.test(a.name)));
+        } else {
+          setAvailableAddons(rows);
+        }
       } catch {
         if (!cancelled) setAvailableAddons([]);
       } finally {
@@ -201,12 +278,50 @@ export default function EditJobModal({
       }
     })();
     return () => { cancelled = true; };
-  }, [API, token, scopeId]);
+  }, [API, token, scopeId, clientLoaded, isCommercial]);
 
   // ── Recalc on input changes (debounced) ─────────────────────────────────
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (manualRate) return; // honor manual override; no recalc
+    if (!clientLoaded) return;
+
+    // [AH] Commercial path — client-side math, no round-trip.
+    // base_fee = hourly_rate × allowed_hours + sum(selected commercial addons)
+    if (isCommercial) {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        const hourly = Number(hourlyRate) || 0;
+        const hrs = Number(allowedHours) || 0;
+        const hourlyTotal = Math.round(hourly * hrs * 100) / 100;
+        const addonBreakdown: { id: number; name: string; amount: number; price_type: string }[] = [];
+        let addonsTotal = 0;
+        for (const [aid, qty] of selectedAddons.entries()) {
+          const a = availableAddons.find(x => x.id === aid);
+          if (!a) continue;
+          const unit = Number(a.price ?? 0);
+          const amount = Math.round(unit * qty * 100) / 100;
+          addonsTotal += amount;
+          addonBreakdown.push({ id: a.id, name: a.name, amount, price_type: a.price_type });
+        }
+        const total = Math.round((hourlyTotal + addonsTotal) * 100) / 100;
+        setCalcResult({
+          base_price: hourlyTotal,
+          addons_total: addonsTotal,
+          bundle_discount: 0,
+          addon_breakdown: addonBreakdown,
+          total_hours: hrs,
+          hourly_rate: hourly,
+          subtotal: total,
+          final_total: total,
+        });
+        setBaseFee(total);
+        setCalcError("");
+      }, 100);
+      return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+    }
+
+    // Residential path — pricing engine round-trip.
     if (scopeId == null) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
@@ -237,7 +352,7 @@ export default function EditJobModal({
       }
     }, 250);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [API, token, scopeId, allowedHours, frequency, selectedAddons, manualRate]);
+  }, [API, token, scopeId, allowedHours, frequency, selectedAddons, manualRate, clientLoaded, isCommercial, hourlyRate, availableAddons]);
 
   // ── Validation / dirty check ────────────────────────────────────────────
   const dirty = useMemo(() => {
@@ -251,14 +366,22 @@ export default function EditJobModal({
     if (selectedAddons.size > 0) return true;
     if (job.assigned_user_id != null && (selectedTechIds[0] !== job.assigned_user_id || selectedTechIds.length !== 1)) return true;
     if (job.assigned_user_id == null && selectedTechIds.length > 0) return true;
+    // [AH] Commercial-only dirty checks
+    if (isCommercial) {
+      if (commercialServiceType !== job.service_type) return true;
+      const prevRate = job.hourly_rate != null ? Number(job.hourly_rate) : 0;
+      if (Math.abs(hourlyRate - prevRate) > 0.001) return true;
+    }
     return false;
-  }, [frequency, scheduledDate, scheduledTime, allowedHours, baseFee, instructions, manualRate, selectedAddons, selectedTechIds, job, initialAllowedHours, initialBaseFee]);
+  }, [frequency, scheduledDate, scheduledTime, allowedHours, baseFee, instructions, manualRate, selectedAddons, selectedTechIds, job, initialAllowedHours, initialBaseFee, isCommercial, commercialServiceType, hourlyRate]);
 
   const canSave = dirty
     && !saving
     && allowedHours > 0
     && selectedTechIds.length > 0
-    && /^\d{2}:\d{2}$/.test(scheduledTime);
+    && /^\d{2}:\d{2}$/.test(scheduledTime)
+    // [AH] Commercial requires a positive hourly rate.
+    && (!isCommercial || hourlyRate > 0);
 
   // ── Cascade prompt or direct submit ─────────────────────────────────────
   function onSaveClick() {
@@ -290,10 +413,10 @@ export default function EditJobModal({
         };
       });
 
-      const payload = {
-        // Note: service_type omitted — we don't have a clean enum mapping from
-        // the pricing_scopes.id back to jobs.service_type enum yet (decision 1c
-        // says no persist of scope_id). Frequency and other fields cascade.
+      const payload: Record<string, unknown> = {
+        // Note: residential service_type omitted — we don't have a clean enum
+        // mapping from pricing_scopes.id back to jobs.service_type yet
+        // (decision 1c says no persist of scope_id). Frequency cascades regardless.
         frequency,
         scheduled_date: scheduledDate,
         scheduled_time: scheduledTime,
@@ -305,6 +428,13 @@ export default function EditJobModal({
         instructions,
         cascade_scope: cascade,
       };
+      // [AH] Commercial-only fields. service_type is a real enum value the
+      // user picked from the commercial dropdown; hourly_rate persists to
+      // jobs.hourly_rate (and cascades to recurring_schedules.commercial_hourly_rate).
+      if (isCommercial) {
+        payload.service_type = commercialServiceType;
+        payload.hourly_rate = hourlyRate;
+      }
 
       const r = await fetch(`${API}/api/jobs/${job.id}`, {
         method: "PATCH",
@@ -374,31 +504,90 @@ export default function EditJobModal({
         <div style={{ overflowY: "auto", flex: 1, padding: "0 0 8px" }}>
           {/* Section 1 — Service */}
           <div style={SECTION}>
-            <span style={LABEL}>Service</span>
-            <div style={{ display: "grid", gridTemplateColumns: mobile ? "1fr" : "1fr 1fr", gap: 10 }}>
-              <div>
-                <span style={{ fontSize: 12, color: "#6B6860", display: "block", marginBottom: 4 }}>Scope</span>
-                <select value={scopeId ?? ""} onChange={e => setScopeId(parseInt(e.target.value))}
-                  style={INPUT} disabled={scopesLoading}>
-                  {scopesLoading ? <option>Loading…</option> : null}
-                  {scopes.map(s => (
-                    <option key={s.id} value={s.id}>{s.name} {s.scope_group ? `· ${s.scope_group}` : ""}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <span style={{ fontSize: 12, color: "#6B6860", display: "block", marginBottom: 4 }}>Frequency</span>
-                <select value={frequency} onChange={e => setFrequency(e.target.value)} style={INPUT}>
-                  {FREQUENCIES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
-                </select>
-              </div>
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <span style={{ fontSize: 12, color: "#6B6860", display: "block", marginBottom: 4 }}>Allowed hours</span>
-              <input type="number" min={0.25} step={0.25} value={allowedHours}
-                onChange={e => setAllowedHours(parseFloat(e.target.value) || 0)}
-                style={INPUT} />
-            </div>
+            <span style={LABEL}>{isCommercial ? "Service · Commercial" : "Service"}</span>
+            {isCommercial ? (
+              // [AH] Commercial fork: service_type dropdown + per-visit hourly
+              // rate input + frequency. No pricing_scopes lookup.
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: mobile ? "1fr" : "1fr 1fr", gap: 10 }}>
+                  <div>
+                    <span style={{ fontSize: 12, color: "#6B6860", display: "block", marginBottom: 4 }}>Service type</span>
+                    <select value={commercialServiceType} onChange={e => setCommercialServiceType(e.target.value)} style={INPUT}>
+                      {COMMERCIAL_SERVICE_TYPES.map(st => (
+                        <option key={st.value} value={st.value}>{st.label}</option>
+                      ))}
+                      {/* If the job's existing service_type isn't a commercial enum value
+                          (e.g. MC-imported as 'standard_clean'), surface it as the current
+                          selection so the user sees what's there before changing. */}
+                      {!COMMERCIAL_SERVICE_TYPES.some(s => s.value === commercialServiceType) && (
+                        <option value={commercialServiceType}>(current) {commercialServiceType}</option>
+                      )}
+                    </select>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: 12, color: "#6B6860", display: "block", marginBottom: 4 }}>Frequency</span>
+                    <select value={frequency} onChange={e => setFrequency(e.target.value)} style={INPUT}>
+                      {FREQUENCIES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: mobile ? "1fr" : "1fr 1fr", gap: 10, marginTop: 10 }}>
+                  <div>
+                    <span style={{ fontSize: 12, color: "#6B6860", display: "block", marginBottom: 4 }}>Hourly rate</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 13, color: "#6B6860" }}>$</span>
+                      <input type="number" min={0} step={0.01} value={hourlyRate}
+                        onChange={e => setHourlyRate(parseFloat(e.target.value) || 0)}
+                        style={INPUT} />
+                      <span style={{ fontSize: 12, color: "#9E9B94" }}>/hr</span>
+                    </div>
+                    {clientDefaultRate != null && Math.abs(hourlyRate - clientDefaultRate) > 0.001 && (
+                      <span style={{ fontSize: 11, color: "#9E9B94", marginTop: 4, display: "block" }}>
+                        Client default: ${clientDefaultRate.toFixed(2)}/hr
+                      </span>
+                    )}
+                    {clientDefaultRate == null && (
+                      <span style={{ fontSize: 11, color: "#D97706", marginTop: 4, display: "block" }}>
+                        No client default set — <a href={`/clients/${job.client_id}`} style={{ color: "#1D4ED8", fontWeight: 600 }}>set one in the client profile</a>
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    <span style={{ fontSize: 12, color: "#6B6860", display: "block", marginBottom: 4 }}>Allowed hours</span>
+                    <input type="number" min={0.25} step={0.25} value={allowedHours}
+                      onChange={e => setAllowedHours(parseFloat(e.target.value) || 0)}
+                      style={INPUT} />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: mobile ? "1fr" : "1fr 1fr", gap: 10 }}>
+                  <div>
+                    <span style={{ fontSize: 12, color: "#6B6860", display: "block", marginBottom: 4 }}>Scope</span>
+                    <select value={scopeId ?? ""} onChange={e => setScopeId(parseInt(e.target.value))}
+                      style={INPUT} disabled={scopesLoading}>
+                      {scopesLoading ? <option>Loading…</option> : null}
+                      {scopes.map(s => (
+                        <option key={s.id} value={s.id}>{s.name} {s.scope_group ? `· ${s.scope_group}` : ""}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: 12, color: "#6B6860", display: "block", marginBottom: 4 }}>Frequency</span>
+                    <select value={frequency} onChange={e => setFrequency(e.target.value)} style={INPUT}>
+                      {FREQUENCIES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <span style={{ fontSize: 12, color: "#6B6860", display: "block", marginBottom: 4 }}>Allowed hours</span>
+                  <input type="number" min={0.25} step={0.25} value={allowedHours}
+                    onChange={e => setAllowedHours(parseFloat(e.target.value) || 0)}
+                    style={INPUT} />
+                </div>
+              </>
+            )}
           </div>
 
           {/* Section 2 — Schedule */}
@@ -521,6 +710,13 @@ export default function EditJobModal({
             <span style={LABEL}>Pricing</span>
             {calcError && (
               <div style={{ fontSize: 12, color: "#991B1B", marginBottom: 8 }}>{calcError}</div>
+            )}
+            {/* [AH] Commercial breakdown — show "$50/hr × 6 = $300 + $20 parking" */}
+            {isCommercial && !manualRate && (
+              <div style={{ fontSize: 12, color: "#6B6860", marginBottom: 8, lineHeight: 1.5 }}>
+                ${hourlyRate.toFixed(2)}/hr × {allowedHours} hrs = ${(hourlyRate * allowedHours).toFixed(2)}
+                {calcResult?.addon_breakdown?.map(a => ` + $${a.amount.toFixed(2)} ${a.name.toLowerCase()}`).join("")}
+              </div>
             )}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
               <span style={{ fontSize: 14, color: "#6B6860" }}>Current</span>

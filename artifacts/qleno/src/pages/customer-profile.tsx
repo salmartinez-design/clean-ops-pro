@@ -1426,9 +1426,37 @@ function CardOnFileTab({ client, refetch }: { client: any; refetch: () => void }
   const [sent, setSent] = useState<"email" | "sms" | null>(null);
   const [togglingAutoCharge, setTogglingAutoCharge] = useState(false);
 
+  // [AH] Inline edit for commercial_hourly_rate on the Billing Settings card.
+  const [editingRate, setEditingRate] = useState(false);
+  const [rateValue, setRateValue] = useState<string>(
+    client.commercial_hourly_rate != null ? String(client.commercial_hourly_rate) : ""
+  );
+  const [savingRate, setSavingRate] = useState(false);
+
   const FF = "'Plus Jakarta Sans', sans-serif";
   const hasCard = !!client.card_last_four;
   const brandIcon = client.card_brand ? client.card_brand.charAt(0).toUpperCase() + client.card_brand.slice(1) : "Card";
+
+  async function saveCommercialRate() {
+    setSavingRate(true);
+    try {
+      const trimmed = rateValue.trim();
+      const value = trimmed === "" ? null : parseFloat(trimmed);
+      if (value !== null && (isNaN(value) || value < 0)) {
+        setSavingRate(false);
+        return;
+      }
+      await fetch(`${API}/api/clients/${client.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ commercial_hourly_rate: value }),
+      });
+      refetch();
+      setEditingRate(false);
+    } finally {
+      setSavingRate(false);
+    }
+  }
 
   async function sendCardLink(channel: "email" | "sms") {
     setSending(channel);
@@ -1594,6 +1622,42 @@ function CardOnFileTab({ client, refetch }: { client: any; refetch: () => void }
             <div>
               <div style={{ color: "#6B7280", marginBottom: 3, fontFamily: FF }}>PO Required</div>
               <div style={{ fontWeight: 600, color: "#1A1917", fontFamily: FF }}>{client.po_number_required ? "Yes" : "No"}</div>
+            </div>
+            {/* [AH] Commercial hourly rate — inline editable. */}
+            <div>
+              <div style={{ color: "#6B7280", marginBottom: 3, fontFamily: FF, display: "flex", alignItems: "center", gap: 6 }}>
+                Hourly Rate
+                {!editingRate && (
+                  <button onClick={() => { setRateValue(client.commercial_hourly_rate != null ? String(client.commercial_hourly_rate) : ""); setEditingRate(true); }}
+                    style={{ background: "none", border: "none", color: "#1D4ED8", fontSize: 11, cursor: "pointer", padding: 0, fontFamily: FF, fontWeight: 600 }}>
+                    {client.commercial_hourly_rate != null ? "Edit" : "Set"}
+                  </button>
+                )}
+              </div>
+              {editingRate ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 13, color: "#6B7280" }}>$</span>
+                  <input type="number" min={0} step={0.01} value={rateValue}
+                    onChange={e => setRateValue(e.target.value)}
+                    autoFocus
+                    style={{ width: 90, padding: "4px 8px", border: "1px solid #E5E2DC", borderRadius: 6, fontSize: 13, fontFamily: FF }} />
+                  <span style={{ fontSize: 12, color: "#9E9B94" }}>/hr</span>
+                  <button onClick={saveCommercialRate} disabled={savingRate}
+                    style={{ background: "var(--brand, #00C9A0)", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, padding: "4px 10px", cursor: savingRate ? "wait" : "pointer", fontFamily: FF }}>
+                    {savingRate ? "…" : "Save"}
+                  </button>
+                  <button onClick={() => setEditingRate(false)} disabled={savingRate}
+                    style={{ background: "none", border: "none", color: "#6B7280", fontSize: 12, cursor: "pointer", fontFamily: FF }}>
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div style={{ fontWeight: 600, color: client.commercial_hourly_rate != null ? "#1A1917" : "#9E9B94", fontFamily: FF }}>
+                  {client.commercial_hourly_rate != null
+                    ? `$${Number(client.commercial_hourly_rate).toFixed(2)}/hr`
+                    : "Not set"}
+                </div>
+              )}
             </div>
             {client.billing_contact_name && (
               <div>

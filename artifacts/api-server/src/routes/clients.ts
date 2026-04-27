@@ -455,7 +455,18 @@ router.put("/:id", requireAuth, async (req, res) => {
       po_number_required, default_po_number, payment_terms, auto_charge,
       card_last_four, card_brand, card_expiry, card_saved_at,
       payment_method, net_terms,
+      commercial_hourly_rate,    // [AH] Per-client commercial hourly rate
     } = req.body;
+
+    // [AH] Snapshot the previous commercial_hourly_rate so we can write a
+    // client_audit_log row when it changes. The full audit_log table only
+    // captures the new value; this gives proper before/after.
+    const before = await db.select({
+      commercial_hourly_rate: clientsTable.commercial_hourly_rate,
+    }).from(clientsTable)
+      .where(and(eq(clientsTable.id, clientId), eq(clientsTable.company_id, req.auth!.companyId)))
+      .limit(1);
+    const prevRate = before[0]?.commercial_hourly_rate ?? null;
     const geo = address !== undefined ? await geocodeAddress(address, city, state, zip) : null;
     const newZoneId = zip !== undefined ? await resolveZoneForZip(req.auth!.companyId, zip) : undefined;
     const updated = await db.update(clientsTable).set({
@@ -494,10 +505,47 @@ router.put("/:id", requireAuth, async (req, res) => {
       ...(payment_method !== undefined && { payment_method }),
       ...(net_terms !== undefined && { net_terms: Number(net_terms) || 0 }),
       ...(newZoneId !== undefined && { zone_id: newZoneId }),
+      ...(commercial_hourly_rate !== undefined && {
+        commercial_hourly_rate: commercial_hourly_rate === null || commercial_hourly_rate === ""
+          ? null
+          : String(commercial_hourly_rate),
+      }),
     }).where(and(eq(clientsTable.id, clientId), eq(clientsTable.company_id, req.auth!.companyId))).returning();
     if (!updated[0]) return res.status(404).json({ error: "Not Found" });
 
     logAudit(req, "UPDATE", "client", clientId, null, updated[0]);
+
+    // [AH] Per-field audit row for commercial_hourly_rate. Only writes when
+    // the rate actually changed; null↔null is skipped.
+    if (commercial_hourly_rate !== undefined) {
+      const nextRate = updated[0].commercial_hourly_rate ?? null;
+      const a = prevRate == null ? null : String(prevRate);
+      const b = nextRate == null ? null : String(nextRate);
+      if (a !== b) {
+        try {
+          const userRows = await db.execute(sql`
+            SELECT first_name, last_name, email FROM users WHERE id = ${req.auth!.userId} LIMIT 1
+          `);
+          const u = (userRows.rows[0] as Record<string, unknown>) ?? {};
+          const actorName = `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim() || "Unknown";
+          const actorEmail = String(u.email ?? "");
+          await db.execute(sql`
+            INSERT INTO client_audit_log
+              (client_id, company_id, user_id, user_name, user_email,
+               field_name, old_value, new_value)
+            VALUES
+              (${clientId}, ${req.auth!.companyId}, ${req.auth!.userId},
+               ${actorName}, ${actorEmail},
+               'commercial_hourly_rate',
+               ${JSON.stringify(a)}::jsonb,
+               ${JSON.stringify(b)}::jsonb)
+          `);
+        } catch (auditErr) {
+          // Don't fail the update if audit insert fails — log and continue.
+          console.warn("[AH] client_audit_log insert failed:", auditErr);
+        }
+      }
+    }
 
     // QB sync (fire and forget)
     queueSync(() => syncCustomer(req.auth!.companyId, clientId));

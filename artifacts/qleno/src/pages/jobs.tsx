@@ -1322,6 +1322,7 @@ function JobPanel({ job, employees, onClose, onUpdate, mobile }: {
             status: job.status,
             locked_at: job.locked_at,
             assigned_user_id: job.assigned_user_id,
+            hourly_rate: job.hourly_rate ?? null,
           }}
           employees={employees.map(e => ({ id: e.id, name: e.name, role: e.role }))}
           mobile={mobile}

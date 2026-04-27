@@ -707,6 +707,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
       scheduled_time,
       allowed_hours,
       base_fee,
+      hourly_rate,            // [AH] commercial per-visit rate override
       manual_rate_override,
       add_ons,
       team_user_ids,
@@ -722,8 +723,8 @@ router.patch("/:id", requireAuth, async (req, res) => {
     const jobRows = await db.execute(sql`
       SELECT id, company_id, recurring_schedule_id, status, locked_at,
              service_type, frequency, scheduled_date, scheduled_time,
-             allowed_hours, base_fee, manual_rate_override, notes,
-             assigned_user_id
+             allowed_hours, base_fee, hourly_rate, manual_rate_override, notes,
+             assigned_user_id, client_id
       FROM jobs WHERE id = ${jobId} AND company_id = ${companyId} LIMIT 1
     `);
     if (!jobRows.rows.length) return res.status(404).json({ error: "Job not found" });
@@ -775,8 +776,8 @@ router.patch("/:id", requireAuth, async (req, res) => {
     // ── Build per-field change set (only fields actually present in body) ──
     type FieldName =
       | "service_type" | "frequency" | "scheduled_date" | "scheduled_time"
-      | "allowed_hours" | "base_fee" | "manual_rate_override" | "instructions"
-      | "add_ons" | "team_user_ids";
+      | "allowed_hours" | "base_fee" | "hourly_rate" | "manual_rate_override"
+      | "instructions" | "add_ons" | "team_user_ids";
     const changes: Array<{ field: FieldName; old: unknown; next: unknown }> = [];
     const pushChange = (field: FieldName, next: unknown, prev: unknown) => {
       const norm = (v: unknown) => v === null || v === undefined ? null : v;
@@ -791,6 +792,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
     if (scheduled_time !== undefined) pushChange("scheduled_time", scheduled_time, before.scheduled_time);
     if (allowed_hours !== undefined) pushChange("allowed_hours", String(allowed_hours), String(before.allowed_hours ?? ""));
     if (base_fee !== undefined) pushChange("base_fee", String(base_fee), String(before.base_fee ?? ""));
+    if (hourly_rate !== undefined) pushChange("hourly_rate", String(hourly_rate), String(before.hourly_rate ?? ""));
     if (manual_rate_override !== undefined) pushChange("manual_rate_override", !!manual_rate_override, !!before.manual_rate_override);
     if (instructions !== undefined) pushChange("instructions", instructions, before.notes);
 
@@ -840,6 +842,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
       if (scheduled_time !== undefined) setParts.scheduled_time = scheduled_time;
       if (allowed_hours !== undefined) setParts.allowed_hours = String(allowed_hours);
       if (base_fee !== undefined) setParts.base_fee = String(base_fee);
+      if (hourly_rate !== undefined) setParts.hourly_rate = hourly_rate === null ? null : String(hourly_rate);
       if (nextManualOverride !== undefined) setParts.manual_rate_override = nextManualOverride;
       if (instructions !== undefined) setParts.notes = instructions;
 
@@ -909,6 +912,9 @@ router.patch("/:id", requireAuth, async (req, res) => {
         if (base_fee !== undefined) push("base_fee", String(base_fee));
         if (instructions !== undefined) push("instructions", instructions);
         if (nextManualOverride !== undefined) push("manual_rate_override", nextManualOverride);
+        // [AH] Cascade commercial hourly rate to the schedule template so
+        // engine-spawned future jobs inherit the rate.
+        if (hourly_rate !== undefined) push("commercial_hourly_rate", hourly_rate === null ? null : String(hourly_rate));
         // Map jobs.frequency to recurring_schedules.frequency. 'every_3_weeks'
         // and 'on_demand' have no direct enum value; we fall back to 'custom'
         // and write the cadence into custom_frequency_weeks.
@@ -941,6 +947,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
         if (scheduled_time !== undefined) pushFj("scheduled_time", scheduled_time);
         if (allowed_hours !== undefined) pushFj("allowed_hours", String(allowed_hours));
         if (base_fee !== undefined) pushFj("base_fee", String(base_fee));
+        if (hourly_rate !== undefined) pushFj("hourly_rate", hourly_rate === null ? null : String(hourly_rate));
         if (instructions !== undefined) pushFj("notes", instructions);
         if (nextManualOverride !== undefined) pushFj("manual_rate_override", nextManualOverride);
 

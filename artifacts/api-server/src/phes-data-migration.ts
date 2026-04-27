@@ -345,6 +345,42 @@ async function runBookingSchemaGuard(): Promise<void> {
       stmt: `CREATE INDEX IF NOT EXISTS idx_job_audit_log_user_id ON job_audit_log(user_id)` },
     { label: "idx_job_audit_log_edited_at",
       stmt: `CREATE INDEX IF NOT EXISTS idx_job_audit_log_edited_at ON job_audit_log(edited_at DESC)` },
+
+    // ── AH: Commercial pricing — per-client hourly rate (2026-04-27) ─────────
+    // PHES's commercial clients (49 of them, e.g. Jaira Estrada at National
+    // Able Network) bill at hourly_rate × allowed_hours + parking. The rate
+    // varies by client; storing it per-client avoids the
+    // accounts/account_rate_cards detour for single-location clients. Multi-
+    // location accounts still use account_rate_cards — see KNOWN_BUGS.md.
+    { label: "clients.commercial_hourly_rate",
+      stmt: `ALTER TABLE clients ADD COLUMN IF NOT EXISTS commercial_hourly_rate NUMERIC(10,2)` },
+
+    // Cascade-friendly column on the recurring template so future spawned
+    // jobs inherit the rate. Parallel to AG's manual_rate_override.
+    { label: "recurring_schedules.commercial_hourly_rate",
+      stmt: `ALTER TABLE recurring_schedules ADD COLUMN IF NOT EXISTS commercial_hourly_rate NUMERIC(10,2)` },
+
+    // Client-level audit log — mirrors job_audit_log for edits to the
+    // client profile (currently only commercial_hourly_rate; future
+    // expansion will add other tracked fields).
+    { label: "CREATE client_audit_log", stmt: `
+      CREATE TABLE IF NOT EXISTS client_audit_log (
+        id           SERIAL PRIMARY KEY,
+        client_id    INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+        company_id   INTEGER NOT NULL,
+        user_id      INTEGER NOT NULL REFERENCES users(id),
+        user_name    TEXT NOT NULL,
+        user_email   TEXT NOT NULL,
+        field_name   TEXT NOT NULL,
+        old_value    JSONB,
+        new_value    JSONB,
+        edited_at    TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    ` },
+    { label: "idx_client_audit_log_client_id",
+      stmt: `CREATE INDEX IF NOT EXISTS idx_client_audit_log_client_id ON client_audit_log(client_id)` },
+    { label: "idx_client_audit_log_edited_at",
+      stmt: `CREATE INDEX IF NOT EXISTS idx_client_audit_log_edited_at ON client_audit_log(edited_at DESC)` },
   ];
 
   for (const { label, stmt } of guards) {

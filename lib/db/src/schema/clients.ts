@@ -72,6 +72,11 @@ export const clientsTable = pgTable("clients", {
   // Office-editable payment method (distinct from payment_terms which drives invoice due dates)
   payment_method: text("payment_method").default("manual"),
   net_terms: integer("net_terms").default(0),
+  // [AH] Per-client commercial hourly rate. Used by the edit-job modal for
+  // single-location commercial clients (e.g. Jaira Estrada $50/hr). Null for
+  // residential clients. Multi-location commercial accounts use
+  // account_rate_cards instead — see KNOWN_BUGS.md.
+  commercial_hourly_rate: numeric("commercial_hourly_rate", { precision: 10, scale: 2 }),
   created_at: timestamp("created_at").notNull().defaultNow(),
 });
 

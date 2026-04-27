@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, boolean, date, time, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, boolean, date, time, numeric, timestamp, pgEnum } from "drizzle-orm/pg-core";
 import { companiesTable } from "./companies";
 import { clientsTable } from "./clients";
 import { usersTable } from "./users";
@@ -35,6 +35,10 @@ export const recurringSchedulesTable = pgTable("recurring_schedules", {
   // Used when jobs.frequency='every_3_weeks' (no matching enum value on
   // recurring_schedules.frequency, which only has weekly/biweekly/monthly/custom).
   custom_frequency_weeks: integer("custom_frequency_weeks"),
+  // [AH] Cascade target for commercial hourly rate. When the user picks
+  // "this and all future" on a commercial recurring job, this column gets
+  // the rate so the engine can re-derive base_fee for spawned jobs.
+  commercial_hourly_rate: numeric("commercial_hourly_rate", { precision: 10, scale: 2 }),
 });
 
 export type RecurringSchedule = typeof recurringSchedulesTable.$inferSelect;
