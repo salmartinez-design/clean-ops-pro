@@ -18,6 +18,8 @@ export const serviceTypeEnum = pgEnum("service_type", [
   // commercial_service_types table. New tenant-added slugs are extended into
   // this enum at runtime via sanitized ALTER TYPE on POST /api/commercial-service-types.
   "ppm_common_areas",
+  // [AI.4] Two more commercial slugs added to PHES seed.
+  "commercial_cleaning", "recurring_commercial_cleaning",
 ]);
 
 export const frequencyEnum = pgEnum("frequency", [

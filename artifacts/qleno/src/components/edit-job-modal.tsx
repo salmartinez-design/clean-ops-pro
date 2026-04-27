@@ -266,14 +266,24 @@ export default function EditJobModal({
         });
         if (!r.ok) return;
         const d: CommercialServiceType[] = await r.json();
-        if (!cancelled) setCommercialServiceTypes(Array.isArray(d) ? d : []);
+        if (cancelled) return;
+        const list = Array.isArray(d) ? d : [];
+        setCommercialServiceTypes(list);
+        // [AI.4] If the job's existing service_type isn't in the active
+        // tenant-managed list (legacy MC import value or a soft-deleted slug),
+        // clear the dropdown. User must explicitly pick a real commercial
+        // type before save. The (current) fallback option is gone — see
+        // CLAUDE.md "Tenant-managed commercial service types".
+        if (job.service_type && !list.some(t => t.slug === job.service_type)) {
+          setCommercialServiceType("");
+        }
       } catch {
-        // Best-effort — modal still renders with the (current) fallback if
-        // the fetch fails so the user doesn't lose their existing value.
+        // Best-effort. If the fetch fails, dropdown will be empty and
+        // canSave's "service type required" gate prevents accidental saves.
       }
     })();
     return () => { cancelled = true; };
-  }, [API, token]);
+  }, [API, token, job.service_type]);
 
   // [AI.1] Broadened: client_type='commercial' OR job has an account_id set.
   // The job-level account_id signal is defensive — MC import sometimes left
@@ -448,6 +458,15 @@ export default function EditJobModal({
     return false;
   }, [frequency, scheduledDate, scheduledTime, allowedHours, baseFee, instructions, manualRate, selectedAddons, selectedTechIds, job, initialAllowedHours, initialBaseFee, isCommercial, commercialServiceType, hourlyRate, daysOfWeek]);
 
+  // [AI.4] Commercial save requires a real tenant-managed service type slug.
+  // Legacy MC-import values (e.g., 'standard_clean') get auto-cleared when
+  // the modal loads — user must explicitly pick a current type. Save button
+  // stays disabled with the inline "Service type required" message until
+  // the dropdown selection lands on an active slug.
+  const commercialServiceTypeValid = isCommercial
+    ? commercialServiceType !== "" && commercialServiceTypes.some(t => t.slug === commercialServiceType)
+    : true;
+
   const canSave = dirty
     && !saving
     && allowedHours > 0
@@ -456,7 +475,9 @@ export default function EditJobModal({
     // [AH] Commercial requires a positive hourly rate.
     && (!isCommercial || hourlyRate > 0)
     // [AI] custom_days requires at least one day checked.
-    && (frequency !== "custom_days" || daysOfWeek.length > 0);
+    && (frequency !== "custom_days" || daysOfWeek.length > 0)
+    // [AI.4] Commercial requires a valid service type from the active list.
+    && commercialServiceTypeValid;
 
   // ── Cascade prompt or direct submit ─────────────────────────────────────
   function onSaveClick() {
@@ -612,6 +633,14 @@ export default function EditJobModal({
                         }
                       }}
                       style={INPUT}>
+                      {/* [AI.4] Empty placeholder option — fires when the job's
+                          service_type isn't in the active tenant-managed list
+                          (legacy MC import, soft-deleted slug). User must pick
+                          a real type before save. (current) fallback removed
+                          per Sal's instruction. */}
+                      {commercialServiceType === "" && (
+                        <option value="" disabled>Select a service type…</option>
+                      )}
                       {commercialServiceTypes.map(t => (
                         <option key={t.id} value={t.slug}>
                           {t.name}{t.default_hourly_rate != null
@@ -619,14 +648,14 @@ export default function EditJobModal({
                             : ""}
                         </option>
                       ))}
-                      {/* [AI.3] Fallback for jobs whose existing service_type isn't
-                          in the active tenant-managed list (e.g., MC-imported
-                          'standard_clean', or a soft-deleted slug). Preserves the
-                          value so the user doesn't accidentally lose data. */}
-                      {!commercialServiceTypes.some(t => t.slug === commercialServiceType) && (
-                        <option value={commercialServiceType}>(current) {commercialServiceType}</option>
-                      )}
                     </select>
+                    {/* [AI.4] Inline validation: red message + Save disabled
+                        until the user picks a tenant-managed slug. */}
+                    {isCommercial && !commercialServiceTypeValid && (
+                      <span style={{ fontSize: 11, color: "#991B1B", marginTop: 4, display: "block", fontWeight: 600 }}>
+                        Service type required.
+                      </span>
+                    )}
                   </div>
                   <div>
                     <span style={{ fontSize: 12, color: "#6B6860", display: "block", marginBottom: 4 }}>Frequency</span>

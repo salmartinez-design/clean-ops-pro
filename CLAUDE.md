@@ -68,6 +68,13 @@
   hourly rate pre-fills the modal's hourly rate field on selection but
   does NOT update `clients.commercial_hourly_rate` — per-client default
   rate flow from AH stays untouched.
+  *(AI.4)* Legacy/inactive `service_type` values are NOT auto-displayed
+  in the dropdown — the `(current) <slug>` fallback option is removed.
+  When a job has a `service_type` that isn't in the active tenant-managed
+  list, the modal opens with NO service type selected and shows
+  "Service type required" with Save disabled until the user picks a real
+  current type. This forces explicit migration of legacy values and
+  prevents silently re-saving outdated slugs.
 - **Auto-promote to primary**: when a tech is added via
   `POST /api/jobs/:id/technicians` to a job that has NO existing primary
   (typical: first Add Team Member on an unassigned job), the server

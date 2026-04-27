@@ -431,6 +431,12 @@ async function runBookingSchemaGuard(): Promise<void> {
     // Add it here so the seed can reference it.
     { label: "service_type.ppm_common_areas",
       stmt: `ALTER TYPE service_type ADD VALUE IF NOT EXISTS 'ppm_common_areas'` },
+    // [AI.4] Two more commercial slugs added to PHES seed; enum extension
+    // is mandatory before the seed INSERT runs.
+    { label: "service_type.commercial_cleaning",
+      stmt: `ALTER TYPE service_type ADD VALUE IF NOT EXISTS 'commercial_cleaning'` },
+    { label: "service_type.recurring_commercial_cleaning",
+      stmt: `ALTER TYPE service_type ADD VALUE IF NOT EXISTS 'recurring_commercial_cleaning'` },
 
     { label: "CREATE commercial_service_types", stmt: `
       CREATE TABLE IF NOT EXISTS commercial_service_types (
@@ -749,14 +755,20 @@ export async function runPhesDataMigration(): Promise<void> {
   // already set via the UI. default_hourly_rate stays NULL on first seed;
   // Sal sets per-type rates in /settings/pricing.
   try {
+    // [AI.4] Commercial Cleaning + Recurring Commercial Cleaning surface
+    // first by sort_order so they're the easiest picks for the most common
+    // PHES commercial use cases. Both default_hourly_rate=NULL → per-client
+    // rate flow handles billing.
     const seedTypes: Array<{ name: string; slug: string; sort: number }> = [
-      { name: "Office Cleaning",   slug: "office_cleaning",   sort: 10 },
-      { name: "Common Areas",      slug: "common_areas",      sort: 20 },
-      { name: "PPM Common Areas",  slug: "ppm_common_areas",  sort: 30 },
-      { name: "Retail Store",      slug: "retail_store",      sort: 40 },
-      { name: "Medical Office",    slug: "medical_office",    sort: 50 },
-      { name: "PPM Turnover",      slug: "ppm_turnover",      sort: 60 },
-      { name: "Post Event",        slug: "post_event",        sort: 70 },
+      { name: "Commercial Cleaning",            slug: "commercial_cleaning",            sort: 5  },
+      { name: "Recurring Commercial Cleaning",  slug: "recurring_commercial_cleaning",  sort: 7  },
+      { name: "Office Cleaning",                slug: "office_cleaning",                sort: 10 },
+      { name: "Common Areas",                   slug: "common_areas",                   sort: 20 },
+      { name: "PPM Common Areas",               slug: "ppm_common_areas",               sort: 30 },
+      { name: "Retail Store",                   slug: "retail_store",                   sort: 40 },
+      { name: "Medical Office",                 slug: "medical_office",                 sort: 50 },
+      { name: "PPM Turnover",                   slug: "ppm_turnover",                   sort: 60 },
+      { name: "Post Event",                     slug: "post_event",                     sort: 70 },
     ];
     for (const t of seedTypes) {
       await db.execute(sql`
