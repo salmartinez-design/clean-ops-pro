@@ -105,6 +105,19 @@ interface CalcResponse {
 // [AI] Frequency options grouped via <optgroup>. Standard set is shown to
 // every client. Commercial multi-day group only renders when
 // client.client_type === 'commercial'.
+// [AI.5] Normalize a stored scheduled_time string to canonical "HH:MM".
+// jobs.scheduled_time is TEXT; depending on how the row was written it may
+// arrive as "09:00", "09:00:00", "9:00", or null. The <input type="time">
+// expects "HH:MM" exactly, and canSave's regex enforces that. Without this
+// helper, a job whose scheduled_time stores "09:00:00" (Postgres time-text
+// round-trip) silently kills Save with no visible message.
+function normalizeTimeStr(t: string | null | undefined): string {
+  if (!t) return "09:00";
+  const m = String(t).match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return "09:00";
+  return `${m[1].padStart(2, "0")}:${m[2]}`;
+}
+
 const FREQUENCIES_STANDARD: Array<{ value: string; label: string }> = [
   { value: "on_demand", label: "One-time" },
   { value: "weekly", label: "Weekly" },
@@ -176,7 +189,9 @@ export default function EditJobModal({
 
   const [frequency, setFrequency] = useState(job.frequency || "on_demand");
   const [scheduledDate, setScheduledDate] = useState(job.scheduled_date);
-  const [scheduledTime, setScheduledTime] = useState(job.scheduled_time || "09:00");
+  // [AI.5] Normalize on init — DB may store "09:00:00" or "9:00" which would
+  // silently kill canSave's regex (only HH:MM passes). See normalizeTimeStr.
+  const [scheduledTime, setScheduledTime] = useState(normalizeTimeStr(job.scheduled_time));
   const [allowedHours, setAllowedHours] = useState<number>(initialAllowedHours);
   const [instructions, setInstructions] = useState(job.notes || "");
 
@@ -437,7 +452,10 @@ export default function EditJobModal({
   const dirty = useMemo(() => {
     if (frequency !== job.frequency) return true;
     if (scheduledDate !== job.scheduled_date) return true;
-    if ((job.scheduled_time || "09:00") !== scheduledTime) return true;
+    // [AI.5] Compare against normalized form so opening a job whose stored
+    // time is "09:00:00" doesn't show as dirty just because we displayed
+    // it as "09:00".
+    if (normalizeTimeStr(job.scheduled_time) !== scheduledTime) return true;
     if (Math.abs(allowedHours - initialAllowedHours) > 0.001) return true;
     if (Math.abs(baseFee - initialBaseFee) > 0.01) return true;
     if ((job.notes || "") !== instructions) return true;
