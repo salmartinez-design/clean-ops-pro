@@ -711,6 +711,28 @@ export async function runPhesDataMigration(): Promise<void> {
     console.warn("[phes-migration] zone-sync — non-fatal:", err?.message ?? err);
   }
 
+  // [AI.2] Jaira Estrada (id=21) was imported from MaidCentral with
+  // client_type='residential' AND account_id=NULL despite being a commercial
+  // National Able Network contact. Both signals fail, so AI.1's broadened
+  // isCommercial check (client_type='commercial' OR account_id != null)
+  // can't fire and the modal renders residential UI for her job.
+  // Idempotent: only fires when the row is still residential. See
+  // KNOWN_BUGS.md "MC import misflagged commercial clients as residential"
+  // for the full audit recommendation.
+  try {
+    const r = await db.execute(sql`
+      UPDATE clients
+      SET client_type = 'commercial'
+      WHERE id = 21 AND company_id = ${PHES} AND client_type = 'residential'
+      RETURNING id
+    `);
+    if ((r.rows ?? []).length > 0) {
+      console.log("[phes-migration] Flipped Jaira Estrada (id=21) client_type → commercial");
+    }
+  } catch (err: any) {
+    console.warn("[phes-migration] jaira-client_type-fix — non-fatal:", err?.message ?? err);
+  }
+
   // ── Seed booking_settings for PHES (company_id=1) ──────────────────────────
   try {
     await db.execute(sql`

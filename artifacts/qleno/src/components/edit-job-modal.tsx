@@ -75,7 +75,13 @@ interface PricingScope {
 interface PricingAddon {
   id: number;
   name: string;
-  price: string | number;
+  // [AI.2] PHES seeds populate price_value (NUMERIC, default '0'), not the
+  // separate-but-similarly-named `price` column (NULLABLE NUMERIC).
+  // Pre-AI.2 modal read .price → null → "$0" labels for every add-on
+  // regardless of the seeded price. Read price_value primarily; fall back
+  // to price for any rows that may have populated the older column.
+  price?: string | number | null;
+  price_value?: string | number | null;
   price_type: string;
   time_add_minutes?: number;
 }
@@ -334,7 +340,9 @@ export default function EditJobModal({
         for (const [aid, qty] of selectedAddons.entries()) {
           const a = availableAddons.find(x => x.id === aid);
           if (!a) continue;
-          const unit = Number(a.price ?? 0);
+          // [AI.2] Read price_value primarily (PHES seed populates this);
+          // fall back to price for legacy rows. See PricingAddon interface.
+          const unit = Number(a.price_value ?? a.price ?? 0);
           const amount = Math.round(unit * qty * 100) / 100;
           addonsTotal += amount;
           addonBreakdown.push({ id: a.id, name: a.name, amount, price_type: a.price_type });
@@ -781,7 +789,13 @@ export default function EditJobModal({
                         }} />
                       <span style={{ flex: 1, fontSize: 13, color: "#1A1917" }}>{a.name}</span>
                       <span style={{ fontSize: 12, color: "#6B6860" }}>
-                        {a.price_type === "percent" ? `${a.price}%` : `$${Number(a.price).toFixed(0)}`}
+                        {/* [AI.2] price_value is the canonical column; price_type
+                            seeded as 'percentage' (not 'percent'), accept both. */}
+                        {(() => {
+                          const v = a.price_value ?? a.price ?? 0;
+                          const isPct = a.price_type === "percent" || a.price_type === "percentage";
+                          return isPct ? `${v}%` : `$${Number(v).toFixed(0)}`;
+                        })()}
                       </span>
                     </label>
                   );

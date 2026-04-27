@@ -1,5 +1,143 @@
 # Known Bugs
 
+## OPEN — MC import misflagged commercial clients as residential (2026-04-27, AI.2)
+
+**Severity:** Medium — affects commercial UI fork in the edit job modal.
+Per-client fixable; no bulk update yet.
+
+**Symptom:** Edit Job modal shows residential UI (no Commercial multi-day
+frequency optgroup, full pricing-scope dropdown, residential add-ons) for
+clients that operationally are commercial. The AI.1 broadened
+`isCommercial = client_type='commercial' || account_id != null` check fails
+for these because both signals are wrong.
+
+**Confirmed cases:**
+- `clients.id=21` Jaira Estrada — was `client_type='residential'`,
+  `account_id=NULL`. Fixed in AI.2 via idempotent migration in
+  `phes-data-migration.ts`. Other commercial UI signals (Net 30 payment
+  terms, billing_contact_name, Commercial Cleaning scope on her job) all
+  came from columns other than client_type, masking the issue until the
+  modal logic depended on it.
+
+**Audit recommendation (DO NOT bulk-fix):** any clients on company_id=1 where
+ANY of these are true while client_type='residential' are likely misflagged:
+- `payment_terms = 'net_30'`
+- `billing_contact_name IS NOT NULL`
+- `account_id IS NOT NULL`
+- has any job with `service_type` IN
+  ('office_cleaning', 'common_areas', 'retail_store', 'medical_office',
+   'ppm_turnover', 'post_event')
+
+Suggested triage query (read-only):
+```sql
+SELECT c.id, c.first_name, c.last_name, c.payment_terms,
+       c.billing_contact_name, c.account_id, c.client_type,
+       (SELECT COUNT(*) FROM jobs j
+        WHERE j.client_id = c.id
+          AND j.service_type IN ('office_cleaning','common_areas','retail_store',
+                                 'medical_office','ppm_turnover','post_event')
+       ) AS commercial_jobs_count
+FROM clients c
+WHERE c.company_id = 1 AND c.client_type = 'residential'
+  AND (c.payment_terms = 'net_30'
+       OR c.billing_contact_name IS NOT NULL
+       OR c.account_id IS NOT NULL)
+ORDER BY c.id;
+```
+
+Review per row, then UPDATE individually during pre-cutover audit. No bulk
+flip — there are likely false positives (a residential client that pays
+net 30 isn't commercial).
+
+---
+
+## RESOLVED — Add-on labels showed $0 (2026-04-27, AI.2)
+
+**Severity:** Medium — visual only; pricing engine charged correctly. Eroded
+operator trust in the add-on values shown in the edit modal.
+
+**Symptom:** Edit Job modal's Add-ons section showed every add-on as "$0"
+or "null%" regardless of the actual seeded value (Parking Fee $20,
+Commercial Adjustment −100%, etc.). When a user toggled an add-on, the
+Pricing section's Current → New diff would update to a non-zero amount,
+but the add-on row label still read $0 — confusing.
+
+**Root cause:** `pricing_addons` schema has TWO similarly-named columns:
+- `price` (NULLABLE NUMERIC) — older column, mostly NULL in production
+- `price_value` (NUMERIC, default '0') — what `phes-data-migration.ts` seeds populate
+
+The modal read `a.price` for both the label render and the commercial
+client-side calc. Server pricing engine used `price_value` correctly,
+which is why the engine charged the right amount but the UI label was
+wrong.
+
+**Secondary**: `price_type='percentage'` (seeded value) didn't match
+`price_type === "percent"` in the label conditional, so percentage
+add-ons fell into the dollar-sign branch and rendered as "$0" instead of
+their actual percent.
+
+**Fix (AI.2):** Read `price_value` primarily, fall back to `price` for
+legacy rows. Match either `'percent'` or `'percentage'` in the label
+conditional.
+
+---
+
+## NOT-A-BUG — Today's jobs show red borders when no clock-in (2026-04-27, AI.2)
+
+**Status:** By design since the X commit (2026-04-22 dispatch MC-parity
+work). Documenting because operators perceive it as a regression after
+sessions where techs aren't clocking in.
+
+**Symptom:** On the dispatch grid, recurring jobs scheduled for today show
+red borders instead of the assigned tech's color. One-time jobs and jobs
+where someone has already clocked in show the normal zone-color border.
+
+**Why it looks like "recurring vs one-time" but isn't:** the chip's
+border color is computed by `JobChip` priority rules (`jobs.tsx:1820`):
+
+```ts
+const borderColor =
+  isRisky          ? "#DC2626" :  // red — late clock-in alarm
+  isInProgressStatus ? "#F59E0B" :  // amber — job started
+  isComplete       ? "#16A34A" :  // green — done
+  bgColor;                          // zone color — default
+```
+
+Where `isRisky` fires when:
+- Job is scheduled today
+- Status is not 'cancelled' or 'complete'
+- No `clock_entry.clock_in_at`
+- Current time is past `start - 15min`
+
+That's a "tech missed clock-in by 15 minutes" alarm. With
+`COMMS_ENABLED=false` and the recurring engine off, techs aren't auto-
+clocking in or being reminded by SMS, so most today's jobs trigger the
+alarm by mid-morning. Jobs that DO show normal colors are ones where a
+tech (or operator-on-tech's-behalf) already clocked in via the drawer.
+
+**Verify which jobs have clock-ins today:**
+```sql
+SELECT j.id, c.first_name || ' ' || c.last_name AS client,
+       j.scheduled_time, j.status,
+       (SELECT COUNT(*) FROM timeclock tc
+        WHERE tc.job_id = j.id AND tc.clock_in_at::date = CURRENT_DATE) AS clockins_today
+FROM jobs j
+LEFT JOIN clients c ON c.id = j.client_id
+WHERE j.company_id = 1 AND j.scheduled_date = CURRENT_DATE
+ORDER BY j.scheduled_time;
+```
+
+Jobs with `clockins_today=0` will show red borders by mid-morning. Once
+`COMMS_ENABLED=true` and tech clock-in becomes routine, the red borders
+clear automatically.
+
+**Optional fix (not shipped):** suppress the red border when
+`COMMS_ENABLED=false` so the alarm matches operational expectations
+during the comms-paused window. One-line client-side check; doesn't
+change underlying behavior.
+
+---
+
 ## RESOLVED — Tech reassignment didn't persist (2026-04-27, AI.1)
 
 **Status:** Fixed in commit AI.1.
