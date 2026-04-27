@@ -13,7 +13,11 @@ export const jobStatusEnum = pgEnum("job_status", [
 
 export const serviceTypeEnum = pgEnum("service_type", [
   "standard_clean", "deep_clean", "move_out", "recurring", "post_construction", "move_in",
-  "office_cleaning", "common_areas", "retail_store", "medical_office", "ppm_turnover", "post_event"
+  "office_cleaning", "common_areas", "retail_store", "medical_office", "ppm_turnover", "post_event",
+  // [AI.3] PHES commercial — fills the gap that triggered the tenant-managed
+  // commercial_service_types table. New tenant-added slugs are extended into
+  // this enum at runtime via sanitized ALTER TYPE on POST /api/commercial-service-types.
+  "ppm_common_areas",
 ]);
 
 export const frequencyEnum = pgEnum("frequency", [

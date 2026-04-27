@@ -76,3 +76,5 @@ export * from "./recurring_schedule_add_ons";
 export * from "./recurring_schedule_technicians";
 // [AH] Commercial pricing — per-client audit
 export * from "./client_audit_log";
+// [AI.3] Tenant-managed commercial service types
+export * from "./commercial_service_types";

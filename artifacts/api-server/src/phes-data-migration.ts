@@ -415,6 +415,39 @@ async function runBookingSchemaGuard(): Promise<void> {
       stmt: `ALTER TYPE recurring_frequency ADD VALUE IF NOT EXISTS 'weekdays'` },
     { label: "recurring_frequency.custom_days",
       stmt: `ALTER TYPE recurring_frequency ADD VALUE IF NOT EXISTS 'custom_days'` },
+
+    // ── AI.3: Tenant-managed commercial service types (2026-04-27) ──────────
+    // Sal pushed back on the hardcoded COMMERCIAL_SERVICE_TYPES list in the
+    // edit modal — missing PPM Common Areas, and the pattern was wrong:
+    // service types should be tenant-editable with default rates.
+    //
+    // service_type stays a Postgres enum for jobs.service_type integrity.
+    // The new commercial_service_types table provides display name, slug,
+    // and default_hourly_rate for tenant-managed dropdown rows. Slug must
+    // map to a valid service_type enum value; new slugs added via the UI
+    // also extend the enum (sanitized server-side, regex ^[a-z][a-z0-9_]*$).
+    //
+    // PPM Common Areas is the trigger: missing from the enum entirely.
+    // Add it here so the seed can reference it.
+    { label: "service_type.ppm_common_areas",
+      stmt: `ALTER TYPE service_type ADD VALUE IF NOT EXISTS 'ppm_common_areas'` },
+
+    { label: "CREATE commercial_service_types", stmt: `
+      CREATE TABLE IF NOT EXISTS commercial_service_types (
+        id                   SERIAL PRIMARY KEY,
+        company_id           INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        name                 TEXT NOT NULL,
+        slug                 TEXT NOT NULL,
+        default_hourly_rate  NUMERIC(10,2),
+        is_active            BOOLEAN NOT NULL DEFAULT true,
+        sort_order           INTEGER NOT NULL DEFAULT 0,
+        created_at           TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at           TIMESTAMP NOT NULL DEFAULT NOW(),
+        UNIQUE (company_id, slug)
+      )
+    ` },
+    { label: "idx_cst_company_active",
+      stmt: `CREATE INDEX IF NOT EXISTS idx_cst_company_active ON commercial_service_types(company_id, is_active)` },
   ];
 
   for (const { label, stmt } of guards) {
@@ -709,6 +742,32 @@ export async function runPhesDataMigration(): Promise<void> {
     await runZoneSync();
   } catch (err: any) {
     console.warn("[phes-migration] zone-sync — non-fatal:", err?.message ?? err);
+  }
+
+  // [AI.3] Seed PHES commercial service types. Idempotent —
+  // ON CONFLICT (company_id, slug) DO NOTHING preserves any rate Sal has
+  // already set via the UI. default_hourly_rate stays NULL on first seed;
+  // Sal sets per-type rates in /settings/pricing.
+  try {
+    const seedTypes: Array<{ name: string; slug: string; sort: number }> = [
+      { name: "Office Cleaning",   slug: "office_cleaning",   sort: 10 },
+      { name: "Common Areas",      slug: "common_areas",      sort: 20 },
+      { name: "PPM Common Areas",  slug: "ppm_common_areas",  sort: 30 },
+      { name: "Retail Store",      slug: "retail_store",      sort: 40 },
+      { name: "Medical Office",    slug: "medical_office",    sort: 50 },
+      { name: "PPM Turnover",      slug: "ppm_turnover",      sort: 60 },
+      { name: "Post Event",        slug: "post_event",        sort: 70 },
+    ];
+    for (const t of seedTypes) {
+      await db.execute(sql`
+        INSERT INTO commercial_service_types
+          (company_id, name, slug, sort_order)
+        VALUES (${PHES}, ${t.name}, ${t.slug}, ${t.sort})
+        ON CONFLICT (company_id, slug) DO NOTHING
+      `);
+    }
+  } catch (err: any) {
+    console.warn("[phes-migration] commercial-service-types seed — non-fatal:", err?.message ?? err);
   }
 
   // [AI.2] Jaira Estrada (id=21) was imported from MaidCentral with

@@ -396,6 +396,9 @@ export function PricingTab() {
       {/* ── Bundles & Promotions ────────────────────────────────────────── */}
       <BundlesSection />
 
+      {/* ── Commercial Service Types ────────────────────────────────────── */}
+      <CommercialServiceTypesSection />
+
       {/* ── Offers & Incentives ─────────────────────────────────────────── */}
       <OffersSection />
     </div>
@@ -1279,6 +1282,229 @@ function OffersSection() {
           <Save size={14} />{saving ? "Saving..." : "Save Offer Settings"}
         </button>
       </div>
+    </div>
+  );
+}
+
+// [AI.3] Commercial Service Types — tenant-managed dropdown source for the
+// edit-job modal. Slug is server-derived from name on POST and immutable
+// thereafter; soft-delete only (is_active=false).
+interface CommercialServiceType {
+  id: number;
+  name: string;
+  slug: string;
+  default_hourly_rate: string | null;
+  is_active: boolean;
+  sort_order: number;
+}
+
+function CommercialServiceTypesSection() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [showAdd, setShowAdd] = useState(false);
+  const [addForm, setAddForm] = useState({ name: "", default_hourly_rate: "" });
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", default_hourly_rate: "" });
+
+  const { data: types = [] } = useQuery<CommercialServiceType[]>({
+    queryKey: ["commercial-service-types"],
+    queryFn: () => apiFetch("/api/commercial-service-types"),
+  });
+
+  const create = useMutation({
+    mutationFn: (body: { name: string; default_hourly_rate?: string }) =>
+      apiFetch("/api/commercial-service-types", { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["commercial-service-types"] });
+      setShowAdd(false);
+      setAddForm({ name: "", default_hourly_rate: "" });
+      toast({ title: "Service type added" });
+    },
+    onError: (err: any) => toast({
+      title: "Failed to add service type",
+      description: err?.message || "",
+      variant: "destructive",
+    }),
+  });
+
+  const update = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: Record<string, unknown> }) =>
+      apiFetch(`/api/commercial-service-types/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["commercial-service-types"] });
+      setEditingId(null);
+      toast({ title: "Service type updated" });
+    },
+    onError: () => toast({ title: "Failed to update", variant: "destructive" }),
+  });
+
+  const softDelete = useMutation({
+    mutationFn: (id: number) =>
+      apiFetch(`/api/commercial-service-types/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["commercial-service-types"] });
+      toast({ title: "Service type deactivated" });
+    },
+    onError: () => toast({ title: "Failed to deactivate", variant: "destructive" }),
+  });
+
+  const toggleActive = (t: CommercialServiceType) =>
+    update.mutate({ id: t.id, body: { is_active: !t.is_active } });
+
+  return (
+    <div style={{ background: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 12, padding: 20, marginTop: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#1A1917", fontFamily: FF }}>
+            Commercial Service Types
+          </h3>
+          <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6B6860", fontFamily: FF }}>
+            Tenant-managed list shown in the Service Type dropdown for commercial jobs.
+            Default rate pre-fills the hourly rate field when picked.
+          </p>
+        </div>
+        <button onClick={() => setShowAdd(true)} style={btn("primary")}>
+          <Plus size={14} /> Add Service Type
+        </button>
+      </div>
+
+      <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: FF }}>
+        <thead>
+          <tr style={{ borderBottom: "1px solid #E5E2DC", textAlign: "left" as const }}>
+            <th style={{ padding: "8px 10px", fontSize: 11, fontWeight: 700, color: "#6B6860", textTransform: "uppercase" as const, letterSpacing: "0.05em" }}>Name</th>
+            <th style={{ padding: "8px 10px", fontSize: 11, fontWeight: 700, color: "#6B6860", textTransform: "uppercase" as const, letterSpacing: "0.05em" }}>Slug</th>
+            <th style={{ padding: "8px 10px", fontSize: 11, fontWeight: 700, color: "#6B6860", textTransform: "uppercase" as const, letterSpacing: "0.05em", textAlign: "right" as const }}>Default Rate</th>
+            <th style={{ padding: "8px 10px", fontSize: 11, fontWeight: 700, color: "#6B6860", textTransform: "uppercase" as const, letterSpacing: "0.05em" }}>Active</th>
+            <th style={{ padding: "8px 10px", width: 160 }} />
+          </tr>
+        </thead>
+        <tbody>
+          {types.length === 0 && (
+            <tr>
+              <td colSpan={5} style={{ padding: "20px 10px", textAlign: "center" as const, fontSize: 13, color: "#9E9B94" }}>
+                No service types yet — click Add Service Type to create one.
+              </td>
+            </tr>
+          )}
+          {types.map(t => {
+            const isEditing = editingId === t.id;
+            return (
+              <tr key={t.id} style={{ borderBottom: "1px solid #F0EDE8" }}>
+                <td style={{ padding: "10px" }}>
+                  {isEditing ? (
+                    <input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                      style={{ ...inp, width: "100%" }} />
+                  ) : (
+                    <span style={{ fontSize: 13, fontWeight: 600, color: t.is_active ? "#1A1917" : "#9E9B94" }}>
+                      {t.name}
+                    </span>
+                  )}
+                </td>
+                <td style={{ padding: "10px", fontSize: 12, color: "#6B6860", fontFamily: "monospace" }}>{t.slug}</td>
+                <td style={{ padding: "10px", textAlign: "right" as const }}>
+                  {isEditing ? (
+                    <input value={editForm.default_hourly_rate}
+                      onChange={e => setEditForm(f => ({ ...f, default_hourly_rate: e.target.value }))}
+                      placeholder="—" type="number" step="0.01" min={0}
+                      style={{ ...inp, width: 100, textAlign: "right" as const }} />
+                  ) : (
+                    <span style={{ fontSize: 13, color: t.default_hourly_rate != null ? "#1A1917" : "#9E9B94" }}>
+                      {t.default_hourly_rate != null ? `$${Number(t.default_hourly_rate).toFixed(2)}/hr` : "—"}
+                    </span>
+                  )}
+                </td>
+                <td style={{ padding: "10px" }}>
+                  <button onClick={() => toggleActive(t)} disabled={isEditing}
+                    style={{
+                      fontSize: 11, fontWeight: 600, padding: "4px 10px", borderRadius: 14,
+                      border: `1px solid ${t.is_active ? "#86EFAC" : "#E5E2DC"}`,
+                      backgroundColor: t.is_active ? "#DCFCE7" : "#F8F7F4",
+                      color: t.is_active ? "#15803D" : "#6B6860",
+                      cursor: "pointer", fontFamily: FF,
+                    }}>
+                    {t.is_active ? "Active" : "Inactive"}
+                  </button>
+                </td>
+                <td style={{ padding: "10px", textAlign: "right" as const }}>
+                  {isEditing ? (
+                    <div style={{ display: "inline-flex", gap: 6 }}>
+                      <button style={btn("primary")} onClick={() => {
+                        const body: Record<string, unknown> = { name: editForm.name };
+                        body.default_hourly_rate = editForm.default_hourly_rate === "" ? null : editForm.default_hourly_rate;
+                        update.mutate({ id: t.id, body });
+                      }}>Save</button>
+                      <button style={btn("ghost")} onClick={() => setEditingId(null)}>Cancel</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "inline-flex", gap: 6 }}>
+                      <button style={btn("ghost")} onClick={() => {
+                        setEditingId(t.id);
+                        setEditForm({
+                          name: t.name,
+                          default_hourly_rate: t.default_hourly_rate ?? "",
+                        });
+                      }}>Edit</button>
+                      {t.is_active && (
+                        <button style={btn("danger")} onClick={() => {
+                          if (window.confirm(`Deactivate "${t.name}"? Historical jobs that use this type will still display correctly. You can reactivate later.`)) {
+                            softDelete.mutate(t.id);
+                          }
+                        }}>Deactivate</button>
+                      )}
+                    </div>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      {showAdd && (
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", zIndex: 900, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "#FFFFFF", borderRadius: 12, padding: 24, width: 420, fontFamily: FF, boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
+            <h4 style={{ margin: "0 0 14px", fontSize: 15, fontWeight: 700, color: "#1A1917" }}>Add Commercial Service Type</h4>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "#6B6860", textTransform: "uppercase" as const, letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>Name</label>
+                <input value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. PPM Common Areas"
+                  style={{ ...inp, width: "100%" }} />
+                {addForm.name.trim().length > 0 && (
+                  <div style={{ fontSize: 11, color: "#9E9B94", marginTop: 4 }}>
+                    Slug will be: <code style={{ fontSize: 11, fontFamily: "monospace", color: "#1A1917" }}>
+                      {addForm.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")}
+                    </code>
+                  </div>
+                )}
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "#6B6860", textTransform: "uppercase" as const, letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>
+                  Default Hourly Rate <span style={{ color: "#9E9B94", fontWeight: 400, textTransform: "none" as const, letterSpacing: 0 }}>(optional)</span>
+                </label>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 13, color: "#6B6860" }}>$</span>
+                  <input value={addForm.default_hourly_rate}
+                    onChange={e => setAddForm(f => ({ ...f, default_hourly_rate: e.target.value }))}
+                    type="number" step="0.01" min={0} placeholder="0.00"
+                    style={{ ...inp, width: 120 }} />
+                  <span style={{ fontSize: 13, color: "#9E9B94" }}>/hr</span>
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
+              <button style={btn("ghost")} onClick={() => { setShowAdd(false); setAddForm({ name: "", default_hourly_rate: "" }); }}>Cancel</button>
+              <button style={btn("primary")} disabled={addForm.name.trim().length === 0 || create.isPending}
+                onClick={() => create.mutate({
+                  name: addForm.name.trim(),
+                  default_hourly_rate: addForm.default_hourly_rate === "" ? undefined : addForm.default_hourly_rate,
+                })}>
+                {create.isPending ? "Adding..." : "Add Service Type"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -47,15 +47,19 @@ export interface EditableJob {
   account_id?: number | null;
 }
 
-// [AH] Commercial service_type enum values. Matches jobs.ts:14 enum.
-const COMMERCIAL_SERVICE_TYPES: Array<{ value: string; label: string }> = [
-  { value: "office_cleaning", label: "Office Cleaning" },
-  { value: "common_areas",    label: "Common Areas" },
-  { value: "retail_store",    label: "Retail Store" },
-  { value: "medical_office",  label: "Medical Office" },
-  { value: "ppm_turnover",    label: "PPM Turnover" },
-  { value: "post_event",      label: "Post Event" },
-];
+// [AI.3] Commercial service types are now tenant-managed via
+// /api/commercial-service-types. The modal fetches active rows on open.
+// `slug` lines up with jobs.service_type enum values; new tenant-added
+// types extend the enum server-side. See pricing.tsx → "Commercial Service
+// Types" section for management UI.
+interface CommercialServiceType {
+  id: number;
+  name: string;
+  slug: string;
+  default_hourly_rate: string | null;
+  is_active: boolean;
+  sort_order: number;
+}
 
 export interface TeamCandidate {
   id: number;
@@ -198,6 +202,7 @@ export default function EditJobModal({
   const [clientType, setClientType] = useState<"residential" | "commercial">("residential");
   const [clientDefaultRate, setClientDefaultRate] = useState<number | null>(null);
   const [commercialServiceType, setCommercialServiceType] = useState<string>(job.service_type);
+  const [commercialServiceTypes, setCommercialServiceTypes] = useState<CommercialServiceType[]>([]);
   const [hourlyRate, setHourlyRate] = useState<number>(
     job.hourly_rate != null ? Number(job.hourly_rate) : 0
   );
@@ -248,6 +253,27 @@ export default function EditJobModal({
     })();
     return () => { cancelled = true; };
   }, [API, token, job.client_id, job.hourly_rate]);
+
+  // [AI.3] Load tenant-managed commercial service types. Active-only, sorted
+  // server-side. Used to populate the Service Type dropdown (commercial branch)
+  // and to pre-fill the hourly rate when a type is picked.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${API}/api/commercial-service-types?active=true`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!r.ok) return;
+        const d: CommercialServiceType[] = await r.json();
+        if (!cancelled) setCommercialServiceTypes(Array.isArray(d) ? d : []);
+      } catch {
+        // Best-effort — modal still renders with the (current) fallback if
+        // the fetch fails so the user doesn't lose their existing value.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [API, token]);
 
   // [AI.1] Broadened: client_type='commercial' OR job has an account_id set.
   // The job-level account_id signal is defensive — MC import sometimes left
@@ -572,14 +598,32 @@ export default function EditJobModal({
                 <div style={{ display: "grid", gridTemplateColumns: mobile ? "1fr" : "1fr 1fr", gap: 10 }}>
                   <div>
                     <span style={{ fontSize: 12, color: "#6B6860", display: "block", marginBottom: 4 }}>Service type</span>
-                    <select value={commercialServiceType} onChange={e => setCommercialServiceType(e.target.value)} style={INPUT}>
-                      {COMMERCIAL_SERVICE_TYPES.map(st => (
-                        <option key={st.value} value={st.value}>{st.label}</option>
+                    <select value={commercialServiceType}
+                      onChange={e => {
+                        const newSlug = e.target.value;
+                        setCommercialServiceType(newSlug);
+                        // [AI.3] Pre-fill hourly rate from picked service type's
+                        // default. Only writes to job form state — does NOT update
+                        // clients.commercial_hourly_rate (per AH per-client flow).
+                        const match = commercialServiceTypes.find(t => t.slug === newSlug);
+                        if (match && match.default_hourly_rate != null) {
+                          const rate = Number(match.default_hourly_rate);
+                          if (rate > 0) setHourlyRate(rate);
+                        }
+                      }}
+                      style={INPUT}>
+                      {commercialServiceTypes.map(t => (
+                        <option key={t.id} value={t.slug}>
+                          {t.name}{t.default_hourly_rate != null
+                            ? ` — $${Number(t.default_hourly_rate).toFixed(0)}/hr`
+                            : ""}
+                        </option>
                       ))}
-                      {/* If the job's existing service_type isn't a commercial enum value
-                          (e.g. MC-imported as 'standard_clean'), surface it as the current
-                          selection so the user sees what's there before changing. */}
-                      {!COMMERCIAL_SERVICE_TYPES.some(s => s.value === commercialServiceType) && (
+                      {/* [AI.3] Fallback for jobs whose existing service_type isn't
+                          in the active tenant-managed list (e.g., MC-imported
+                          'standard_clean', or a soft-deleted slug). Preserves the
+                          value so the user doesn't accidentally lose data. */}
+                      {!commercialServiceTypes.some(t => t.slug === commercialServiceType) && (
                         <option value={commercialServiceType}>(current) {commercialServiceType}</option>
                       )}
                     </select>

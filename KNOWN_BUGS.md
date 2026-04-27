@@ -1,5 +1,46 @@
 # Known Bugs
 
+## RESOLVED — Bug E: "(current) standard_clean" raw enum showing in commercial dropdown (2026-04-27, AI.3)
+
+**Status:** Resolved structurally by AI.3's tenant-managed commercial service
+types. Symptom resolves automatically once the linked client/job is
+flipped to a real commercial service type.
+
+**Symptom:** Edit Job modal's Service Type dropdown for commercial jobs
+showed an entry like `(current) standard_clean` — the raw enum slug
+without a friendly label. Operator-confusing because `standard_clean`
+is a residential value bleeding into the commercial dropdown.
+
+**Root cause:** intentional fallback at `edit-job-modal.tsx:582-583`. The
+modal renders a `(current) <slug>` option whenever the job's existing
+`service_type` value isn't in the dropdown's known list. This preserves
+the user's awareness without losing the value on save.
+
+For Jaira pre-AI.2: her job had `service_type='standard_clean'` (a
+residential value due to MC import drift), so the fallback fired.
+AI.2 flipped Jaira's `client_type='commercial'` but didn't change her
+job's `service_type` — the fallback continued to fire until she or
+the operator picked a real commercial value from the dropdown.
+
+**AI.3 structural fix:**
+1. Dropdown source is now `commercial_service_types` (tenant-managed),
+   not a hardcoded constant. The list is editable from
+   `/settings/pricing` → "Commercial Service Types".
+2. PPM Common Areas added to the seed and to the `service_type` enum,
+   filling the gap that was forcing some commercial jobs to use
+   residential slugs as fallback values.
+3. The `(current)` fallback stays — it's the right behavior when a
+   job references a soft-deleted slug or when the data needs cleanup.
+   The fix narrows when the fallback fires, doesn't remove it.
+
+**Verify:** open Jaira's job → Service Type dropdown should now show
+the 7 seeded commercial types. If the dropdown still shows
+`(current) standard_clean`, her job's `service_type` column needs an
+update — pick the right commercial type from the dropdown and save,
+or update the row directly via DB.
+
+---
+
 ## OPEN — MC import misflagged commercial clients as residential (2026-04-27, AI.2)
 
 **Severity:** Medium — affects commercial UI fork in the edit job modal.

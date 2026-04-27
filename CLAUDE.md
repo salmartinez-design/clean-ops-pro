@@ -53,6 +53,21 @@
   - `PUT /api/jobs/:id` (drag-and-drop quick-reschedule) — only writes
     `assigned_user_id` directly; doesn't touch `job_technicians`. Acceptable
     because PATCH is the canonical full-edit path.
+- **Tenant-managed commercial service types**: the dropdown in the
+  edit-job modal's commercial branch reads from `commercial_service_types`
+  (NOT a hardcoded constant). Each row has a `slug` matching a
+  `jobs.service_type` Postgres enum value. When users add a new type via
+  `POST /api/commercial-service-types`, the server slugifies the name,
+  validates against `^[a-z][a-z0-9_]*$`, and runs
+  `ALTER TYPE service_type ADD VALUE IF NOT EXISTS '<slug>'` (idempotent,
+  outside transaction) before inserting the row. Soft-delete only
+  (`is_active=false`) — historical jobs that reference a deactivated slug
+  continue to render correctly via their `service_type` string.
+  Slugs are immutable after creation. Setting page:
+  `/settings/pricing` → "Commercial Service Types" section. Default
+  hourly rate pre-fills the modal's hourly rate field on selection but
+  does NOT update `clients.commercial_hourly_rate` — per-client default
+  rate flow from AH stays untouched.
 - **Auto-promote to primary**: when a tech is added via
   `POST /api/jobs/:id/technicians` to a job that has NO existing primary
   (typical: first Add Team Member on an unassigned job), the server
