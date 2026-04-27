@@ -454,6 +454,22 @@ async function runBookingSchemaGuard(): Promise<void> {
     ` },
     { label: "idx_cst_company_active",
       stmt: `CREATE INDEX IF NOT EXISTS idx_cst_company_active ON commercial_service_types(company_id, is_active)` },
+
+    // ── AI.6: Parking fee per-occurrence on recurring schedules (2026-04-27) ─
+    // Parking-fee selection at the schedule template level, applied per
+    // generated occurrence based on day-of-week. Engine stamps a
+    // job_add_ons row pointing at the tenant's Parking Fee pricing_addons
+    // entry on each qualifying job.
+    //
+    // Weekday convention: 0=Sun..6=Sat, matching recurring_schedules.days_of_week
+    // (same JS Date.getDay convention). NULL parking_fee_days means "apply
+    // to all scheduled days"; populated array means "apply only to listed days."
+    { label: "recurring_schedules.parking_fee_enabled",
+      stmt: `ALTER TABLE recurring_schedules ADD COLUMN IF NOT EXISTS parking_fee_enabled BOOLEAN NOT NULL DEFAULT false` },
+    { label: "recurring_schedules.parking_fee_amount",
+      stmt: `ALTER TABLE recurring_schedules ADD COLUMN IF NOT EXISTS parking_fee_amount NUMERIC(10,2)` },
+    { label: "recurring_schedules.parking_fee_days",
+      stmt: `ALTER TABLE recurring_schedules ADD COLUMN IF NOT EXISTS parking_fee_days INTEGER[]` },
   ];
 
   for (const { label, stmt } of guards) {

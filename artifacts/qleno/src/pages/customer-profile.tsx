@@ -2892,6 +2892,14 @@ function ServiceDetailsSection({ client, onUpdate, refetch, recurringSchedule, o
     rec_base_fee: recurringSchedule?.base_fee || "",
     rec_service_type: recurringSchedule?.service_type || "",
     rec_notes: recurringSchedule?.notes || "",
+    // [AI.6] Parking fee per-occurrence config.
+    rec_parking_fee_enabled: !!recurringSchedule?.parking_fee_enabled,
+    rec_parking_fee_amount: recurringSchedule?.parking_fee_amount ?? "",
+    // Initialize day picker from saved value, or fall back to the schedule's
+    // days_of_week so multi-day schedules pre-check all firing days.
+    rec_parking_fee_days: (Array.isArray(recurringSchedule?.parking_fee_days) && recurringSchedule.parking_fee_days.length > 0
+      ? recurringSchedule.parking_fee_days
+      : (recurringSchedule?.days_of_week ?? [])) as number[],
   });
 
   const save = async () => {
@@ -2903,12 +2911,28 @@ function ServiceDetailsSection({ client, onUpdate, refetch, recurringSchedule, o
         alarm_code: form.alarm_code, pets: form.pets, notes: form.notes,
       });
       if (recurringSchedule) {
+        // [AI.6] Resolve parking_fee_days: only persist a non-null array when
+        // (a) the toggle is on AND (b) the frequency is multi-day. Single-day
+        // schedules (weekly/biweekly/etc.) leave it null — there's only one
+        // weekday firing per occurrence, no choice to make.
+        const isMultiDayFreq =
+          form.rec_frequency === "daily" ||
+          form.rec_frequency === "weekdays" ||
+          form.rec_frequency === "custom_days";
+        const parkingDaysToSend = form.rec_parking_fee_enabled && isMultiDayFreq
+          ? form.rec_parking_fee_days
+          : null;
         await apiFetch(`/api/clients/${client.id}/recurring-schedule`, {
           method: "PATCH",
           body: JSON.stringify({
             frequency: form.rec_frequency || undefined, day_of_week: form.rec_day || undefined,
             duration_minutes: form.rec_duration, base_fee: form.rec_base_fee,
             service_type: form.rec_service_type, notes: form.rec_notes,
+            parking_fee_enabled: form.rec_parking_fee_enabled,
+            parking_fee_amount: form.rec_parking_fee_enabled
+              ? (form.rec_parking_fee_amount === "" ? null : form.rec_parking_fee_amount)
+              : null,
+            parking_fee_days: parkingDaysToSend,
           }),
         });
         qc.invalidateQueries({ queryKey: ["client-recurring", client.id] });
@@ -3037,6 +3061,87 @@ function ServiceDetailsSection({ client, onUpdate, refetch, recurringSchedule, o
                 <div>{lbl("Schedule Rate ($)")}<input value={form.rec_base_fee} onChange={upd("rec_base_fee")} type="number" min="0" step="0.01" style={inp} /></div>
               </div>
               <div>{lbl("Scope")}<input value={form.rec_service_type} onChange={upd("rec_service_type")} style={inp} /></div>
+
+              {/* [AI.6] Parking Fee subsection. Toggle + amount + (multi-day only) day picker.
+                  Day picker uses 0=Sun..6=Sat to match recurring_schedules.days_of_week. */}
+              <div style={{ marginTop: 4, padding: 14, border: "1px solid #E5E2DC", borderRadius: 10, backgroundColor: "#FBFAF7" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontFamily: FF }}>
+                  <input
+                    type="checkbox"
+                    checked={form.rec_parking_fee_enabled}
+                    onChange={e => setForm(f => ({ ...f, rec_parking_fee_enabled: e.target.checked }))}
+                    style={{ width: 18, height: 18, cursor: "pointer" }}
+                  />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "#1A1917" }}>
+                    Charge parking fee for this schedule
+                  </span>
+                </label>
+
+                {form.rec_parking_fee_enabled && (
+                  <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div>
+                      {lbl("Amount")}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 13, color: "#6B6860", fontFamily: FF }}>$</span>
+                        <input
+                          type="number" min={0} step="0.01"
+                          inputMode="decimal"
+                          placeholder="20.00"
+                          value={form.rec_parking_fee_amount}
+                          onChange={e => setForm(f => ({ ...f, rec_parking_fee_amount: e.target.value }))}
+                          style={{ ...inp, width: 140 }}
+                        />
+                        <span style={{ fontSize: 11, color: "#9E9B94", fontFamily: FF }}>
+                          (blank = use tenant default)
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Day picker only for multi-day frequencies. Single-day
+                        schedules (weekly/biweekly/etc.) fire on exactly one
+                        weekday per occurrence — no choice to make. */}
+                    {(form.rec_frequency === "daily" || form.rec_frequency === "weekdays" || form.rec_frequency === "custom_days") && (
+                      <div>
+                        {lbl("Apply to days")}
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+                          {[
+                            { v: 0, label: "Sun" }, { v: 1, label: "Mon" }, { v: 2, label: "Tue" },
+                            { v: 3, label: "Wed" }, { v: 4, label: "Thu" }, { v: 5, label: "Fri" },
+                            { v: 6, label: "Sat" },
+                          ].map(d => {
+                            const checked = form.rec_parking_fee_days.includes(d.v);
+                            return (
+                              <label key={d.v}
+                                style={{
+                                  display: "inline-flex", alignItems: "center", gap: 5,
+                                  padding: "6px 10px", borderRadius: 6,
+                                  border: `1.5px solid ${checked ? "#2D9B83" : "#E5E2DC"}`,
+                                  backgroundColor: checked ? "rgba(45,155,131,0.07)" : "#FFFFFF",
+                                  fontSize: 12, fontFamily: FF, cursor: "pointer",
+                                  color: checked ? "#2D9B83" : "#1A1917",
+                                  fontWeight: checked ? 700 : 500,
+                                  minHeight: 32,
+                                }}>
+                                <input type="checkbox" checked={checked}
+                                  onChange={() => setForm(f => ({
+                                    ...f,
+                                    rec_parking_fee_days: f.rec_parking_fee_days.includes(d.v)
+                                      ? f.rec_parking_fee_days.filter((n: number) => n !== d.v)
+                                      : [...f.rec_parking_fee_days, d.v].sort(),
+                                  }))} />
+                                {d.label}
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <p style={{ margin: "6px 0 0", fontSize: 11, color: "#6B6860", fontFamily: FF }}>
+                          Defaults to all days the schedule fires on. Uncheck a day to mark it as free parking.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
@@ -3053,6 +3158,20 @@ function ServiceDetailsSection({ client, onUpdate, refetch, recurringSchedule, o
               )}
               {(recurringSchedule.tech_first || recurringSchedule.tech_last) && (
                 <DL label="Technician" value={[recurringSchedule.tech_first, recurringSchedule.tech_last].filter(Boolean).join(" ")} />
+              )}
+              {/* [AI.6] Read-only parking fee summary. */}
+              {recurringSchedule.parking_fee_enabled && (
+                <DL label="Parking Fee" value={(() => {
+                  const amt = recurringSchedule.parking_fee_amount != null
+                    ? fmtCurrency(recurringSchedule.parking_fee_amount)
+                    : "tenant default";
+                  const days = Array.isArray(recurringSchedule.parking_fee_days) && recurringSchedule.parking_fee_days.length > 0
+                    ? recurringSchedule.parking_fee_days
+                        .map((n: number) => ({ 0: "Sun", 1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat" }[n] ?? n))
+                        .join("/")
+                    : "all days";
+                  return `${amt} · ${days}`;
+                })()} />
               )}
             </div>
           )}

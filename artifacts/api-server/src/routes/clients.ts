@@ -1149,7 +1149,12 @@ router.patch("/:id/recurring-schedule", requireAuth, async (req, res) => {
   try {
     const clientId = parseInt(req.params.id);
     const companyId = req.auth!.companyId;
-    const { frequency, day_of_week, duration_minutes, base_fee, service_type, notes } = req.body;
+    const {
+      frequency, day_of_week, duration_minutes, base_fee, service_type, notes,
+      // [AI.6] Parking fee per-occurrence config. days uses 0=Sun..6=Sat;
+      // null/empty days = "apply to every scheduled occurrence."
+      parking_fee_enabled, parking_fee_amount, parking_fee_days,
+    } = req.body;
     const updated = await db.update(recurringSchedulesTable).set({
       ...(frequency && { frequency }),
       ...(day_of_week !== undefined && { day_of_week }),
@@ -1157,6 +1162,15 @@ router.patch("/:id/recurring-schedule", requireAuth, async (req, res) => {
       ...(base_fee !== undefined && { base_fee: base_fee === "" ? null : String(base_fee) }),
       ...(service_type !== undefined && { service_type }),
       ...(notes !== undefined && { notes }),
+      ...(parking_fee_enabled !== undefined && { parking_fee_enabled: !!parking_fee_enabled }),
+      ...(parking_fee_amount !== undefined && {
+        parking_fee_amount: parking_fee_amount === null || parking_fee_amount === "" ? null : String(parking_fee_amount),
+      }),
+      ...(parking_fee_days !== undefined && {
+        parking_fee_days: Array.isArray(parking_fee_days) && parking_fee_days.length > 0
+          ? parking_fee_days.filter((n: unknown) => typeof n === "number" && (n as number) >= 0 && (n as number) <= 6)
+          : null,
+      }),
     }).where(and(
       eq(recurringSchedulesTable.customer_id, clientId),
       eq(recurringSchedulesTable.company_id, companyId),

@@ -152,9 +152,11 @@ const LABEL: React.CSSProperties = {
   display: "block", marginBottom: 10,
 };
 const INPUT: React.CSSProperties = {
-  width: "100%", height: 40, padding: "0 12px",
+  // [AI.6] 44px minimum touch target per iOS HIG (was 40); 16px font
+  // prevents iOS Safari zoom-on-focus behavior on number inputs.
+  width: "100%", height: 44, padding: "0 12px",
   border: "1px solid #E5E2DC", borderRadius: 8,
-  fontSize: 14, outline: "none", boxSizing: "border-box",
+  fontSize: 16, outline: "none", boxSizing: "border-box",
   fontFamily: FF, backgroundColor: "#F7F6F3", color: "#1A1917",
 };
 
@@ -725,12 +727,25 @@ export default function EditJobModal({
                 <div style={{ display: "grid", gridTemplateColumns: mobile ? "1fr" : "1fr 1fr", gap: 10, marginTop: 10 }}>
                   <div>
                     <span style={{ fontSize: 12, color: "#6B6860", display: "block", marginBottom: 4 }}>Hourly rate</span>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ fontSize: 13, color: "#6B6860" }}>$</span>
-                      <input type="number" min={0} step={0.01} value={hourlyRate}
-                        onChange={e => setHourlyRate(parseFloat(e.target.value) || 0)}
-                        style={INPUT} />
-                      <span style={{ fontSize: 12, color: "#9E9B94" }}>/hr</span>
+                    {/* [AI.6] Mobile UX: $ / /hr labels are now adornments
+                        baked into the input via padding + absolutely-positioned
+                        spans rather than separate flex siblings — typing "50"
+                        feels like one tap-and-type instead of fighting layout.
+                        inputMode="decimal" surfaces the right mobile keyboard. */}
+                    <div style={{ position: "relative" }}>
+                      <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 16, color: "#6B6860", pointerEvents: "none" }}>$</span>
+                      <input type="number" min={0} step={0.01} inputMode="decimal"
+                        value={hourlyRate === 0 ? "" : hourlyRate}
+                        placeholder="0"
+                        onChange={e => {
+                          const v = e.target.value;
+                          // [AI.6] Strip leading zeros visually (typing "50" no
+                          // longer shows "050" on mobile Safari). Empty becomes 0.
+                          const cleaned = v.replace(/^0+(?=\d)/, "");
+                          setHourlyRate(parseFloat(cleaned) || 0);
+                        }}
+                        style={{ ...INPUT, paddingLeft: 26, paddingRight: 36 }} />
+                      <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: "#9E9B94", pointerEvents: "none" }}>/hr</span>
                     </div>
                     {clientDefaultRate != null && Math.abs(hourlyRate - clientDefaultRate) > 0.001 && (
                       <span style={{ fontSize: 11, color: "#9E9B94", marginTop: 4, display: "block" }}>
@@ -745,8 +760,15 @@ export default function EditJobModal({
                   </div>
                   <div>
                     <span style={{ fontSize: 12, color: "#6B6860", display: "block", marginBottom: 4 }}>Allowed hours</span>
-                    <input type="number" min={0.25} step={0.25} value={allowedHours}
-                      onChange={e => setAllowedHours(parseFloat(e.target.value) || 0)}
+                    {/* [AI.6] Same mobile fix: inputMode hint + strip leading
+                        zeros. Empty input = 0 (validation catches it). */}
+                    <input type="number" min={0.25} step={0.25} inputMode="decimal"
+                      value={allowedHours === 0 ? "" : allowedHours}
+                      placeholder="0"
+                      onChange={e => {
+                        const v = e.target.value.replace(/^0+(?=\d)/, "");
+                        setAllowedHours(parseFloat(v) || 0);
+                      }}
                       style={INPUT} />
                   </div>
                 </div>
@@ -775,8 +797,13 @@ export default function EditJobModal({
                 </div>
                 <div style={{ marginTop: 10 }}>
                   <span style={{ fontSize: 12, color: "#6B6860", display: "block", marginBottom: 4 }}>Allowed hours</span>
-                  <input type="number" min={0.25} step={0.25} value={allowedHours}
-                    onChange={e => setAllowedHours(parseFloat(e.target.value) || 0)}
+                  <input type="number" min={0.25} step={0.25} inputMode="decimal"
+                    value={allowedHours === 0 ? "" : allowedHours}
+                    placeholder="0"
+                    onChange={e => {
+                      const v = e.target.value.replace(/^0+(?=\d)/, "");
+                      setAllowedHours(parseFloat(v) || 0);
+                    }}
                     style={INPUT} />
                 </div>
               </>
@@ -925,13 +952,20 @@ export default function EditJobModal({
               <span style={{ fontSize: 14, color: "#6B6860" }}>New</span>
               <span style={{ fontSize: 18, fontWeight: 700, color: "#1A1917" }}>
                 {calcBusy ? "…" : `$${baseFee.toFixed(2)}`}
-                {!calcBusy && Math.abs(baseFee - initialBaseFee) > 0.01 && (
-                  <span style={{ fontSize: 12, fontWeight: 600, marginLeft: 8, color: baseFee > initialBaseFee ? "#15803D" : "#991B1B" }}>
-                    {baseFee > initialBaseFee ? "+" : ""}{(baseFee - initialBaseFee).toFixed(2)}
-                  </span>
-                )}
               </span>
             </div>
+            {/* [AI.6] Delta is rendered on its own row in muted parens copy
+                — was inline next to "New $X" with red/green color which read
+                as a discount line item (Sal feedback). Now reads as
+                "$50 less than current" — clearly framed as comparison. */}
+            {!calcBusy && Math.abs(baseFee - initialBaseFee) > 0.01 && (
+              <div style={{ marginTop: 4, fontSize: 12, color: "#6B6860", textAlign: "right" as const }}>
+                ({Math.abs(baseFee - initialBaseFee).toFixed(2) === "0.00" ? "no change" :
+                  baseFee > initialBaseFee
+                    ? `$${(baseFee - initialBaseFee).toFixed(2)} more than current`
+                    : `$${(initialBaseFee - baseFee).toFixed(2)} less than current`})
+              </div>
+            )}
             {manualRate && (
               <div style={{ marginTop: 8, padding: "6px 10px", backgroundColor: "#FEF3C7", border: "1px solid #FCD34D", borderRadius: 6, fontSize: 12, color: "#92400E", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}>

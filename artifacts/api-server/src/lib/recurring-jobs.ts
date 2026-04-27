@@ -192,6 +192,13 @@ type ScheduleInput = {
   duration_minutes: number | null;
   base_fee: string | null;
   notes: string | null;
+  // [AI.6] Parking fee per-occurrence config. When enabled, generated jobs
+  // for matching weekdays get a job_add_ons row stamped at insertion time.
+  // parking_fee_days uses 0=Sun..6=Sat (matches days_of_week convention).
+  // NULL parking_fee_days means "apply to every scheduled occurrence."
+  parking_fee_enabled?: boolean | null;
+  parking_fee_amount?: string | null;
+  parking_fee_days?: number[] | null;
 };
 
 // Pure compute: produces insert-ready rows after the dedupe check, but does NOT
@@ -229,22 +236,36 @@ export async function computeOccurrencesForSchedule(
 
   if (!toInsert.length) return { rows: [], skipped };
 
-  const rows = toInsert.map(d => ({
-    company_id: schedule.company_id,
-    client_id: schedule.customer_id,
-    assigned_user_id: schedule.assigned_employee_id ?? null,
-    service_type: mapServiceType(schedule.service_type) as any,
-    status: "scheduled" as const,
-    scheduled_date: toDateStr(d),
-    scheduled_time: null as any,
-    frequency: mapFrequency(schedule.frequency) as any,
-    base_fee: schedule.base_fee ? String(parseFloat(schedule.base_fee).toFixed(2)) : "0.00",
-    allowed_hours: schedule.duration_minutes ? String((schedule.duration_minutes / 60).toFixed(2)) : null as any,
-    notes: schedule.notes ?? null,
-    recurring_schedule_id: schedule.id,
-    booking_location: (bookingLocation ?? null) as any,
-    address_zip: (clientZip ?? null) as any,
-  }));
+  // [AI.6] Per-occurrence parking decision. Sidecar flag attached to each
+  // generated row; live path strips before INSERT and uses for job_add_ons
+  // stamping. Dry-run path passes it through to the planned inserts response
+  // so operators can verify which dates would have parking.
+  const parkingEnabled = !!schedule.parking_fee_enabled;
+  const parkingDays: number[] | null = schedule.parking_fee_days ?? null;
+
+  const rows = toInsert.map(d => {
+    const dow = d.getDay(); // 0=Sun..6=Sat
+    const parkingApplies = parkingEnabled && (parkingDays == null || parkingDays.includes(dow));
+    return {
+      company_id: schedule.company_id,
+      client_id: schedule.customer_id,
+      assigned_user_id: schedule.assigned_employee_id ?? null,
+      service_type: mapServiceType(schedule.service_type) as any,
+      status: "scheduled" as const,
+      scheduled_date: toDateStr(d),
+      scheduled_time: null as any,
+      frequency: mapFrequency(schedule.frequency) as any,
+      base_fee: schedule.base_fee ? String(parseFloat(schedule.base_fee).toFixed(2)) : "0.00",
+      allowed_hours: schedule.duration_minutes ? String((schedule.duration_minutes / 60).toFixed(2)) : null as any,
+      notes: schedule.notes ?? null,
+      recurring_schedule_id: schedule.id,
+      booking_location: (bookingLocation ?? null) as any,
+      address_zip: (clientZip ?? null) as any,
+      // Sidecar — NOT a jobs column. Stripped in generateJobsFromSchedule
+      // before the actual INSERT; passed through unchanged in dry-run.
+      _parking_fee_applies: parkingApplies,
+    };
+  });
 
   return { rows, skipped };
 }
@@ -255,13 +276,69 @@ export async function generateJobsFromSchedule(
   toDate: Date,
   bookingLocation?: string | null,
   clientZip?: string | null
-): Promise<{ created: number; skipped: number }> {
+): Promise<{ created: number; skipped: number; parking_stamped?: number }> {
   const { rows, skipped } = await computeOccurrencesForSchedule(
     schedule, fromDate, toDate, bookingLocation, clientZip
   );
   if (!rows.length) return { created: 0, skipped };
-  await db.insert(jobsTable).values(rows as any[]);
-  return { created: rows.length, skipped };
+
+  // [AI.6] Strip the sidecar parking flag before INSERT (it's not a jobs
+  // column). Track per-row decision separately so we can stamp job_add_ons
+  // after the insert returns IDs.
+  const parkingDecisions = rows.map(r => Boolean((r as any)._parking_fee_applies));
+  const insertRows = rows.map(({ _parking_fee_applies: _strip, ...rest }: any) => rest);
+
+  // .returning() so we get IDs aligned with the input row order.
+  const inserted = await db
+    .insert(jobsTable)
+    .values(insertRows as any[])
+    .returning({ id: jobsTable.id, scheduled_date: jobsTable.scheduled_date });
+
+  // [AI.6] Stamp job_add_ons (parking) for jobs whose weekday matched.
+  // Lookup the tenant's Parking Fee pricing_addons row by name once per run.
+  // If absent (tenant has no Parking Fee addon), skip silently — engine
+  // doesn't fail the job creation just because parking config can't resolve.
+  let parkingStamped = 0;
+  const anyParking = parkingDecisions.some(Boolean);
+  if (anyParking) {
+    const addonLookup = await db.execute(sql`
+      SELECT id, COALESCE(price_value, price, '0')::numeric AS price
+      FROM pricing_addons
+      WHERE company_id = ${schedule.company_id}
+        AND LOWER(name) = 'parking fee'
+        AND is_active = true
+      LIMIT 1
+    `);
+    const addonRow = addonLookup.rows[0] as { id: number; price: string } | undefined;
+    if (addonRow) {
+      const pricingAddonId = Number(addonRow.id);
+      const fallbackAmount = String(addonRow.price ?? "20");
+      const overrideAmount = schedule.parking_fee_amount;
+      const unitPrice = overrideAmount != null && overrideAmount !== "" ? String(overrideAmount) : fallbackAmount;
+
+      for (let i = 0; i < inserted.length; i++) {
+        if (!parkingDecisions[i]) continue;
+        const jobId = Number(inserted[i].id);
+        // Match the modal's pattern: write add_on_id = pricing_addon_id.
+        // ON CONFLICT prevents double-stamping if this loop is somehow re-run.
+        await db.execute(sql`
+          INSERT INTO job_add_ons
+            (job_id, add_on_id, quantity, unit_price, subtotal, pricing_addon_id)
+          VALUES
+            (${jobId}, ${pricingAddonId}, 1, ${unitPrice}, ${unitPrice}, ${pricingAddonId})
+          ON CONFLICT (job_id, add_on_id) DO NOTHING
+        `);
+        parkingStamped++;
+      }
+    } else {
+      console.warn(
+        `[recurring-engine] schedule ${schedule.id} has parking_fee_enabled but ` +
+        `company ${schedule.company_id} has no active Parking Fee pricing_addon — skipping stamp`,
+      );
+    }
+  }
+
+  return { created: rows.length, skipped, parking_stamped: parkingStamped };
 }
 
 type SkippedSchedule = {

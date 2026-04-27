@@ -51,6 +51,14 @@ export const recurringSchedulesTable = pgTable("recurring_schedules", {
   // PATCH endpoint enforces exclusivity; engine warns and prefers
   // days_of_week if both end up populated.
   days_of_week: integer("days_of_week").array(),
+  // [AI.6] Parking fee per-occurrence config. When parking_fee_enabled,
+  // engine stamps a job_add_ons row (parking) on each generated job whose
+  // weekday matches parking_fee_days (NULL = apply to all). Amount falls
+  // back to the tenant's Parking Fee pricing_addons entry when null.
+  // Weekday convention: 0=Sun..6=Sat, matching days_of_week.
+  parking_fee_enabled: boolean("parking_fee_enabled").notNull().default(false),
+  parking_fee_amount: numeric("parking_fee_amount", { precision: 10, scale: 2 }),
+  parking_fee_days: integer("parking_fee_days").array(),
 });
 
 export type RecurringSchedule = typeof recurringSchedulesTable.$inferSelect;

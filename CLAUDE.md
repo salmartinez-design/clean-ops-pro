@@ -75,6 +75,22 @@
   "Service type required" with Save disabled until the user picks a real
   current type. This forces explicit migration of legacy values and
   prevents silently re-saving outdated slugs.
+- **Parking fee per-occurrence on recurring schedules**: configured at the
+  schedule template level via three columns on `recurring_schedules`:
+  `parking_fee_enabled` (bool), `parking_fee_amount` (numeric, null = use
+  tenant default), `parking_fee_days` (int[], null = apply to all
+  scheduled days; 0=Sun..6=Sat to match `days_of_week`). The recurring
+  engine, when generating each child job, looks up the tenant's
+  Parking Fee row in `pricing_addons` (by name, case-insensitive) and
+  INSERTs a `job_add_ons` row when `parking_fee_enabled` AND
+  (`parking_fee_days` IS NULL OR includes that occurrence's weekday).
+  `parking_fee_amount` overrides the addon's default when set.
+  Per-job override stays via the existing edit-job modal Add-ons section
+  (PATCH replaces all `job_add_ons` rows on save), so office can flip
+  parking on or off for any individual generated occurrence without
+  touching the schedule template. Day picker only renders for multi-day
+  frequencies (daily/weekdays/custom_days); single-day frequencies hide
+  it because there's only one weekday per occurrence.
 - **Auto-promote to primary**: when a tech is added via
   `POST /api/jobs/:id/technicians` to a job that has NO existing primary
   (typical: first Add Team Member on an unassigned job), the server

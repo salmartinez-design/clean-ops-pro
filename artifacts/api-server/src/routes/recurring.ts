@@ -159,6 +159,10 @@ router.post("/trigger", requireAuth, requireRole("owner", "admin", "office"), as
           planned: planned.map((r: any) => ({
             scheduled_date: String(r.scheduled_date),
             base_fee: String(r.base_fee),
+            // [AI.6] Surface per-occurrence parking decision in dry-run so
+            // operators can verify Mon-only / M/W/F / etc. patterns before
+            // flipping the engine flag on.
+            parking_fee: Boolean(r._parking_fee_applies),
           })),
         });
       }
