@@ -53,6 +53,16 @@
   - `PUT /api/jobs/:id` (drag-and-drop quick-reschedule) — only writes
     `assigned_user_id` directly; doesn't touch `job_technicians`. Acceptable
     because PATCH is the canonical full-edit path.
+- **Auto-promote to primary**: when a tech is added via
+  `POST /api/jobs/:id/technicians` to a job that has NO existing primary
+  (typical: first Add Team Member on an unassigned job), the server
+  promotes the new tech to `is_primary=true` by default. Callers override
+  with explicit `is_primary: false` (helper/trainee workflows where the
+  primary is set later). The default is what the dispatch UI almost always
+  wants — without it, `jobs.assigned_user_id` stays NULL and the chip
+  stays in the Unassigned row even though job_technicians has a row. Any
+  new code path that writes `job_technicians` should preserve this default
+  and only pass `is_primary: false` for deliberate non-primary intent.
 
 ## Hard Rules — Never Reverse
 - No QuickBooks bidirectional sync — QB is write-only (Qleno pushes to QB, never pulls)
