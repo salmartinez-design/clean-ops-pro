@@ -536,9 +536,16 @@ router.get("/clients-missing-zip", ...isSuperAdminOrOwner, async (req, res) => {
       needs_manual: data.filter(d => d.action === "manual_entry").length,
       clients: data,
     });
-  } catch (err) {
+  } catch (err: any) {
+    const cause = err?.cause ?? err;
     console.error("[admin] clients-missing-zip error:", err);
-    return res.status(500).json({ error: "Internal Server Error", message: err instanceof Error ? err.message : String(err) });
+    return res.status(500).json({
+      error: "Internal Server Error",
+      message: err?.message ?? String(err),
+      pg_code: cause?.code ?? null,
+      pg_detail: cause?.detail ?? null,
+      pg_hint: cause?.hint ?? null,
+    });
   }
 });
 
@@ -582,49 +589,65 @@ router.post("/geocode-clients", ...isSuperAdminOrOwner, async (req, res) => {
     }
 
     // Pull candidates. Idempotency: skip rows where zip is already set.
-    const candidatesQuery = explicitIds && explicitIds.length > 0
-      ? sql`
-          SELECT
-            c.id, c.first_name, c.last_name,
-            c.address AS clients_address,
-            c.city    AS clients_city,
-            c.state   AS clients_state,
-            (SELECT j.address_street FROM jobs j
-               WHERE j.client_id = c.id AND j.address_street IS NOT NULL
-               ORDER BY j.scheduled_date DESC NULLS LAST, j.id DESC LIMIT 1) AS recent_job_street,
-            (SELECT j.address_city FROM jobs j
-               WHERE j.client_id = c.id AND j.address_street IS NOT NULL
-               ORDER BY j.scheduled_date DESC NULLS LAST, j.id DESC LIMIT 1) AS recent_job_city,
-            (SELECT j.address_state FROM jobs j
-               WHERE j.client_id = c.id AND j.address_street IS NOT NULL
-               ORDER BY j.scheduled_date DESC NULLS LAST, j.id DESC LIMIT 1) AS recent_job_state
-          FROM clients c
-          WHERE c.company_id = ${companyId}
-            AND c.zip IS NULL
-            AND c.id = ANY(${explicitIds}::int[])
-          LIMIT ${batchSize}
-        `
-      : sql`
-          SELECT
-            c.id, c.first_name, c.last_name,
-            c.address AS clients_address,
-            c.city    AS clients_city,
-            c.state   AS clients_state,
-            (SELECT j.address_street FROM jobs j
-               WHERE j.client_id = c.id AND j.address_street IS NOT NULL
-               ORDER BY j.scheduled_date DESC NULLS LAST, j.id DESC LIMIT 1) AS recent_job_street,
-            (SELECT j.address_city FROM jobs j
-               WHERE j.client_id = c.id AND j.address_street IS NOT NULL
-               ORDER BY j.scheduled_date DESC NULLS LAST, j.id DESC LIMIT 1) AS recent_job_city,
-            (SELECT j.address_state FROM jobs j
-               WHERE j.client_id = c.id AND j.address_street IS NOT NULL
-               ORDER BY j.scheduled_date DESC NULLS LAST, j.id DESC LIMIT 1) AS recent_job_state
-          FROM clients c
-          WHERE c.company_id = ${companyId}
-            AND c.zip IS NULL
-          ORDER BY c.id
-          LIMIT ${batchSize}
-        `;
+    //
+    // [AI.8.2] SQL binding fix. Sal's Heather Kelly id=78 click failed
+    // with `params: 1, 78, 1` — the JS array [78] got passed as a
+    // SCALAR int 78 to ANY($2::int[]) because node-postgres doesn't
+    // know how to serialize a number array as a Postgres int[]. The
+    // cast `78::int[]` then fails because integer can't cast to int[].
+    //
+    // Two-path fix:
+    //   - Single id     → c.id = ${id}            (scalar binding, simplest)
+    //   - Multi-id batch → c.id IN (sql.join...)  (variadic IN expansion,
+    //                                              each id binds as its
+    //                                              own $N parameter — no
+    //                                              array marshalling)
+    //   - No explicit ids → all NULL-zip clients in company, ORDER BY id
+    let candidatesQuery: ReturnType<typeof sql>;
+    const baseSelect = sql`
+      SELECT
+        c.id, c.first_name, c.last_name,
+        c.address AS clients_address,
+        c.city    AS clients_city,
+        c.state   AS clients_state,
+        (SELECT j.address_street FROM jobs j
+           WHERE j.client_id = c.id AND j.address_street IS NOT NULL
+           ORDER BY j.scheduled_date DESC NULLS LAST, j.id DESC LIMIT 1) AS recent_job_street,
+        (SELECT j.address_city FROM jobs j
+           WHERE j.client_id = c.id AND j.address_street IS NOT NULL
+           ORDER BY j.scheduled_date DESC NULLS LAST, j.id DESC LIMIT 1) AS recent_job_city,
+        (SELECT j.address_state FROM jobs j
+           WHERE j.client_id = c.id AND j.address_street IS NOT NULL
+           ORDER BY j.scheduled_date DESC NULLS LAST, j.id DESC LIMIT 1) AS recent_job_state
+      FROM clients c
+    `;
+    if (explicitIds && explicitIds.length === 1) {
+      const targetId = explicitIds[0];
+      candidatesQuery = sql`
+        ${baseSelect}
+        WHERE c.company_id = ${companyId}
+          AND c.zip IS NULL
+          AND c.id = ${targetId}
+        LIMIT 1
+      `;
+    } else if (explicitIds && explicitIds.length > 1) {
+      const idValues = sql.join(explicitIds.map(id => sql`${id}`), sql`, `);
+      candidatesQuery = sql`
+        ${baseSelect}
+        WHERE c.company_id = ${companyId}
+          AND c.zip IS NULL
+          AND c.id IN (${idValues})
+        LIMIT ${batchSize}
+      `;
+    } else {
+      candidatesQuery = sql`
+        ${baseSelect}
+        WHERE c.company_id = ${companyId}
+          AND c.zip IS NULL
+        ORDER BY c.id
+        LIMIT ${batchSize}
+      `;
+    }
 
     const candidates = await db.execute(candidatesQuery);
 
@@ -710,11 +733,23 @@ router.post("/geocode-clients", ...isSuperAdminOrOwner, async (req, res) => {
       sample_results: results.slice(0, 10),
       results,
     });
-  } catch (err) {
+  } catch (err: any) {
+    // [AI.8.2] Surface the full Postgres error so the frontend toast
+    // shows code/detail/hint, not just "Failed query". Drizzle wraps
+    // the pg error; we lift the standard fields out of err and (when
+    // present) err.cause for visibility without changing the 500
+    // shape callers already expect.
+    const cause = err?.cause ?? err;
     console.error("[admin] geocode-clients error:", err);
     return res.status(500).json({
       error: "Internal Server Error",
-      message: err instanceof Error ? err.message : String(err),
+      message: err?.message ?? String(err),
+      pg_code: cause?.code ?? null,
+      pg_detail: cause?.detail ?? null,
+      pg_hint: cause?.hint ?? null,
+      pg_table: cause?.table ?? null,
+      pg_constraint: cause?.constraint ?? null,
+      pg_position: cause?.position ?? null,
     });
   }
 });

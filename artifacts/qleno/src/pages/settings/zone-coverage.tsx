@@ -110,7 +110,19 @@ export default function AdminZoneCoverage() {
         }),
       });
       const body = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(body?.message || `HTTP ${r.status}`);
+      if (!r.ok) {
+        // [AI.8.2] Concatenate pg_code / pg_detail when present so the
+        // toast surfaces what Postgres actually said, not just
+        // "Failed query". Console gets the full body for forensics.
+        console.error("[zone-coverage] geocode failed", body);
+        const parts = [
+          body?.message,
+          body?.pg_code && `code=${body.pg_code}`,
+          body?.pg_detail,
+          body?.pg_hint && `hint: ${body.pg_hint}`,
+        ].filter(Boolean);
+        throw new Error(parts.join(" · ") || `HTTP ${r.status}`);
+      }
       setLastRun(body);
       const verb = opts.dry_run ? "Dry run complete" : "Geocode complete";
       toast({
