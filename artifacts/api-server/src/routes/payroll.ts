@@ -156,6 +156,14 @@ router.get("/detail", requireAuth, async (req, res) => {
     const compRows = await db.execute(sql`SELECT res_tech_pay_pct, commercial_hourly_rate, commercial_comp_mode FROM companies WHERE id = ${companyId} LIMIT 1`);
     const compSettings = (compRows.rows[0] as any) || { res_tech_pay_pct: 0.35, commercial_hourly_rate: 20.00, commercial_comp_mode: "allowed_hours" };
     const resPct = parseFloat(String(compSettings.res_tech_pay_pct ?? 0.35));
+    // [AI.7.4] Commercial commission base. See dispatch.ts for the same
+    // branching rule: commercial commission = hourly rate × hours, NOT
+    // jobTotal × resPct. commercial_comp_mode picks which hours signal
+    // we multiply: 'allowed_hours' (default — what the modal saved) or
+    // 'actual_hours' (clock-derived). Pre-launch we have no clock data
+    // so allowed_hours is the only meaningful value.
+    const commercialHourlyRate = parseFloat(String(compSettings.commercial_hourly_rate ?? 20));
+    const commercialCompMode = String(compSettings.commercial_comp_mode ?? "allowed_hours");
 
     // Get all techs (to calculate num_techs_on_job approximation)
     const jobConditions: any[] = [
@@ -176,6 +184,8 @@ router.get("/detail", requireAuth, async (req, res) => {
         allowed_hours: jobsTable.allowed_hours,
         actual_hours: jobsTable.actual_hours,
         assigned_user_id: jobsTable.assigned_user_id,
+        // [AI.7.4] account_id drives the commercial-vs-residential branch.
+        account_id: jobsTable.account_id,
         client_first: clientsTable.first_name,
         client_last: clientsTable.last_name,
       })
@@ -234,10 +244,18 @@ router.get("/detail", requireAuth, async (req, res) => {
 
     const jobRows = userJobs.map(job => {
         const jobTotal = parseFloat(String(job.billed_amount || job.base_fee || 0));
-        const calcCommission = Math.round(jobTotal * resPct * 100) / 100;
-        const commission = jtMap.has(job.id) ? jtMap.get(job.id)! : calcCommission;
         const allowedHrs = parseFloat(String(job.allowed_hours || 0));
         const workedHrs = parseFloat(String(job.actual_hours || 0));
+        // [AI.7.4] Commercial routes on account_id. Hours signal honors
+        // commercial_comp_mode (default 'allowed_hours'). Residential
+        // unchanged — pool-rate × jobTotal.
+        const isCommercialJob = (job as any).account_id != null;
+        const commercialHours = commercialCompMode === "actual_hours" && workedHrs > 0
+          ? workedHrs : allowedHrs;
+        const calcCommission = isCommercialJob
+          ? Math.round(commercialHourlyRate * commercialHours * 100) / 100
+          : Math.round(jobTotal * resPct * 100) / 100;
+        const commission = jtMap.has(job.id) ? jtMap.get(job.id)! : calcCommission;
         const effectiveRate = workedHrs > 0 ? Math.round((commission / workedHrs) * 100) / 100 : null;
         return {
           job_id: job.id,
@@ -247,6 +265,7 @@ router.get("/detail", requireAuth, async (req, res) => {
           job_total: jobTotal,
           commission,
           commission_overridden: jtMap.has(job.id),
+          commission_basis: isCommercialJob ? "commercial_hourly" : "residential_pool",
           hrs_scheduled: allowedHrs,
           hrs_worked: workedHrs,
           effective_rate: effectiveRate,

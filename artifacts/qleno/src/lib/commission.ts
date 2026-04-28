@@ -2,21 +2,31 @@
  * Commission calculation utility for Qleno.
  *
  * Rules:
- * - Residential commission rate: 35% of job total
- * - Before clock-in: split EQUALLY among assigned techs
- * - After any tech clocks in: split PROPORTIONALLY by actual minutes worked
+ * - Residential: 35% of job total. Pre-clock-in split EQUALLY among
+ *   assigned techs; post-clock-in split PROPORTIONALLY by actual minutes.
+ * - [AI.7.4] Commercial: hourly rate × hours (default $20/hr). Same
+ *   split structure as residential, but the base is hourly-rate × hours,
+ *   NOT a fraction of jobTotal. Routing is on the caller — pass
+ *   `basis: "commercial"` for commercial scopes.
  */
 
-const COMMISSION_RATE = 0.35;
+const RESIDENTIAL_RATE = 0.35;
+const COMMERCIAL_HOURLY_RATE = 20;
 
 export interface ClockIn {
   techId: number;
   minutesWorked: number;
 }
 
+export type CommissionBasis = "residential" | "commercial";
+
 export interface CommissionSplit {
   totalCommission: number;
-  commissionRate: number;
+  /** Residential pool fraction (e.g. 0.35) when basis='residential', else null. */
+  commissionRate: number | null;
+  /** Commercial hourly rate ($/hr) when basis='commercial', else null. */
+  commercialHourlyRate: number | null;
+  basis: CommissionBasis;
   perTech: {
     techId: number | null;
     hours: number;
@@ -30,14 +40,21 @@ export function calculateCommissionSplit(
   estimatedHours: number,
   techCount: number,
   clockIns?: ClockIn[],
+  basis: CommissionBasis = "residential",
 ): CommissionSplit {
-  const totalCommission = Math.round(jobTotal * COMMISSION_RATE * 100) / 100;
+  const totalCommission = basis === "commercial"
+    ? Math.round(COMMERCIAL_HOURLY_RATE * estimatedHours * 100) / 100
+    : Math.round(jobTotal * RESIDENTIAL_RATE * 100) / 100;
+  const commissionRate = basis === "residential" ? RESIDENTIAL_RATE : null;
+  const commercialHourlyRate = basis === "commercial" ? COMMERCIAL_HOURLY_RATE : null;
 
   // No techs assigned
   if (techCount === 0) {
     return {
       totalCommission,
-      commissionRate: COMMISSION_RATE,
+      commissionRate,
+      commercialHourlyRate,
+      basis,
       perTech: [],
       mode: "unassigned",
     };
@@ -48,7 +65,9 @@ export function calculateCommissionSplit(
     const totalMinutes = clockIns.reduce((sum, c) => sum + c.minutesWorked, 0);
     return {
       totalCommission,
-      commissionRate: COMMISSION_RATE,
+      commissionRate,
+      commercialHourlyRate,
+      basis,
       perTech: clockIns.map(c => ({
         techId: c.techId,
         hours: Math.round((c.minutesWorked / 60) * 100) / 100,
@@ -66,7 +85,9 @@ export function calculateCommissionSplit(
 
   return {
     totalCommission,
-    commissionRate: COMMISSION_RATE,
+    commissionRate,
+    commercialHourlyRate,
+    basis,
     perTech: Array.from({ length: techCount }, (_, i) => ({
       techId: null,
       hours: perTechHours,

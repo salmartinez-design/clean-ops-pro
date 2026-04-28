@@ -260,9 +260,13 @@ router.get("/", requireAuth, async (req, res) => {
       ORDER BY jt.job_id, jt.is_primary DESC, jt.id
     `);
 
-    // Fetch company commission rate
-    const compRows = await db.execute(sql`SELECT res_tech_pay_pct FROM companies WHERE id = ${companyId} LIMIT 1`);
+    // Fetch company commission rates. resPct = residential pool fraction;
+    // commercialHourlyRate = flat $/hr commercial commission base. Default
+    // to $20/hr per Sal's standing rule when the column hasn't been
+    // populated yet (Phes seed sets it explicitly).
+    const compRows = await db.execute(sql`SELECT res_tech_pay_pct, commercial_hourly_rate FROM companies WHERE id = ${companyId} LIMIT 1`);
     const resPct = parseFloat(String((compRows.rows[0] as any)?.res_tech_pay_pct ?? 0.35));
+    const commercialHourlyRate = parseFloat(String((compRows.rows[0] as any)?.commercial_hourly_rate ?? 20));
 
     const techByJob = new Map<number, Array<{ user_id: number; name: string; is_primary: boolean; pay_override: number | null; final_pay: number | null }>>();
     for (const r of techRows.rows as any[]) {
@@ -297,17 +301,31 @@ router.get("/", requireAuth, async (req, res) => {
         ? (j.property_address ? `${j.property_address}${j.property_city ? `, ${j.property_city}` : ""}` : null)
         : (j.address ? `${j.address}${j.city ? `, ${j.city}` : ""}` : null);
       const jobTotal = j.billed_amount ? parseFloat(j.billed_amount) : (j.base_fee ? parseFloat(j.base_fee) : 0);
-      const estHours = j.estimated_hours ? parseFloat(j.estimated_hours) : 0;
+      // [AI.7.4] Commission engine routes on isCommercial. Residential
+      // = jobTotal × resPct (pool, default 35%). Commercial = hourly
+      // rate × hours (default $20/hr × allowed_hours). The "estimated"
+      // hours displayed alongside the calc must come from allowed_hours
+      // — the source of truth the edit modal writes — NOT the original
+      // estimated_hours stamp, which goes stale on every edit
+      // (repro: edit allowed 6 → 7 → save → reopen, est still showed 7
+      // because dispatch read estimated_hours, which never changed).
+      const allowedHours = j.allowed_hours ? parseFloat(j.allowed_hours) : 0;
+      const estHoursSource = allowedHours > 0
+        ? allowedHours
+        : (j.estimated_hours ? parseFloat(j.estimated_hours) : 0);
       const numTechs = jobTechs.length || 1;
-      const poolAmount = jobTotal * resPct;
-      const estHoursPerTech = numTechs > 0 ? Math.round((estHours / numTechs) * 10) / 10 : estHours;
+      const totalCommission = isCommercial
+        ? Math.round(commercialHourlyRate * estHoursSource * 100) / 100
+        : Math.round(jobTotal * resPct * 100) / 100;
+      const estHoursPerTech = numTechs > 0 ? Math.round((estHoursSource / numTechs) * 10) / 10 : estHoursSource;
+      const calcPerTech = Math.round((totalCommission / numTechs) * 100) / 100;
       const technicians = jobTechs.map(t => ({
         user_id: t.user_id,
         name: t.name,
         is_primary: t.is_primary,
         est_hours: estHoursPerTech,
-        calc_pay: Math.round((poolAmount / numTechs) * 100) / 100,
-        final_pay: t.final_pay != null ? t.final_pay : (t.pay_override != null ? t.pay_override : Math.round((poolAmount / numTechs) * 100) / 100),
+        calc_pay: calcPerTech,
+        final_pay: t.final_pay != null ? t.final_pay : (t.pay_override != null ? t.pay_override : calcPerTech),
         pay_override: t.pay_override,
       }));
 
@@ -367,8 +385,14 @@ router.get("/", requireAuth, async (req, res) => {
         } : null,
         technicians,
         est_hours_per_tech: estHoursPerTech,
-        est_pay_per_tech: numTechs > 0 ? Math.round((poolAmount / numTechs) * 100) / 100 : Math.round(poolAmount * 100) / 100,
+        est_pay_per_tech: calcPerTech,
         company_res_pct: resPct,
+        // [AI.7.4] Commercial-flag + rate so the Commission panel can
+        // render "Hourly rate: $20/hr × X hrs" instead of the residential
+        // "Pool rate: 35% of job total" — those labels are not
+        // interchangeable.
+        commission_basis: isCommercial ? "commercial_hourly" : "residential_pool",
+        commercial_hourly_rate: isCommercial ? commercialHourlyRate : null,
       };
     });
 

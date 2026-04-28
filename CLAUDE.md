@@ -121,6 +121,33 @@
   unchanged. Do NOT regress mobile back to a single-day list — the
   weekly chart + risk strip is the orientation surface and removing it
   forces operators to date-step blind.
+- **Commission engine routing**: residential and commercial commissions
+  use DIFFERENT bases — they are not interchangeable, and the wrong
+  label on a commercial job is a hard bug, not a stylistic miss.
+  Routing is on `!!jobs.account_id` (true = commercial). Bases:
+  - Residential: `commission = jobTotal × companies.res_tech_pay_pct`
+    (default 0.35). Pre-clock-in: equal split among assigned techs.
+    Post-clock-in: proportional by actual minutes.
+  - Commercial: `commission = companies.commercial_hourly_rate ×
+    allowed_hours` (default $20/hr). Same split structure as
+    residential. The hours signal honors
+    `companies.commercial_comp_mode` ('allowed_hours' default,
+    'actual_hours' when clock data is the source of truth).
+  The frontend Commission panel (`jobs.tsx` JobPanel) reads
+  `commission_basis` ('commercial_hourly' | 'residential_pool') from
+  the dispatch payload to choose the label. The "Pool rate: 35% of
+  job total" label MUST NOT render on commercial jobs — show
+  "Hourly rate: $X/hr × Y hrs" instead. Estimated hours displayed in
+  the panel come from `allowed_hours`, NOT the stale `estimated_hours`
+  stamp (which is set at job creation and never updated on edit).
+  All three surfaces enforce this routing:
+  - `routes/dispatch.ts` (Commission panel data)
+  - `routes/payroll.ts` /detail (payroll exports)
+  - `lib/commission.ts` `calculateCommissionSplit(... basis)`
+    (quote-builder)
+  When adding a new commission surface, branch on `account_id` and
+  delegate to one of these three sources of truth — never inline
+  `× 0.35` or `× 20` again.
 
 ## Hard Rules — Never Reverse
 - No QuickBooks bidirectional sync — QB is write-only (Qleno pushes to QB, never pulls)
