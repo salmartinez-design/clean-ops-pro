@@ -302,30 +302,51 @@ export async function generateJobsFromSchedule(
   const anyParking = parkingDecisions.some(Boolean);
   if (anyParking) {
     const addonLookup = await db.execute(sql`
-      SELECT id, COALESCE(price_value, price, '0')::numeric AS price
+      SELECT id, name, COALESCE(price_value, price, '0')::numeric AS price
       FROM pricing_addons
       WHERE company_id = ${schedule.company_id}
         AND LOWER(name) = 'parking fee'
         AND is_active = true
       LIMIT 1
     `);
-    const addonRow = addonLookup.rows[0] as { id: number; price: string } | undefined;
+    const addonRow = addonLookup.rows[0] as { id: number; name: string; price: string } | undefined;
     if (addonRow) {
       const pricingAddonId = Number(addonRow.id);
+      const addonName = String(addonRow.name ?? "Parking Fee");
       const fallbackAmount = String(addonRow.price ?? "20");
       const overrideAmount = schedule.parking_fee_amount;
       const unitPrice = overrideAmount != null && overrideAmount !== "" ? String(overrideAmount) : fallbackAmount;
 
+      // [AI.6.3] Resolve a real add_ons.id for the FK on job_add_ons.add_on_id.
+      // pricing_addons.id and add_ons.id live in different tables; the older
+      // PATCH code naively reused the pricing id as the FK and threw FK
+      // violations whenever the IDs didn't coincide. Look up by name; create
+      // if absent.
+      const existing = await db.execute(sql`
+        SELECT id FROM add_ons
+        WHERE company_id = ${schedule.company_id} AND LOWER(name) = LOWER(${addonName})
+        LIMIT 1
+      `);
+      let realAddOnId: number;
+      if (existing.rows.length) {
+        realAddOnId = Number((existing.rows[0] as any).id);
+      } else {
+        const created = await db.execute(sql`
+          INSERT INTO add_ons (company_id, name, price, category, is_active)
+          VALUES (${schedule.company_id}, ${addonName}, ${unitPrice}, 'other', true)
+          RETURNING id
+        `);
+        realAddOnId = Number((created.rows[0] as any).id);
+      }
+
       for (let i = 0; i < inserted.length; i++) {
         if (!parkingDecisions[i]) continue;
         const jobId = Number(inserted[i].id);
-        // Match the modal's pattern: write add_on_id = pricing_addon_id.
-        // ON CONFLICT prevents double-stamping if this loop is somehow re-run.
         await db.execute(sql`
           INSERT INTO job_add_ons
             (job_id, add_on_id, quantity, unit_price, subtotal, pricing_addon_id)
           VALUES
-            (${jobId}, ${pricingAddonId}, 1, ${unitPrice}, ${unitPrice}, ${pricingAddonId})
+            (${jobId}, ${realAddOnId}, 1, ${unitPrice}, ${unitPrice}, ${pricingAddonId})
           ON CONFLICT (job_id, add_on_id) DO NOTHING
         `);
         parkingStamped++;
