@@ -2002,6 +2002,16 @@ export default function JobsPage() {
   // NEVER SHRINKS below the default even if all jobs fit inside 10-3.
   const [businessHours, setBusinessHours] = useState<BusinessHoursMap>(new Map());
 
+  // [AI.7] Mobile week-view state. Week summary fetches per-day aggregates
+  // (count + revenue + unassigned) for the focal day's Sun..Sat week. Day
+  // data cache lazy-loads any expanded non-focal day's full job list.
+  type WeekSummaryDay = { date: string; job_count: number; revenue: number; unassigned_count: number };
+  type WeekSummary = { from: string; to: string; days: WeekSummaryDay[]; total_jobs: number; total_revenue: number; total_unassigned: number };
+  const [weekSummary, setWeekSummary] = useState<WeekSummary | null>(null);
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
+  const [dayDataCache, setDayDataCache] = useState<Map<string, DispatchData>>(new Map());
+  const [dayDataLoading, setDayDataLoading] = useState<Set<string>>(new Set());
+
   const load = useCallback(async () => {
     const id = ++refreshRef.current;
     setLoading(true);
@@ -2021,6 +2031,57 @@ export default function JobsPage() {
   }, [selectedDate, token, activeBranchId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // [AI.7] Fetch week summary for the Sun..Sat window containing selectedDate.
+  // Mobile-only — week view doesn't render on desktop. Refetches when the
+  // focal day crosses a week boundary, branch changes, or the underlying
+  // jobs change (refreshRef).
+  useEffect(() => {
+    if (!isMobile) return;
+    const dow = selectedDate.getDay();
+    const weekStart = new Date(selectedDate);
+    weekStart.setDate(selectedDate.getDate() - dow);
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const fromStr = fmt(weekStart);
+    const toStr = fmt(weekEnd);
+    const branchParam = activeBranchId !== "all" ? `&branch_id=${activeBranchId}` : "";
+
+    const API = import.meta.env.BASE_URL.replace(/\/$/, "");
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${API}/api/dispatch/week-summary?from=${fromStr}&to=${toStr}${branchParam}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (!cancelled) setWeekSummary(d);
+      } catch {
+        // Silent — bar chart just won't render. Doesn't block today's view.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isMobile, selectedDate, token, activeBranchId]);
+
+  // [AI.7] Lazy fetch a specific day's full job data when the operator
+  // expands a non-focal day. Cached in dayDataCache by date key. Keeps
+  // the week summary cheap and the focal day's render path fast.
+  const loadDayData = useCallback(async (dateK: string) => {
+    if (dayDataCache.has(dateK)) return;
+    if (dayDataLoading.has(dateK)) return;
+    setDayDataLoading(prev => { const n = new Set(prev); n.add(dateK); return n; });
+    try {
+      const fetched = await fetchDispatch(dateK, token, activeBranchId);
+      setDayDataCache(prev => { const n = new Map(prev); n.set(dateK, fetched); return n; });
+    } catch {
+      // ignore — collapsed-day expansion shows an inline "Could not load" state
+    } finally {
+      setDayDataLoading(prev => { const n = new Set(prev); n.delete(dateK); return n; });
+    }
+  }, [dayDataCache, dayDataLoading, token, activeBranchId]);
 
   // [Z] Load company business_hours once on mount. Used below to drive the
   // per-day Gantt window with extend-on-outlier behavior.
@@ -2193,16 +2254,64 @@ export default function JobsPage() {
   const dayLabel = selectedDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
   const isToday = dateKey(selectedDate) === dateKey(new Date());
 
-  // ── MOBILE VIEW ──────────────────────────────────────────────────────────────
+  // ── MOBILE VIEW (AI.7 — risk-first dashboard) ───────────────────────────────
   if (isMobile) {
+    // Compute "needs attention" surface from currently-loaded day data.
+    // Only renders for the focal day — other days surface their own risk
+    // counts when expanded.
+    const NOW_MS = Date.now();
+    const NOW_MINS = (() => { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); })();
+    const lateClockIns = isToday && data ? data.employees.flatMap(e =>
+      e.jobs.filter(j =>
+        j.status !== "cancelled" && j.status !== "complete" &&
+        !j.clock_entry?.clock_in_at &&
+        NOW_MINS >= timeToMins(j.scheduled_time) - 15 &&
+        timeToMins(j.scheduled_time) > 0
+      ).map(j => ({ job: j, tech_name: e.name }))
+    ) : [];
+    const unassignedToday = data?.unassigned_jobs ?? [];
+    const missingAddress = isToday && data ? data.employees.flatMap(e =>
+      e.jobs.filter(j =>
+        j.status !== "cancelled" && j.status !== "complete" &&
+        (!j.address || j.address.trim().length === 0)
+      )
+    ) : [];
+    const attentionCount = lateClockIns.length + (unassignedToday.length > 0 ? 1 : 0) + (missingAddress.length > 0 ? 1 : 0);
+
+    // Sort week days for "Upcoming" section: focal day's date first (rendered
+    // separately), then other days ordered by date with future first.
+    const focalKey = dateKey(selectedDate);
+    const weekDays = weekSummary?.days ?? [];
+    const todayKey = dateKey(new Date());
+    const upcomingDays = weekDays
+      .filter(d => d.date !== focalKey)
+      .sort((a, b) => {
+        // Future days ascending, past days descending after futures
+        const aFuture = a.date >= todayKey;
+        const bFuture = b.date >= todayKey;
+        if (aFuture !== bFuture) return aFuture ? -1 : 1;
+        return aFuture ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date);
+      });
+
+    const maxRevenue = Math.max(1, ...weekDays.map(d => d.revenue));
+    const dayShortName = (dateStr: string) => {
+      const d = new Date(dateStr + "T00:00:00");
+      return d.toLocaleDateString("en-US", { weekday: "short" });
+    };
+    const dayDateNum = (dateStr: string) => {
+      const d = new Date(dateStr + "T00:00:00");
+      return d.getDate();
+    };
+    const formatRev = (n: number) => n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n.toFixed(0)}`;
+
     return (
       <DashboardLayout>
         {/* Negative margins cancel DashboardLayout's main padding so sections go edge-to-edge */}
         <div style={{ margin: "-16px -14px 0", fontFamily: FF }}>
-          {/* Header */}
+          {/* Header — date + new job */}
           <div style={{ backgroundColor: "#FFFFFF", borderBottom: "1px solid #EEECE7", padding: "12px 16px 10px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <div style={{ fontSize: 16, fontWeight: 800, color: "#1A1917" }}>Dispatch</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "#1A1917" }}>Jobs</div>
               <button
                 onClick={() => isAllLocations ? toast({ title: "Select a location first", description: "Choose Oak Lawn or Schaumburg to create a job.", variant: "destructive" }) : setShowWizard(true)}
                 title={isAllLocations ? "Select a location to create jobs" : undefined}
@@ -2224,40 +2333,115 @@ export default function JobsPage() {
             </div>
           </div>
 
-          {/* Summary strip */}
-          {!loading && data && (
-            <div style={{ display: "flex", gap: 0, backgroundColor: "#FFFFFF", borderBottom: "1px solid #EEECE7", overflowX: "auto" }}>
-              {[
-                { label: "Total", value: stats.total, color: "#1A1917" },
-                { label: "Done", value: stats.complete, color: "#16A34A" },
-                { label: "Active", value: stats.inProgress, color: "#D97706" },
-                { label: "Revenue", value: `$${stats.revenue.toFixed(0)}`, color: "var(--brand)" },
-                ...(stats.unassigned > 0 ? [{ label: "Unassigned", value: stats.unassigned, color: "#DC2626" }] : []),
-              ].map((s, i, arr) => (
-                <div key={s.label} style={{ flex: "0 0 auto", padding: "8px 16px", textAlign: "center", borderRight: i < arr.length - 1 ? "1px solid #EEECE7" : "none" }}>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: s.color }}>{s.value}</div>
-                  <div style={{ fontSize: 10, fontWeight: 600, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.04em" }}>{s.label}</div>
+          {/* [AI.7] WEEK SUMMARY CARD — sticky on scroll. Total revenue + jobs +
+              7-day bar chart with day labels and dollar subtotals. Tap any
+              bar to jump the focal day. */}
+          {weekSummary && (
+            <div style={{
+              position: "sticky", top: 0, zIndex: 10,
+              backgroundColor: "#FFFFFF", borderBottom: "1px solid #EEECE7",
+              padding: "12px 16px 14px",
+            }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>
+                This week · {(() => {
+                  const f = new Date(weekSummary.from + "T00:00:00");
+                  const t = new Date(weekSummary.to + "T00:00:00");
+                  const fStr = f.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                  const tStr = t.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                  return `${fStr} – ${tStr}`;
+                })()}
+              </div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 10 }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#1A1917" }}>
+                  ${weekSummary.total_revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </div>
-              ))}
+                <div style={{ fontSize: 12, color: "#6B6860", fontWeight: 600 }}>
+                  · {weekSummary.total_jobs} jobs
+                  {weekSummary.total_unassigned > 0 && (
+                    <span style={{ color: "#DC2626", marginLeft: 6 }}>· {weekSummary.total_unassigned} unassigned</span>
+                  )}
+                </div>
+              </div>
+              {/* 7-bar chart */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, alignItems: "end", height: 56 }}>
+                {weekSummary.days.map(d => {
+                  const isFocal = d.date === focalKey;
+                  const isTodayBar = d.date === todayKey;
+                  const ratio = d.revenue > 0 ? Math.max(0.08, d.revenue / maxRevenue) : 0;
+                  const barColor = isFocal ? "var(--brand)" : isTodayBar ? "rgba(91,155,213,0.4)" : "#E5E2DC";
+                  return (
+                    <button key={d.date}
+                      onClick={() => setSelectedDate(new Date(d.date + "T00:00:00"))}
+                      style={{
+                        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end",
+                        background: "none", border: "none", padding: 0, cursor: "pointer", height: "100%",
+                      }}>
+                      <div style={{ width: "100%", height: `${ratio * 100}%`, backgroundColor: barColor, borderRadius: "3px 3px 0 0", transition: "background 0.15s" }} />
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Day labels + revenue subtotals under bars */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginTop: 6 }}>
+                {weekSummary.days.map(d => {
+                  const isFocal = d.date === focalKey;
+                  return (
+                    <button key={d.date}
+                      onClick={() => setSelectedDate(new Date(d.date + "T00:00:00"))}
+                      style={{
+                        display: "flex", flexDirection: "column", alignItems: "center",
+                        background: "none", border: "none", padding: 0, cursor: "pointer",
+                      }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: isFocal ? "var(--brand)" : "#9E9B94", textTransform: "uppercase" }}>
+                        {dayShortName(d.date).slice(0, 1)}
+                      </span>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: isFocal ? "var(--brand)" : d.revenue > 0 ? "#6B6860" : "#C4C0BB", marginTop: 1 }}>
+                        {d.revenue > 0 ? formatRev(d.revenue) : "—"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
-          {/* Week strip */}
-          <div style={{ backgroundColor: "#FFFFFF", borderBottom: "1px solid #EEECE7", padding: "8px 12px", display: "flex", gap: 4, overflowX: "auto" }}>
-            {Array.from({ length: 14 }, (_, i) => {
-              const d = addDays(new Date(new Date().setHours(0, 0, 0, 0)), i - 3);
-              const k = dateKey(d);
-              const sel = k === dateKey(selectedDate);
-              const isT = k === dateKey(new Date());
-              return (
-                <button key={k} onClick={() => setSelectedDate(d)} style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", alignItems: "center", padding: "6px 10px", borderRadius: 10, border: "none", backgroundColor: sel ? "var(--brand)" : isT ? "var(--brand-dim)" : "transparent", cursor: "pointer" }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: sel ? "#fff" : isT ? "var(--brand)" : "#9E9B94", textTransform: "uppercase" }}>{d.toLocaleDateString("en-US", { weekday: "short" })}</span>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: sel ? "#fff" : isT ? "var(--brand)" : "#1A1917", marginTop: 2 }}>{d.getDate()}</span>
-                  {jobDates.has(k) && <div style={{ width: 5, height: 5, borderRadius: "50%", backgroundColor: sel ? "#ffffff80" : "var(--brand)", marginTop: 3 }} />}
-                </button>
-              );
-            })}
-          </div>
+          {/* [AI.7] NEEDS ATTENTION — only renders when items exist for today.
+              Tappable rows deep-link to the job/dispatch action. */}
+          {isToday && attentionCount > 0 && (
+            <div style={{ backgroundColor: "#FEF3C7", borderBottom: "1px solid #FCD34D", padding: "10px 16px" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#92400E", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>
+                Needs Attention ({attentionCount})
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {lateClockIns.map(({ job, tech_name }) => (
+                  <button key={`late-${job.id}`} onClick={() => setSelectedJob(job)}
+                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 6, border: "none", background: "rgba(255,255,255,0.6)", cursor: "pointer", textAlign: "left", fontFamily: FF, width: "100%" }}>
+                    <Clock size={14} color="#DC2626" />
+                    <span style={{ fontSize: 12, color: "#1A1917", fontWeight: 600, flex: 1 }}>
+                      {tech_name} · {job.client_name} — late {Math.max(0, NOW_MINS - timeToMins(job.scheduled_time))}m
+                    </span>
+                    <ChevronRight size={12} color="#6B6860" />
+                  </button>
+                ))}
+                {unassignedToday.length > 0 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 6, background: "rgba(255,255,255,0.6)" }}>
+                    <AlertTriangle size={14} color="#D97706" />
+                    <span style={{ fontSize: 12, color: "#1A1917", fontWeight: 600 }}>
+                      {unassignedToday.length} job{unassignedToday.length !== 1 ? "s" : ""} unassigned today
+                    </span>
+                  </div>
+                )}
+                {missingAddress.length > 0 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 6, background: "rgba(255,255,255,0.6)" }}>
+                    <AlertTriangle size={14} color="#DC2626" />
+                    <span style={{ fontSize: 12, color: "#1A1917", fontWeight: 600 }}>
+                      {missingAddress.length} job{missingAddress.length !== 1 ? "s" : ""} missing address
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Location + Zone filter — mobile */}
           <div style={{ backgroundColor: "#FFFFFF", borderBottom: "1px solid #EEECE7", padding: "6px 14px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -2299,27 +2483,145 @@ export default function JobsPage() {
             )}
           </div>
 
-          {/* Job list */}
-          <div style={{ padding: "12px 14px" }}>
+          {/* [AI.7] FOCAL DAY (TODAY) — full job cards. Heading carries the
+              day's job count + revenue so the operator orients without
+              cross-checking the bar chart above. */}
+          <div style={{ padding: "12px 14px 4px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "0 2px" }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: "#1A1917", letterSpacing: "0.07em", textTransform: "uppercase" }}>
+                  {isToday ? "Today" : selectedDate.toLocaleDateString("en-US", { weekday: "long" })}
+                </span>
+                <span style={{ fontSize: 11, color: "#9E9B94", fontWeight: 600 }}>
+                  {selectedDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                </span>
+              </div>
+              <div style={{ fontSize: 11, color: "#6B6860", fontWeight: 700 }}>
+                {allJobs.length} {allJobs.length !== 1 ? "jobs" : "job"}
+                {(() => {
+                  const focalDay = weekDays.find(d => d.date === focalKey);
+                  return focalDay && focalDay.revenue > 0 ? <span> · {formatRev(focalDay.revenue)}</span> : null;
+                })()}
+              </div>
+            </div>
             {loading ? (
-              <div style={{ textAlign: "center", padding: 48, color: "#9E9B94", fontSize: 13 }}>Loading...</div>
+              <div style={{ textAlign: "center", padding: 32, color: "#9E9B94", fontSize: 13 }}>Loading...</div>
             ) : allJobs.length === 0 ? (
-              <div style={{ textAlign: "center", padding: 48 }}>
-                <Calendar size={36} style={{ color: "#D0CEC9", marginBottom: 12 }} />
-                <div style={{ fontSize: 16, fontWeight: 700, color: "#6B7280", marginBottom: 6 }}>No jobs {isToday ? "today" : "this day"}{selectedZoneFilter !== null ? " in this zone" : ""}</div>
-                <div style={{ fontSize: 13, color: "#9E9B94" }}>Tap "+ New Job" to schedule one</div>
+              <div style={{ textAlign: "center", padding: 32 }}>
+                <Calendar size={32} style={{ color: "#D0CEC9", marginBottom: 10 }} />
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>No jobs {isToday ? "today" : "this day"}{selectedZoneFilter !== null ? " in this zone" : ""}</div>
+                <div style={{ fontSize: 12, color: "#9E9B94" }}>Tap "+ New Job" to schedule one</div>
               </div>
             ) : (
               <>
                 {allJobs.map(j => <MobileJobCard key={j.id} job={j} onClick={() => setSelectedJob(j)} />)}
-                {filteredData?.unassigned_jobs && filteredData.unassigned_jobs.length > 0 && (
-                  <div style={{ marginTop: 8, padding: "10px 14px", backgroundColor: "#FEF3C7", border: "1px solid #FCD34D", borderRadius: 10, fontSize: 13, color: "#92400E", fontWeight: 600 }}>
-                    {filteredData.unassigned_jobs.length} job{filteredData.unassigned_jobs.length !== 1 ? "s" : ""} still unassigned
-                  </div>
-                )}
               </>
             )}
           </div>
+
+          {/* [AI.7] UPCOMING — collapsed by default, sub-totals visible.
+              Tapping a row lazily fetches that day's full data via
+              loadDayData() and renders compact 36px rows. Day-level
+              unassigned-count badges surface risk before expansion. */}
+          {upcomingDays.length > 0 && (
+            <div style={{ padding: "0 14px 16px" }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: "#1A1917", letterSpacing: "0.07em", textTransform: "uppercase", padding: "16px 2px 8px" }}>
+                Upcoming
+              </div>
+              <div style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 12, overflow: "hidden" }}>
+                {upcomingDays.map((d, idx) => {
+                  const isOpen = expandedDays.has(d.date);
+                  const dayData = dayDataCache.get(d.date);
+                  const isLoadingDay = dayDataLoading.has(d.date);
+                  const dayJobs = dayData ? [
+                    ...dayData.employees.flatMap(e => e.jobs.map(j => ({ job: j, tech: e.name }))),
+                    ...dayData.unassigned_jobs.map(j => ({ job: j, tech: undefined as string | undefined }))
+                  ].sort((a, b) => (a.job.scheduled_time || "").localeCompare(b.job.scheduled_time || "")) : [];
+                  return (
+                    <div key={d.date} style={{ borderTop: idx === 0 ? "none" : "1px solid #F0EEE9" }}>
+                      <button
+                        onClick={() => {
+                          setExpandedDays(prev => {
+                            const n = new Set(prev);
+                            if (n.has(d.date)) n.delete(d.date);
+                            else { n.add(d.date); loadDayData(d.date); }
+                            return n;
+                          });
+                        }}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          width: "100%", padding: "12px 14px", border: "none", background: "transparent",
+                          cursor: "pointer", fontFamily: FF, textAlign: "left", minHeight: 44,
+                        }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <ChevronRight size={14} color="#9E9B94" style={{ transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 0.15s" }} />
+                          <span style={{ fontSize: 12, fontWeight: 800, color: "#1A1917", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            {dayShortName(d.date)}
+                          </span>
+                          <span style={{ fontSize: 11, color: "#9E9B94", fontWeight: 600 }}>
+                            {new Date(d.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "#6B6860", fontWeight: 700 }}>
+                          {d.unassigned_count > 0 && (
+                            <span style={{ fontSize: 10, fontWeight: 800, color: "#991B1B", background: "#FEE2E2", padding: "2px 6px", borderRadius: 4 }}>
+                              {d.unassigned_count} unass
+                            </span>
+                          )}
+                          <span>{d.job_count} {d.job_count !== 1 ? "jobs" : "job"}</span>
+                          {d.revenue > 0 && <span style={{ color: "#1A1917" }}>· {formatRev(d.revenue)}</span>}
+                        </div>
+                      </button>
+                      {isOpen && (
+                        <div style={{ borderTop: "1px solid #F0EEE9", backgroundColor: "#FAFAF9" }}>
+                          {isLoadingDay && !dayData ? (
+                            <div style={{ padding: 14, textAlign: "center", fontSize: 12, color: "#9E9B94" }}>Loading...</div>
+                          ) : !dayData ? (
+                            <div style={{ padding: 14, textAlign: "center", fontSize: 12, color: "#9E9B94" }}>Could not load</div>
+                          ) : dayJobs.length === 0 ? (
+                            <div style={{ padding: 14, textAlign: "center", fontSize: 12, color: "#9E9B94" }}>No jobs scheduled</div>
+                          ) : (
+                            dayJobs.map(({ job: j, tech }, jIdx) => {
+                              const sc = STATUS[j.status] || STATUS.scheduled;
+                              return (
+                                <button key={j.id} onClick={() => setSelectedJob(j)}
+                                  style={{
+                                    display: "flex", alignItems: "center", gap: 10, width: "100%",
+                                    padding: "9px 14px", border: "none", background: "transparent",
+                                    cursor: "pointer", fontFamily: FF, textAlign: "left", minHeight: 44,
+                                    borderTop: jIdx === 0 ? "none" : "1px solid #F0EEE9",
+                                  }}>
+                                  <div style={{ width: 3, height: 22, borderRadius: 2, backgroundColor: sc.dot, flexShrink: 0 }} />
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: "#6B6860", width: 56, flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
+                                    {j.scheduled_time ? fmtTime(j.scheduled_time) : "—"}
+                                  </span>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 700, color: "#1A1917", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                      {j.client_name}
+                                    </div>
+                                    {tech ? (
+                                      <div style={{ fontSize: 10, color: "#9E9B94", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                        {tech}
+                                      </div>
+                                    ) : (
+                                      <div style={{ fontSize: 10, color: "#DC2626", fontWeight: 700 }}>Unassigned</div>
+                                    )}
+                                  </div>
+                                  <span style={{ fontSize: 12, fontWeight: 800, color: "#1A1917", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
+                                    ${(j.billed_amount ?? j.amount ?? 0).toFixed(0)}
+                                  </span>
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {selectedJob && (

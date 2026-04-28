@@ -101,6 +101,26 @@
   stays in the Unassigned row even though job_technicians has a row. Any
   new code path that writes `job_technicians` should preserve this default
   and only pass `is_primary: false` for deliberate non-primary intent.
+- **Mobile risk-first dashboard (Jobs page)**: the mobile branch of
+  `/jobs` is NOT a calendar — it's a dispatch dashboard. Layout order,
+  top-to-bottom: header (date nav + "New Job"), sticky weekly summary
+  card (total revenue + 7-bar chart with day labels and per-day revenue
+  subtotals; tap a bar to jump focal day), Needs Attention strip
+  (renders ONLY when isToday && there are late clock-ins / unassigned /
+  missing-address jobs — never render an empty strip), location + zone
+  filter row, TODAY/focal section with full `MobileJobCard`s, then
+  UPCOMING with one row per other day collapsed by default. Tapping an
+  UPCOMING row lazily fetches that day via `loadDayData()` (cached in
+  `dayDataCache` keyed by date) and renders compact 44px-min rows
+  (status bar + time + client name + tech-or-Unassigned + amount).
+  Week summary feeds from `GET /api/dispatch/week-summary` which
+  returns `{ from, to, days: [{date, job_count, revenue,
+  unassigned_count}], total_jobs, total_revenue, total_unassigned }`
+  for a Sun..Sat window (default = current week containing today, or
+  pass `?from=YYYY-MM-DD&to=YYYY-MM-DD`). Desktop Gantt path is
+  unchanged. Do NOT regress mobile back to a single-day list — the
+  weekly chart + risk strip is the orientation surface and removing it
+  forces operators to date-step blind.
 
 ## Hard Rules — Never Reverse
 - No QuickBooks bidirectional sync — QB is write-only (Qleno pushes to QB, never pulls)

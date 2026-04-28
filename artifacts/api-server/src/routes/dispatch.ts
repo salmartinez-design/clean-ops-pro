@@ -402,4 +402,98 @@ router.get("/", requireAuth, async (req, res) => {
   }
 });
 
+// [AI.7] GET /api/dispatch/week-summary
+//
+// Lightweight per-day aggregates for the mobile week view's risk-first
+// dashboard. Returns one row per date in the [from..to] window with job
+// count, revenue, and unassigned count. Used to render the 7-bar weekly
+// chart and the collapsed-day headers without fetching every job in the
+// week up-front. Today's full job data still flows through the existing
+// /api/dispatch?date=... endpoint; expanding any other day fetches that
+// day's full data on demand.
+//
+// Window defaults to current Sunday–Saturday when from/to omitted.
+router.get("/week-summary", requireAuth, async (req, res) => {
+  try {
+    const companyId = req.auth!.companyId;
+    const branch_id = req.query.branch_id as string | undefined;
+
+    // Resolve window. Default = current week Sun..Sat.
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dow = today.getDay(); // 0=Sun..6=Sat
+    const defaultFrom = new Date(today);
+    defaultFrom.setDate(today.getDate() - dow);
+    const defaultTo = new Date(defaultFrom);
+    defaultTo.setDate(defaultFrom.getDate() + 6);
+    const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const fromStr = (req.query.from as string) || fmt(defaultFrom);
+    const toStr = (req.query.to as string) || fmt(defaultTo);
+
+    const branchCond = branch_id && branch_id !== "all"
+      ? sql`AND j.branch_id = ${parseInt(branch_id)}`
+      : sql``;
+
+    // Per-day aggregate. Excludes cancelled. Unassigned = no assigned_user_id
+    // and no row in job_technicians.
+    const result = await db.execute(sql`
+      SELECT
+        scheduled_date::text AS date,
+        COUNT(*)::int AS job_count,
+        COALESCE(SUM(CAST(base_fee AS NUMERIC)), 0)::numeric AS revenue,
+        SUM(
+          CASE
+            WHEN assigned_user_id IS NULL
+              AND NOT EXISTS (SELECT 1 FROM job_technicians jt WHERE jt.job_id = j.id)
+            THEN 1 ELSE 0
+          END
+        )::int AS unassigned_count
+      FROM jobs j
+      WHERE company_id = ${companyId}
+        AND scheduled_date >= ${fromStr}
+        AND scheduled_date <= ${toStr}
+        AND status != 'cancelled'
+        ${branchCond}
+      GROUP BY scheduled_date
+      ORDER BY scheduled_date ASC
+    `);
+
+    type Row = { date: string; job_count: number; revenue: string; unassigned_count: number };
+    const rows = (result.rows as unknown as Row[]).map(r => ({
+      date: String(r.date),
+      job_count: Number(r.job_count),
+      revenue: parseFloat(String(r.revenue)),
+      unassigned_count: Number(r.unassigned_count),
+    }));
+
+    // Pad to all 7 days even when no jobs (so the chart renders bars for
+    // empty days as zero-height with day labels).
+    const byDate = new Map(rows.map(r => [r.date, r]));
+    const days: Array<{ date: string; job_count: number; revenue: number; unassigned_count: number }> = [];
+    const cursor = new Date(fromStr + "T00:00:00");
+    const end = new Date(toStr + "T00:00:00");
+    while (cursor <= end) {
+      const k = fmt(cursor);
+      days.push(byDate.get(k) ?? { date: k, job_count: 0, revenue: 0, unassigned_count: 0 });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    const total_jobs = days.reduce((s, d) => s + d.job_count, 0);
+    const total_revenue = days.reduce((s, d) => s + d.revenue, 0);
+    const total_unassigned = days.reduce((s, d) => s + d.unassigned_count, 0);
+
+    return res.json({
+      from: fromStr,
+      to: toStr,
+      days,
+      total_jobs,
+      total_revenue,
+      total_unassigned,
+    });
+  } catch (err) {
+    console.error("Week summary error:", err);
+    return res.status(500).json({ error: "Internal Server Error", message: "Failed to load week summary" });
+  }
+});
+
 export default router;
