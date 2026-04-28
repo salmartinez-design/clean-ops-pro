@@ -76,6 +76,7 @@ const AdminDashboard      = lazy(() => import("@/pages/admin/index"));
 const AdminCompanies      = lazy(() => import("@/pages/admin/companies"));
 const AdminBilling        = lazy(() => import("@/pages/admin/billing"));
 const AdminCleancyclopedia= lazy(() => import("@/pages/admin/cleancyclopedia"));
+const AdminZoneCoverage   = lazy(() => import("@/pages/admin/zone-coverage"));
 const NotificationsPage   = lazy(() => import("@/pages/notifications"));
 const NotFound            = lazy(() => import("@/pages/not-found"));
 
@@ -181,6 +182,7 @@ function Router() {
         <Route path="/admin/companies" component={AdminCompanies} />
         <Route path="/admin/billing" component={AdminBilling} />
         <Route path="/admin/cleancyclopedia" component={AdminCleancyclopedia} />
+        <Route path="/admin/zone-coverage" component={AdminZoneCoverage} />
 
         <Route component={NotFound} />
       </Switch>

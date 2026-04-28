@@ -103,6 +103,15 @@ function startFollowUpCron() {
 // Start listening immediately so health checks pass, then seed in the background
 app.listen(port, "0.0.0.0", () => {
   console.log("Server running on port", process.env.PORT || 3000);
+  // [AI.8] Geocode admin endpoint readiness signal. Logged at boot
+  // so the verification cycle has a deterministic line to grep for.
+  // Surfaces whether GOOGLE_MAPS_API_KEY is wired so the operator
+  // doesn't discover the gap mid-batch on the first geocode click.
+  if (process.env.GOOGLE_MAPS_API_KEY) {
+    console.log("[AI.8] geocode admin endpoint ready (GOOGLE_MAPS_API_KEY present)");
+  } else {
+    console.warn("[AI.8] geocode admin endpoint loaded but GOOGLE_MAPS_API_KEY is NOT set — /api/admin/geocode-clients will return 503 until the env var is provided");
+  }
   const recurringEngineEnabled = process.env.RECURRING_ENGINE_ENABLED !== "false";
   // [2026-04-22 J3] Startup invocation of runRecurringJobGeneration() removed —
   // Railway restart cascades caused 5x concurrent engine runs on the

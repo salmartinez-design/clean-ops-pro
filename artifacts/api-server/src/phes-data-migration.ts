@@ -2180,6 +2180,11 @@ async function runNotificationTemplateSeed() {
       // grid renders empty with a "Could not load schedule" toast.
       ["companies.commercial_hourly_rate",          sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS commercial_hourly_rate NUMERIC(10,2) NOT NULL DEFAULT 20.00`],
       ["companies.commercial_comp_mode",            sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS commercial_comp_mode TEXT NOT NULL DEFAULT 'allowed_hours'`],
+      // [AI.8] Geocode tracking on clients. lat/lng already exist; only
+      // adding the audit fields so the admin endpoint can skip
+      // already-geocoded rows and Sal can see when each row was last hit.
+      ["clients.geocoded_at",                       sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS geocoded_at TIMESTAMP`],
+      ["clients.geocode_source",                    sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS geocode_source TEXT`],
       ["clients.stripe_payment_method_id",          sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS stripe_payment_method_id TEXT`],
       ["clients.payment_source",                    sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS payment_source TEXT`],
       ["payments.job_id",                           sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS job_id INTEGER`],
