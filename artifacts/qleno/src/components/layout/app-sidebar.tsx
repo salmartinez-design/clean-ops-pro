@@ -3,7 +3,7 @@ import {
   Briefcase, Users, UserCheck, FileText, DollarSign,
   BarChart2, TrendingUp, FileText as FileTextIcon,
   BookOpen, Settings, AlertTriangle, HeartPulse, Building2,
-  UserPlus, MapPin,
+  UserPlus,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useAuthStore } from "@/lib/auth";
@@ -39,36 +39,10 @@ function useNeedsContactedCount(role: string | undefined) {
   return eligible ? count : 0;
 }
 
-// [AI.8] Zone-coverage missing-zip count for sidebar badge. Hits the
-// admin endpoint (super_admin OR owner). Polls every 60s — slower
-// than leads since the value changes only when an operator runs the
-// geocoder. Hidden at zero.
-function useZoneCoverageCount(role: string | undefined) {
-  const [count, setCount] = useState<number>(0);
-  const token = useAuthStore(state => state.token);
-
-  const eligible = role && ["owner", "admin"].includes(role);
-
-  const fetchCount = useCallback(async () => {
-    if (!eligible || !token) return;
-    try {
-      const res = await fetch("/api/admin/clients-missing-zip", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      setCount(typeof data?.total === "number" ? data.total : 0);
-    } catch { /* silent */ }
-  }, [eligible, token]);
-
-  useEffect(() => {
-    fetchCount();
-    const id = setInterval(fetchCount, 60_000);
-    return () => clearInterval(id);
-  }, [fetchCount]);
-
-  return eligible ? count : 0;
-}
+// [AI.10] useZoneCoverageCount hook removed — Zone Coverage page
+// retired in favor of server-side auto-resolution at boot. Sidebar
+// no longer surfaces a missing-zip badge; the data layer fixes
+// itself.
 
 const NAV_SECTIONS = [
   {
@@ -112,12 +86,8 @@ const NAV_SECTIONS = [
   {
     label: "Company",
     items: [
-      { title: "Settings",        url: "/company",                icon: Settings, roles: ["owner", "admin"] },
-      // [AI.8] Zone Coverage admin — operator's worklist for clients
-      // missing a zip. Badge shows the missing-zip count when > 0;
-      // hidden when 0 so a fully-covered tenant doesn't see noise.
-      { title: "Zone Coverage",   url: "/settings/zone-coverage", icon: MapPin,   roles: ["owner", "admin"], badge: "zone_coverage" },
-      { title: "Cleancyclopedia", url: "/cleancyclopedia",        icon: BookOpen },
+      { title: "Settings",        url: "/company",         icon: Settings, roles: ["owner", "admin"] },
+      { title: "Cleancyclopedia", url: "/cleancyclopedia", icon: BookOpen },
     ],
   },
 ];
@@ -149,7 +119,6 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
   }
 
   const needsContactedCount = useNeedsContactedCount(userInfo?.role);
-  const zoneCoverageCount = useZoneCoverageCount(userInfo?.role);
 
   const initials = userInfo
     ? `${userInfo.firstName[0] || ''}${userInfo.lastName[0] || ''}`.toUpperCase()
@@ -285,10 +254,7 @@ export function AppSidebar({ mobile = false, open = false, onClose }: AppSidebar
               .map(item => {
                 const active = isActive(item.url);
                 const Icon = item.icon;
-                const badgeCount =
-                  item.badge === "needs_contacted" ? needsContactedCount :
-                  item.badge === "zone_coverage" ? zoneCoverageCount :
-                  0;
+                const badgeCount = item.badge === "needs_contacted" ? needsContactedCount : 0;
                 return (
                   <Link key={item.title + item.url} href={item.url} onClick={mobile ? onClose : undefined}>
                     <div

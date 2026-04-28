@@ -11,6 +11,7 @@
 
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import { geocodeWithComponents } from "./lib/geocode";
 
 const PHES = 1; // company_id
 
@@ -989,6 +990,156 @@ export async function runPhesDataMigration(): Promise<void> {
     if (n > 0) console.log(`[phes-migration] Backfilled account_properties.zip on ${n} rows`);
   } catch (err: any) {
     console.warn("[phes-migration] property-zip-backfill — non-fatal:", err?.message ?? err);
+  }
+
+  // [AI.10] Server-side zip auto-resolver. AI.7.7 handles the easy
+  // case (regex-extract a 5-digit zip from address text). AI.10 picks
+  // up everything AI.7.7 couldn't fix — clients whose address text
+  // has no embedded zip — and resolves via Google Maps Geocoding.
+  //
+  // Replaces the retired AI.8 admin Zone Coverage page. No user
+  // surface, no manual buttons. Runs on every cold start; idempotent
+  // via `WHERE zip IS NULL` guard so subsequent boots are no-ops once
+  // the row is filled.
+  //
+  // Cost ceiling: 1000 calls × $0.005 = $5 max per run, and Google's
+  // first 10k/month is free. The hard cap is a runaway-bill guard —
+  // a single boot can't burn through more than $5 even if every row
+  // misses. Throttle 100ms between calls keeps us well under the
+  // 50 req/sec free-tier ceiling.
+  //
+  // Skipped categories (logged separately so the residual gap is
+  // visible without a UI):
+  //   - no_address_string  → no clients.address AND no recent job
+  //                          address text → can't geocode; needs
+  //                          manual entry via existing client edit
+  //                          modal
+  //   - geocode_failed     → Google returned no result or no
+  //                          postal_code component
+  //   - api_key_missing    → GOOGLE_MAPS_API_KEY env var unset; skip
+  //                          the whole pass with a warning
+  try {
+    if (!process.env.GOOGLE_MAPS_API_KEY) {
+      console.warn("[AI.10] zip backfill skipped — GOOGLE_MAPS_API_KEY not set");
+    } else {
+      const HARD_CAP = 1000;
+      const THROTTLE_MS = 100;
+
+      const preCountRow = await db.execute(sql`
+        SELECT count(*)::int AS n
+        FROM clients
+        WHERE company_id = ${PHES} AND zip IS NULL
+      `);
+      const preCount = Number((preCountRow.rows[0] as any)?.n ?? 0);
+
+      if (preCount === 0) {
+        console.log("[AI.10] zip backfill: pre=0 (nothing to do)");
+      } else {
+        // Pull NULL-zip clients with their best candidate address text.
+        const candidates = await db.execute(sql`
+          SELECT
+            c.id,
+            c.address AS clients_address,
+            c.city    AS clients_city,
+            c.state   AS clients_state,
+            (SELECT j.address_street FROM jobs j
+               WHERE j.client_id = c.id AND j.address_street IS NOT NULL
+               ORDER BY j.scheduled_date DESC NULLS LAST, j.id DESC LIMIT 1) AS recent_job_street,
+            (SELECT j.address_city FROM jobs j
+               WHERE j.client_id = c.id AND j.address_street IS NOT NULL
+               ORDER BY j.scheduled_date DESC NULLS LAST, j.id DESC LIMIT 1) AS recent_job_city,
+            (SELECT j.address_state FROM jobs j
+               WHERE j.client_id = c.id AND j.address_street IS NOT NULL
+               ORDER BY j.scheduled_date DESC NULLS LAST, j.id DESC LIMIT 1) AS recent_job_state
+          FROM clients c
+          WHERE c.company_id = ${PHES}
+            AND c.zip IS NULL
+          ORDER BY c.id
+          LIMIT ${HARD_CAP}
+        `);
+
+        const ZIP_TAIL_RE = /\b(\d{5})(?:-\d{4})?\s*$/;
+        let geocoded = 0;
+        let regexHit = 0;
+        let skippedNoAddress = 0;
+        let skippedFailed = 0;
+        let firstCall = true;
+
+        for (const row of candidates.rows as any[]) {
+          const id = Number(row.id);
+          const street = (row.clients_address ?? row.recent_job_street ?? "")?.trim() || null;
+          const city   = (row.clients_city    ?? row.recent_job_city   ?? "")?.trim() || null;
+          const state  = (row.clients_state   ?? row.recent_job_state  ?? "")?.trim() || null;
+
+          if (!street && !city) {
+            skippedNoAddress++;
+            continue;
+          }
+
+          // Step 1: cheap path — if the assembled string already ends
+          // with a 5-digit zip, extract it and skip the API call.
+          const candidateString = [street, city, state].filter(Boolean).join(", ");
+          const tailMatch = candidateString.match(ZIP_TAIL_RE);
+          if (tailMatch) {
+            const zip = tailMatch[1];
+            try {
+              await db.execute(sql`
+                UPDATE clients
+                SET zip   = ${zip},
+                    city  = COALESCE(NULLIF(city,  ''), ${city}),
+                    state = COALESCE(NULLIF(state, ''), ${state ?? "IL"})
+                WHERE id = ${id} AND company_id = ${PHES} AND zip IS NULL
+              `);
+              regexHit++;
+            } catch (err: any) {
+              console.warn(`[AI.10] update failed for client ${id} (regex path):`, err?.message ?? err);
+            }
+            continue;
+          }
+
+          // Step 2: Google Maps fallback. Throttle between calls.
+          if (!firstCall) await new Promise(r => setTimeout(r, THROTTLE_MS));
+          firstCall = false;
+          const geo = await geocodeWithComponents(candidateString);
+          if (!geo || !geo.zip) {
+            skippedFailed++;
+            continue;
+          }
+          try {
+            await db.execute(sql`
+              UPDATE clients
+              SET zip   = ${geo.zip},
+                  lat   = COALESCE(lat, ${geo.lat}),
+                  lng   = COALESCE(lng, ${geo.lng}),
+                  city  = COALESCE(NULLIF(city,  ''), ${geo.city  ?? city}),
+                  state = COALESCE(NULLIF(state, ''), ${geo.state ?? state ?? "IL"}),
+                  address = COALESCE(NULLIF(address, ''), ${geo.street ?? geo.formatted_address ?? street})
+              WHERE id = ${id} AND company_id = ${PHES} AND zip IS NULL
+            `);
+            geocoded++;
+          } catch (err: any) {
+            console.warn(`[AI.10] update failed for client ${id} (geocode path):`, err?.message ?? err);
+            skippedFailed++;
+          }
+        }
+
+        const postCountRow = await db.execute(sql`
+          SELECT count(*)::int AS n
+          FROM clients
+          WHERE company_id = ${PHES} AND zip IS NULL
+        `);
+        const postCount = Number((postCountRow.rows[0] as any)?.n ?? 0);
+
+        console.log(
+          `[AI.10] zip backfill: pre=${preCount} post=${postCount} ` +
+          `geocoded=${geocoded} regex_hit=${regexHit} ` +
+          `skipped=${skippedNoAddress + skippedFailed} ` +
+          `(no_address=${skippedNoAddress}, failed=${skippedFailed})`
+        );
+      }
+    }
+  } catch (err: any) {
+    console.warn("[AI.10] zip backfill — non-fatal:", err?.message ?? err);
   }
 
   // ── Seed booking_settings for PHES (company_id=1) ──────────────────────────
@@ -2180,11 +2331,15 @@ async function runNotificationTemplateSeed() {
       // grid renders empty with a "Could not load schedule" toast.
       ["companies.commercial_hourly_rate",          sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS commercial_hourly_rate NUMERIC(10,2) NOT NULL DEFAULT 20.00`],
       ["companies.commercial_comp_mode",            sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS commercial_comp_mode TEXT NOT NULL DEFAULT 'allowed_hours'`],
-      // [AI.8] Geocode tracking on clients. lat/lng already exist; only
-      // adding the audit fields so the admin endpoint can skip
-      // already-geocoded rows and Sal can see when each row was last hit.
-      ["clients.geocoded_at",                       sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS geocoded_at TIMESTAMP`],
-      ["clients.geocode_source",                    sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS geocode_source TEXT`],
+      // [AI.10] AI.8's geocoded_at + geocode_source columns retired —
+      // the user-facing Zone Coverage page is gone, and the boot-time
+      // backfill runs unconditionally with a `WHERE zip IS NULL` guard
+      // for idempotency. No need for per-row audit timestamps.
+      // DROP COLUMN IF EXISTS is idempotent: if the column was never
+      // created, this is a no-op; if AI.8 created it on a prior deploy,
+      // this drops it. Either way safe to run on every cold start.
+      ["clients.geocoded_at__drop",                 sql`ALTER TABLE clients DROP COLUMN IF EXISTS geocoded_at`],
+      ["clients.geocode_source__drop",              sql`ALTER TABLE clients DROP COLUMN IF EXISTS geocode_source`],
       ["clients.stripe_payment_method_id",          sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS stripe_payment_method_id TEXT`],
       ["clients.payment_source",                    sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS payment_source TEXT`],
       ["payments.job_id",                           sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS job_id INTEGER`],
