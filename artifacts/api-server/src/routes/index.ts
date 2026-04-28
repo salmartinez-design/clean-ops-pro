@@ -70,6 +70,7 @@ import subscriptionRouter from "./subscription.js";
 import referralsRouter from "./referrals.js";
 import contactRouter from "./contact.js";
 import geocodeRouter from "./geocode.js";
+import configRouter from "./config.js";
 
 const router: IRouter = Router();
 
@@ -144,5 +145,6 @@ router.use("/subscription", subscriptionRouter);
 router.use("/referrals", referralsRouter);
 router.use("/contact", contactRouter);
 router.use("/geocode", geocodeRouter);
+router.use("/config", configRouter);
 
 export default router;

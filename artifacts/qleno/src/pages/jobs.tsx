@@ -437,7 +437,10 @@ function InlineAddressEdit({ job, onUpdate }: { job: DispatchJob; onUpdate: () =
 
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // Load the Maps JS once on first edit (lazy, mirrors booking widget).
+  // Load the Maps JS once on first edit. Key fetched from the server at
+  // runtime so the frontend is resilient to a build that did not pick up
+  // GOOGLE_MAPS_API_KEY. Build-time VITE_GOOGLE_MAPS_API_KEY is the
+  // fallback for tenants where the server route is unreachable.
   useEffect(() => {
     if (!editing) return;
     const w = window as any;
@@ -448,18 +451,47 @@ function InlineAddressEdit({ job, onUpdate }: { job: DispatchJob; onUpdate: () =
       existing.addEventListener("load", () => setMapsReady(true));
       return;
     }
-    const key = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY ?? "";
-    if (!key) {
-      setError("Google Maps API key not configured.");
-      return;
-    }
-    const s = document.createElement("script");
-    s.id = scriptId;
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`;
-    s.async = true; s.defer = true;
-    s.onload = () => setMapsReady(true);
-    document.head.appendChild(s);
-  }, [editing]);
+
+    let cancelled = false;
+    (async () => {
+      // Try the runtime config endpoint first.
+      let key = "";
+      try {
+        const r = await fetch(`${API}/api/config/google-maps-key`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (r.ok) {
+          const body = await r.json().catch(() => ({}));
+          key = String(body?.key ?? "");
+        }
+      } catch { /* fall through to build-time fallback */ }
+      // Fallback: build-time injected key.
+      if (!key) {
+        key = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY ?? "";
+      }
+      if (cancelled) return;
+      if (!key) {
+        setError("Google Maps API key not configured. Set GOOGLE_MAPS_API_KEY on the server.");
+        return;
+      }
+      // Re-check whether another instance already injected the script while
+      // we were awaiting the fetch.
+      if (document.getElementById(scriptId)) {
+        const existing = document.getElementById(scriptId) as HTMLScriptElement;
+        existing.addEventListener("load", () => setMapsReady(true));
+        if ((window as any).google?.maps?.places) setMapsReady(true);
+        return;
+      }
+      const s = document.createElement("script");
+      s.id = scriptId;
+      s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`;
+      s.async = true; s.defer = true;
+      s.onload = () => setMapsReady(true);
+      document.head.appendChild(s);
+    })();
+
+    return () => { cancelled = true; };
+  }, [editing, API, token]);
 
   // Wire Google Places Autocomplete once Maps is loaded AND the input exists.
   useEffect(() => {
