@@ -17,6 +17,15 @@ import {
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 const FF = "'Plus Jakarta Sans', sans-serif";
+
+// [AI.7.3] LIVE_OPS gate. Qleno is in pre-launch — no real techs are
+// clocking in/out, so any time-based "late clock-in" detection compares
+// `now` against scheduled_time of historical seed/import data and floods
+// the Needs Attention strip with bogus alerts (e.g. "Juan Salazar · Jaira
+// Estrada — late 905m"). Flip this to true only after operations go
+// live. Data-quality alerts (unassigned, missing address, missing zone)
+// still fire because those are real regardless of operational status.
+const LIVE_OPS = false;
 // [AB] Shrunk SLOT_W 80 → 64 so the default 9-hour business window
 // (9 AM – 6 PM = 18 slots × 64 = 1152 px) fits inside a 1440 px viewport
 // alongside the 180 px sticky tech column (total 1332 px, ~100 px margin
@@ -1368,12 +1377,11 @@ function PBadge({ count, label, color, bg, border }: { count: number; label: str
 function MobileJobCard({ job, onClick }: { job: DispatchJob; onClick: () => void }) {
   const sc = STATUS[job.status] || STATUS.scheduled;
   const isCommercial = !!job.account_id;
-  // [AI.7.2] Zone chip — every job MUST surface its zone so techs in the
-  // field know which area they're working before tapping in. zone_name
-  // when mapped, zip-fallback (gray dot) when unmapped, "No zone" only
-  // when neither exists. Mirrored on desktop list cards + UPCOMING rows.
-  const zoneColor = job.zone_color || "#9CA3AF";
-  const zoneLabel = job.zone_name || (job.client_zip ? `Zip ${job.client_zip}` : "No zone");
+  // [AI.7.2] Zone chip — every job MUST have a mapped zone. A job without
+  // one is a data error (zip not mapped to a service_zone, or client
+  // missing a zip entirely) — surface it as a red warning so dispatchers
+  // fix the upstream record instead of routing techs blind.
+  const hasZone = !!job.zone_name && !!job.zone_color;
   return (
     <div onClick={onClick} style={{
       backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 12,
@@ -1392,15 +1400,26 @@ function MobileJobCard({ job, onClick }: { job: DispatchJob; onClick: () => void
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <div style={{ fontSize: 12, color: "var(--brand)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>{fmtSvc(job.service_type)}</div>
-            <span style={{
-              display: "inline-flex", alignItems: "center", gap: 5,
-              fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 12,
-              backgroundColor: `${zoneColor}1A`, color: job.zone_name ? "#1A1917" : "#6B6860",
-              border: `1px solid ${zoneColor}40`,
-            }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: zoneColor, flexShrink: 0 }} />
-              {zoneLabel}
-            </span>
+            {hasZone ? (
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: 5,
+                fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 12,
+                backgroundColor: `${job.zone_color}1A`, color: "#1A1917",
+                border: `1px solid ${job.zone_color}40`,
+              }}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: job.zone_color || "#9CA3AF", flexShrink: 0 }} />
+                {job.zone_name}
+              </span>
+            ) : (
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: 4,
+                fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 12,
+                backgroundColor: "#FEE2E2", color: "#991B1B", border: "1px solid #FCA5A5",
+              }}>
+                <AlertTriangle size={10} />
+                {job.client_zip ? `Unmapped zip ${job.client_zip}` : "Zone missing"}
+              </span>
+            )}
           </div>
         </div>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 20, backgroundColor: sc.bg, border: `1px solid ${sc.border}`, fontSize: 11, fontWeight: 700, color: sc.text, textTransform: "capitalize", flexShrink: 0, marginLeft: 10 }}>
@@ -2278,7 +2297,12 @@ export default function JobsPage() {
     // counts when expanded.
     const NOW_MS = Date.now();
     const NOW_MINS = (() => { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); })();
-    const lateClockIns = isToday && data ? data.employees.flatMap(e =>
+    // [AI.7.3] LIVE_OPS gates time-based clock-in alerts. Pre-launch the
+    // historical seed data has no clock-ins, so every past job today
+    // qualified as "late" — flooding the strip and drowning out real
+    // data-quality issues (unassigned, missing zone). Flip LIVE_OPS=true
+    // once operations are running.
+    const lateClockIns = LIVE_OPS && isToday && data ? data.employees.flatMap(e =>
       e.jobs.filter(j =>
         j.status !== "cancelled" && j.status !== "complete" &&
         !j.clock_entry?.clock_in_at &&
@@ -2293,7 +2317,21 @@ export default function JobsPage() {
         (!j.address || j.address.trim().length === 0)
       )
     ) : [];
-    const attentionCount = lateClockIns.length + (unassignedToday.length > 0 ? 1 : 0) + (missingAddress.length > 0 ? 1 : 0);
+    // [AI.7.2] Missing-zone surfacing. Every job MUST be in a service zone
+    // — a job without one means a zip didn't map (zone seed gap) or the
+    // client has no zip at all (intake gap). Either way, block the
+    // dispatcher's view of "all green" until it's fixed.
+    const missingZone = isToday && data ? [
+      ...data.employees.flatMap(e => e.jobs),
+      ...(data.unassigned_jobs ?? []),
+    ].filter(j =>
+      j.status !== "cancelled" && j.status !== "complete" &&
+      (!j.zone_name || !j.zone_color)
+    ) : [];
+    const attentionCount = lateClockIns.length
+      + (unassignedToday.length > 0 ? 1 : 0)
+      + (missingAddress.length > 0 ? 1 : 0)
+      + (missingZone.length > 0 ? 1 : 0);
 
     // Sort week days for "Upcoming" section: focal day's date first (rendered
     // separately), then other days ordered by date with future first.
@@ -2430,16 +2468,24 @@ export default function JobsPage() {
                 Needs Attention ({attentionCount})
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {lateClockIns.map(({ job, tech_name }) => (
-                  <button key={`late-${job.id}`} onClick={() => setSelectedJob(job)}
-                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 6, border: "none", background: "rgba(255,255,255,0.6)", cursor: "pointer", textAlign: "left", fontFamily: FF, width: "100%" }}>
-                    <Clock size={14} color="#DC2626" />
-                    <span style={{ fontSize: 12, color: "#1A1917", fontWeight: 600, flex: 1 }}>
-                      {tech_name} · {job.client_name} — late {Math.max(0, NOW_MINS - timeToMins(job.scheduled_time))}m
-                    </span>
-                    <ChevronRight size={12} color="#6B6860" />
-                  </button>
-                ))}
+                {lateClockIns.map(({ job, tech_name }) => {
+                  // [AI.7.3] Zone color dot on late rows so an operator
+                  // triaging the alert knows which area before tapping in.
+                  const hasZoneL = !!job.zone_name && !!job.zone_color;
+                  return (
+                    <button key={`late-${job.id}`} onClick={() => setSelectedJob(job)}
+                      style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 6, border: "none", background: "rgba(255,255,255,0.6)", cursor: "pointer", textAlign: "left", fontFamily: FF, width: "100%" }}>
+                      <Clock size={14} color="#DC2626" />
+                      {hasZoneL && (
+                        <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: job.zone_color!, flexShrink: 0 }} title={job.zone_name!} />
+                      )}
+                      <span style={{ fontSize: 12, color: "#1A1917", fontWeight: 600, flex: 1 }}>
+                        {tech_name} · {job.client_name} — late {Math.max(0, NOW_MINS - timeToMins(job.scheduled_time))}m
+                      </span>
+                      <ChevronRight size={12} color="#6B6860" />
+                    </button>
+                  );
+                })}
                 {unassignedToday.length > 0 && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 6, background: "rgba(255,255,255,0.6)" }}>
                     <AlertTriangle size={14} color="#D97706" />
@@ -2453,6 +2499,14 @@ export default function JobsPage() {
                     <AlertTriangle size={14} color="#DC2626" />
                     <span style={{ fontSize: 12, color: "#1A1917", fontWeight: 600 }}>
                       {missingAddress.length} job{missingAddress.length !== 1 ? "s" : ""} missing address
+                    </span>
+                  </div>
+                )}
+                {missingZone.length > 0 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 6, background: "rgba(255,255,255,0.6)" }}>
+                    <AlertTriangle size={14} color="#DC2626" />
+                    <span style={{ fontSize: 12, color: "#1A1917", fontWeight: 600 }}>
+                      {missingZone.length} job{missingZone.length !== 1 ? "s" : ""} missing zone — fix client zip
                     </span>
                   </div>
                 )}
@@ -2600,13 +2654,14 @@ export default function JobsPage() {
                           ) : (
                             dayJobs.map(({ job: j, tech }, jIdx) => {
                               const sc = STATUS[j.status] || STATUS.scheduled;
-                              // [AI.7.2] Zone color dot on every compact row so
-                              // operators can spot the zone at a glance without
-                              // expanding the card.
-                              const zoneColorRow = j.zone_color || "#9CA3AF";
+                              // [AI.7.2] Zone indicator on every compact row.
+                              // Missing zone renders as a red AlertTriangle
+                              // marker — never a silent gray dot. Operators
+                              // need to see the data gap, not paper over it.
+                              const hasZoneRow = !!j.zone_name && !!j.zone_color;
                               return (
                                 <button key={j.id} onClick={() => setSelectedJob(j)}
-                                  title={j.zone_name || (j.client_zip ? `Zip ${j.client_zip}` : "No zone")}
+                                  title={hasZoneRow ? j.zone_name! : (j.client_zip ? `Unmapped zip ${j.client_zip}` : "Zone missing")}
                                   style={{
                                     display: "flex", alignItems: "center", gap: 8, width: "100%",
                                     padding: "9px 14px", border: "none", background: "transparent",
@@ -2614,7 +2669,11 @@ export default function JobsPage() {
                                     borderTop: jIdx === 0 ? "none" : "1px solid #F0EEE9",
                                   }}>
                                   <div style={{ width: 3, height: 22, borderRadius: 2, backgroundColor: sc.dot, flexShrink: 0 }} />
-                                  <div style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: zoneColorRow, flexShrink: 0 }} />
+                                  {hasZoneRow ? (
+                                    <div style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: j.zone_color!, flexShrink: 0 }} />
+                                  ) : (
+                                    <AlertTriangle size={10} color="#DC2626" style={{ flexShrink: 0 }} />
+                                  )}
                                   <span style={{ fontSize: 11, fontWeight: 700, color: "#6B6860", width: 56, flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
                                     {j.scheduled_time ? fmtTime(j.scheduled_time) : "—"}
                                   </span>
@@ -2858,29 +2917,39 @@ export default function JobsPage() {
                 ) : (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
                     {allJobs.map(j => {
-                      // [AI.7.2] Zone chip — desktop list cards already show
-                      // zone via the colored left border, but the operator
-                      // had to memorize the color → zone mapping. Adding the
-                      // explicit zone name eliminates the recall step.
-                      const zoneColorD = j.zone_color || "#9CA3AF";
-                      const zoneLabelD = j.zone_name || (j.client_zip ? `Zip ${j.client_zip}` : "No zone");
+                      // [AI.7.2] Zone chip on desktop list cards. Missing
+                      // zone is a hard error — render red, not gray —
+                      // because routing a tech without a zone is a real
+                      // dispatch failure, not a stylistic choice.
+                      const hasZoneD = !!j.zone_name && !!j.zone_color;
                       return (
                       <div key={j.id} onClick={() => setSelectedJob(j)}
-                        style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 10, padding: "14px 16px", cursor: "pointer", borderLeft: `4px solid ${j.zone_color || "#E5E7EB"}` }}>
+                        style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 10, padding: "14px 16px", cursor: "pointer", borderLeft: `4px solid ${hasZoneD ? j.zone_color : "#DC2626"}` }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                           <div>
                             <div style={{ fontSize: 14, fontWeight: 800, color: "#1A1917" }}>{j.client_name}</div>
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2, flexWrap: "wrap" }}>
                               <div style={{ fontSize: 11, color: "var(--brand)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>{fmtSvc(j.service_type)}</div>
-                              <span style={{
-                                display: "inline-flex", alignItems: "center", gap: 5,
-                                fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 10,
-                                backgroundColor: `${zoneColorD}1A`, color: j.zone_name ? "#1A1917" : "#6B6860",
-                                border: `1px solid ${zoneColorD}40`,
-                              }}>
-                                <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: zoneColorD, flexShrink: 0 }} />
-                                {zoneLabelD}
-                              </span>
+                              {hasZoneD ? (
+                                <span style={{
+                                  display: "inline-flex", alignItems: "center", gap: 5,
+                                  fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 10,
+                                  backgroundColor: `${j.zone_color}1A`, color: "#1A1917",
+                                  border: `1px solid ${j.zone_color}40`,
+                                }}>
+                                  <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: j.zone_color || "#9CA3AF", flexShrink: 0 }} />
+                                  {j.zone_name}
+                                </span>
+                              ) : (
+                                <span style={{
+                                  display: "inline-flex", alignItems: "center", gap: 4,
+                                  fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 10,
+                                  backgroundColor: "#FEE2E2", color: "#991B1B", border: "1px solid #FCA5A5",
+                                }}>
+                                  <AlertTriangle size={9} />
+                                  {j.client_zip ? `Unmapped zip ${j.client_zip}` : "Zone missing"}
+                                </span>
+                              )}
                             </div>
                           </div>
                           <span style={{ fontSize: 11, fontWeight: 700, color: (STATUS[j.status] || STATUS.scheduled).text, backgroundColor: (STATUS[j.status] || STATUS.scheduled).bg, padding: "3px 8px", borderRadius: 20, textTransform: "capitalize" }}>{j.status.replace("_", " ")}</span>
