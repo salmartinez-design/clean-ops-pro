@@ -148,6 +148,35 @@
   When adding a new commission surface, branch on `account_id` and
   delegate to one of these three sources of truth — never inline
   `× 0.35` or `× 20` again.
+- **Job visual status — single source of truth**: every card surface
+  (dispatch Gantt chip, mobile MobileJobCard, mobile UPCOMING compact
+  rows, desktop list cards, my-jobs tech view) routes through
+  `getJobVisualStatus(job, now)` in `lib/job-status.ts`. Returns one
+  of seven canonical states; consumers compose the matching
+  `STATUS_VISUALS[state]` (stripe color, body opacity, badge,
+  strikethrough, desaturate, border override) onto their card. New
+  surfaces MUST NOT re-derive status from `job.status` directly.
+  | State          | Trigger                                                                        | Treatment                                                          |
+  |----------------|--------------------------------------------------------------------------------|--------------------------------------------------------------------|
+  | scheduled      | status='scheduled', no clock-in yet                                            | Default tech color, full opacity                                   |
+  | active         | clocked-in (clock_in_at && !clock_out_at) or status='in_progress'              | Tech color + 4px amber (#F59E0B) left stripe + slow opacity pulse  |
+  | completed      | status='complete'                                                              | Tech color at 60% opacity + green checkmark badge                  |
+  | late_clockin   | today + scheduled_time + 5 min, no clock-in                                    | Existing red 2px border                                            |
+  | no_show        | today + scheduled_time + 30 min, no clock-in                                   | Solid red border + "NO SHOW" badge, 85% opacity                    |
+  | cancelled      | status='cancelled'                                                             | Tech color desaturated to grayscale + strikethrough on title       |
+  | unassigned     | assigned_user_id is null                                                       | Amber border, full opacity                                         |
+  Active stripe animation uses CSS keyframes (`qleno-active-stripe-pulse`,
+  2 s ease-in-out, 1.0 → 0.6 → 1.0). `prefers-reduced-motion` drops
+  the animation to a steady solid stripe. Inject once per session via
+  `ensureJobStatusStyles()` from any component that mounts a card.
+  The Legend popover (`components/legend-popover.tsx`) shows all seven
+  states with example tiles + descriptions; mounted from the dispatch
+  top bar's Legend button (desktop popover, mobile bottom sheet). Late
+  / no_show are derived from time, NOT stored — DO NOT add new enum
+  values to `job_status`. The DB enum stays
+  `scheduled | in_progress | complete | cancelled` because operational
+  state lives in the clock entry + scheduled time, not the status
+  column.
 
 ## Hard Rules — Never Reverse
 - No QuickBooks bidirectional sync — QB is write-only (Qleno pushes to QB, never pulls)

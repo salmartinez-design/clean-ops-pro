@@ -4,6 +4,7 @@ import { useAuthStore } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Car, X, Check, Eye } from "lucide-react";
 import { useEmployeeView } from "@/contexts/employee-view-context";
+import { getJobVisualStatus, STATUS_VISUALS, ensureJobStatusStyles } from "@/lib/job-status";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -348,16 +349,46 @@ function JobCard({ job, empPos, onRefresh, isPreviewMode }: { job: Job; empPos: 
     cancelled: { bg: "#F3F4F6", color: "#6B7280" },
   };
   const sc = statusColors[job.status] || statusColors.scheduled;
+  // [AI.7.5] Visual status — same canonical helper as the dispatch grid.
+  // For the tech view we mostly care about active (amber stripe + pulse)
+  // and completed (60% body opacity + checkmark badge); cancelled and
+  // scheduled fall through to existing baseline.
+  const visual = STATUS_VISUALS[getJobVisualStatus({
+    status: job.status,
+    scheduled_date: job.scheduled_date,
+    scheduled_time: job.scheduled_time,
+    assigned_user_id: (job as any).assigned_user_id ?? null,
+    clock_entry: entry ? { clock_in_at: entry.clock_in_at, clock_out_at: entry.clock_out_at } : null,
+  })];
+  useEffect(() => { ensureJobStatusStyles(); }, []);
 
   return (
     <div style={{
       backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC",
-      borderLeft: `3px solid var(--brand)`, borderRadius: 12,
-      padding: 18, margin: "0 0 12px 0",
-      opacity: job.status === "cancelled" ? 0.5 : 1,
+      borderRadius: 12, padding: 18, margin: "0 0 12px 0",
+      borderLeft: visual.stripe ? "none" : `3px solid var(--brand)`,
+      position: "relative", overflow: "hidden",
+      opacity: visual.bodyOpacity * (job.status === "cancelled" ? 1 : 1),
+      filter: visual.desaturate ? "grayscale(1)" : "none",
     }}>
+      {visual.stripe && (
+        <div className="qleno-active-stripe" style={{
+          position: "absolute", top: 0, bottom: 0, left: 0, width: 4,
+          backgroundColor: visual.stripe,
+        }} />
+      )}
+      {visual.showCheckmark && (
+        <div style={{ position: "absolute", top: 12, right: 12, width: 18, height: 18, borderRadius: "50%", backgroundColor: "#16A34A", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Check size={11} color="#FFFFFF" strokeWidth={3} />
+        </div>
+      )}
+      {visual.showNoShowBadge && (
+        <div style={{ position: "absolute", top: 10, right: 10, fontSize: 9, fontWeight: 800, color: "#FFFFFF", backgroundColor: "#991B1B", padding: "3px 7px", borderRadius: 4, letterSpacing: "0.05em" }}>
+          NO SHOW
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, backgroundColor: sc.bg, color: sc.color, textTransform: "capitalize" }}>
+        <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, backgroundColor: sc.bg, color: sc.color, textTransform: "capitalize", textDecoration: visual.strikethrough ? "line-through" : "none" }}>
           {job.status.replace("_", " ")}
         </span>
         <span style={{ fontSize: 20, fontWeight: 700, color: "#1A1917" }}>${job.base_fee.toFixed(2)}</span>

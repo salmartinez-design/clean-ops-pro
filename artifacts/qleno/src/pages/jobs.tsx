@@ -12,8 +12,10 @@ import {
 import {
   ChevronLeft, ChevronRight, ChevronDown, Plus, Clock, Camera, X, MapPin, User,
   DollarSign, CheckCircle, AlertCircle, LayoutGrid, List, Calendar,
-  Building2, AlertTriangle, Repeat, Phone, MessageSquare, Send,
+  Building2, AlertTriangle, Repeat, Phone, MessageSquare, Send, Check, Info,
 } from "lucide-react";
+import { getJobVisualStatus, STATUS_VISUALS, ensureJobStatusStyles } from "@/lib/job-status";
+import LegendPopover from "@/components/legend-popover";
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 const FF = "'Plus Jakarta Sans', sans-serif";
@@ -1390,16 +1392,39 @@ function MobileJobCard({ job, onClick }: { job: DispatchJob; onClick: () => void
   // missing a zip entirely) — surface it as a red warning so dispatchers
   // fix the upstream record instead of routing techs blind.
   const hasZone = !!job.zone_name && !!job.zone_color;
+  // [AI.7.5] Visual status — determines stripe (active), opacity
+  // (completed), strikethrough/desaturate (cancelled), checkmark/no-show
+  // overlays. Mobile card uses the same canonical helper as the desktop
+  // Gantt chip and compact rows.
+  const visual = STATUS_VISUALS[getJobVisualStatus(job)];
   return (
     <div onClick={onClick} style={{
       backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 12,
-      padding: "14px 16px", marginBottom: 10, cursor: "pointer",
-      borderLeft: `4px solid ${sc.dot}`, fontFamily: FF,
+      padding: "14px 16px", marginBottom: 10, cursor: "pointer", position: "relative",
+      borderLeft: visual.stripe ? "none" : `4px solid ${visual.borderOverride ?? sc.dot}`,
+      fontFamily: FF, opacity: visual.bodyOpacity,
+      filter: visual.desaturate ? "grayscale(1)" : "none", overflow: "hidden",
     }}>
+      {visual.stripe && (
+        <div className="qleno-active-stripe" style={{
+          position: "absolute", top: 0, bottom: 0, left: 0, width: 4,
+          backgroundColor: visual.stripe,
+        }} />
+      )}
+      {visual.showCheckmark && (
+        <div style={{ position: "absolute", top: 8, right: 8, width: 18, height: 18, borderRadius: "50%", backgroundColor: "#16A34A", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2 }}>
+          <Check size={11} color="#FFFFFF" strokeWidth={3} />
+        </div>
+      )}
+      {visual.showNoShowBadge && (
+        <div style={{ position: "absolute", top: 8, right: 8, fontSize: 9, fontWeight: 800, color: "#FFFFFF", backgroundColor: "#991B1B", padding: "3px 7px", borderRadius: 4, letterSpacing: "0.05em", zIndex: 2 }}>
+          NO SHOW
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2, flexWrap: "wrap" }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: "#1A1917" }}>{job.client_name}</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#1A1917", textDecoration: visual.strikethrough ? "line-through" : "none" }}>{job.client_name}</div>
             {isCommercial && (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "var(--brand-dim, #EBF4FF)", color: "var(--brand, #00C9A0)" }}>
                 <Building2 size={9}/> Comm.
@@ -1847,25 +1872,16 @@ function JobChip({ job, onClick, assignedName, isUnassigned }: { job: DispatchJo
   // ~0.79) we flip to dark text so the chip stays legible. Fallback when
   // zone is null/missing: neutral #9CA3AF (Tailwind gray-400) with white
   // text — distinct from "colored" chips without being alarming.
-  const todayKey = new Date().toISOString().split("T")[0];
-  const isLiveDay = job.scheduled_date === todayKey;
-  const nowMins = (() => { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); })();
-  const startMins = timeToMins(job.scheduled_time);
-  const isRisky = isLiveDay
-    && job.status !== "cancelled"
-    && job.status !== "complete"
-    && !job.clock_entry?.clock_in_at
-    && nowMins >= (startMins - 15);
-  const isInProgressStatus = job.status === "in_progress";
+  // [AI.7.5] Visual status routes through the canonical helper so the
+  // Gantt chip, mobile card, compact rows, my-jobs view, and Legend
+  // all paint from one source. Status drives the border override,
+  // amber stripe, body opacity, checkmark badge, and no-show badge.
+  const visual = STATUS_VISUALS[getJobVisualStatus(job)];
 
   const ZONE_FALLBACK = "#9CA3AF";
   const bgColor = job.zone_color || ZONE_FALLBACK;
   const isLightZone = zoneLuminance(job.zone_color) > 0.65;
-  const borderColor =
-    isRisky ? "#DC2626" :
-    isInProgressStatus ? "#F59E0B" :
-    isComplete ? "#16A34A" :
-    bgColor;
+  const borderColor = visual.borderOverride ?? bgColor;
 
   const primaryText   = isLightZone ? "#1A1917" : "#FFFFFF";
   const secondaryText = isLightZone ? "#4B5563" : "rgba(255,255,255,0.90)";
@@ -1882,23 +1898,54 @@ function JobChip({ job, onClick, assignedName, isUnassigned }: { job: DispatchJo
       onClick={e => { e.stopPropagation(); setHovered(false); onClick(job); }}
       onMouseEnter={onEnter} onMouseLeave={onLeave}
       {...(isComplete ? {} : { ...listeners, ...attributes })}
-      style={{ position: "absolute", top: 10, left, width, height: ROW_H - 20, borderRadius: 8, backgroundColor: bgColor, border: `2px solid ${borderColor}`, padding: "8px 10px", boxSizing: "border-box", overflow: "visible", cursor: isComplete ? "default" : isDragging ? "grabbing" : "grab", opacity: isDragging ? 0.3 : isComplete ? 0.7 : 1, transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined, zIndex: hovered ? 50 : isDragging ? 0 : 2, userSelect: "none", display: "flex", flexDirection: "column", justifyContent: "center", gap: 2, boxShadow: "0 1px 4px rgba(0,0,0,0.12)" }}>
-      {/* [X] Primary label: {client_name} · {scope}. Tech name stays on the
-          row axis only (initials + label on the left) — kept out of the
-          card body entirely, per MC's Job Schedule convention. Icons still
-          glance-signal clock-in, photos, and recurring frequency. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
-        {job.clock_entry?.clock_in_at && <Clock size={9} style={{ color: iconTint, flexShrink: 0 }} />}
-        {job.after_photo_count > 0 && <Camera size={9} style={{ color: iconTint, flexShrink: 0 }} />}
-        {isRecurring && <Repeat size={9} style={{ color: iconTint, flexShrink: 0 }} />}
-        <span style={{ fontSize: 11, fontWeight: 700, color: primaryText, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {job.client_name} · {scopeLabel(job)}
-        </span>
+      style={{
+        position: "absolute", top: 10, left, width, height: ROW_H - 20,
+        borderRadius: 8, backgroundColor: bgColor,
+        border: `${visual.borderOverride ? 2 : 2}px solid ${borderColor}`,
+        boxSizing: "border-box", overflow: "visible",
+        cursor: isComplete ? "default" : isDragging ? "grabbing" : "grab",
+        opacity: isDragging ? 0.3 : visual.bodyOpacity,
+        filter: visual.desaturate ? "grayscale(1)" : "none",
+        transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined,
+        zIndex: hovered ? 50 : isDragging ? 0 : 2,
+        userSelect: "none", display: "flex", flexDirection: "row",
+        boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
+      }}>
+      {/* [AI.7.5] Active stripe — 4px amber bar with slow opacity pulse.
+          Reduced-motion users see a steady solid bar (CSS media query
+          drops the animation). Stripe-only animation, body stays still. */}
+      {visual.stripe && (
+        <div className="qleno-active-stripe" style={{
+          width: 4, alignSelf: "stretch", backgroundColor: visual.stripe,
+          borderTopLeftRadius: 6, borderBottomLeftRadius: 6, flexShrink: 0,
+        }} />
+      )}
+      <div style={{ flex: 1, minWidth: 0, padding: "8px 10px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 2 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+          {job.clock_entry?.clock_in_at && <Clock size={9} style={{ color: iconTint, flexShrink: 0 }} />}
+          {job.after_photo_count > 0 && <Camera size={9} style={{ color: iconTint, flexShrink: 0 }} />}
+          {isRecurring && <Repeat size={9} style={{ color: iconTint, flexShrink: 0 }} />}
+          <span style={{ fontSize: 11, fontWeight: 700, color: primaryText, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textDecoration: visual.strikethrough ? "line-through" : "none" }}>
+            {job.client_name} · {scopeLabel(job)}
+          </span>
+        </div>
+        {width > 100 && (
+          <span style={{ fontSize: 10, color: secondaryText, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {fmtTime(job.scheduled_time)} – {fmtTime(minsToStr(timeToMins(job.scheduled_time) + job.duration_minutes))}
+          </span>
+        )}
       </div>
-      {width > 100 && (
-        <span style={{ fontSize: 10, color: secondaryText, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {fmtTime(job.scheduled_time)} – {fmtTime(minsToStr(timeToMins(job.scheduled_time) + job.duration_minutes))}
-        </span>
+      {/* [AI.7.5] Completed checkmark badge — top-right corner. */}
+      {visual.showCheckmark && (
+        <div style={{ position: "absolute", top: -4, right: -4, width: 16, height: 16, borderRadius: "50%", backgroundColor: "#16A34A", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", zIndex: 3 }}>
+          <Check size={10} color="#FFFFFF" strokeWidth={3} />
+        </div>
+      )}
+      {/* [AI.7.5] No-show badge — top-right text label. */}
+      {visual.showNoShowBadge && (
+        <div style={{ position: "absolute", top: -6, right: -2, fontSize: 8, fontWeight: 800, color: "#FFFFFF", backgroundColor: "#991B1B", padding: "2px 5px", borderRadius: 3, letterSpacing: "0.05em", zIndex: 3, boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }}>
+          NO SHOW
+        </div>
       )}
       {hovered && !isDragging && <JobHoverCard job={job} assignedName={assignedName} />}
     </div>
@@ -2018,6 +2065,11 @@ export default function JobsPage() {
   const { toast } = useToast();
   const { activeBranchId } = useBranch();
   const isAllLocations = activeBranchId === "all";
+  // [AI.7.5] Inject pulse keyframes once on mount; idempotent.
+  useEffect(() => { ensureJobStatusStyles(); }, []);
+  const [legendOpen, setLegendOpen] = useState(false);
+  const legendBtnRef = useRef<HTMLButtonElement | null>(null);
+  const [legendAnchor, setLegendAnchor] = useState<DOMRect | null>(null);
   const [selectedDate, setSelectedDate] = useState(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; });
   const [data, setData] = useState<DispatchData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -2560,6 +2612,16 @@ export default function JobsPage() {
                 )}
               </div>
             )}
+
+            {/* [AI.7.5] Mobile Legend button — opens bottom-sheet popover. */}
+            <button
+              onClick={() => setLegendOpen(o => !o)}
+              style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, padding: "5px 10px", borderRadius: 6, border: "1.5px solid #E5E2DC", backgroundColor: "#FAFAF9", color: "#6B7280", cursor: "pointer", fontFamily: FF, marginLeft: "auto" }}
+              title="Show status legend"
+            >
+              <Info size={11} />
+              Legend
+            </button>
           </div>
 
           {/* [AI.7] FOCAL DAY (TODAY) — full job cards. Heading carries the
@@ -2667,6 +2729,11 @@ export default function JobsPage() {
                               // marker — never a silent gray dot. Operators
                               // need to see the data gap, not paper over it.
                               const hasZoneRow = !!j.zone_name && !!j.zone_color;
+                              // [AI.7.5] Status routing: amber stripe replaces
+                              // status bar for active; checkmark/no-show for
+                              // completed/no-show; row opacity for cancelled.
+                              const visualRow = STATUS_VISUALS[getJobVisualStatus(j)];
+                              const stripeColor = visualRow.stripe ?? (visualRow.borderOverride ?? sc.dot);
                               return (
                                 <button key={j.id} onClick={() => setSelectedJob(j)}
                                   title={hasZoneRow ? j.zone_name! : (j.client_zip ? `Unmapped zip ${j.client_zip}` : "Zone missing")}
@@ -2675,8 +2742,11 @@ export default function JobsPage() {
                                     padding: "9px 14px", border: "none", background: "transparent",
                                     cursor: "pointer", fontFamily: FF, textAlign: "left", minHeight: 44,
                                     borderTop: jIdx === 0 ? "none" : "1px solid #F0EEE9",
+                                    opacity: visualRow.bodyOpacity,
+                                    filter: visualRow.desaturate ? "grayscale(1)" : "none",
                                   }}>
-                                  <div style={{ width: 3, height: 22, borderRadius: 2, backgroundColor: sc.dot, flexShrink: 0 }} />
+                                  <div className={visualRow.stripe ? "qleno-active-stripe" : undefined}
+                                    style={{ width: 3, height: 22, borderRadius: 2, backgroundColor: stripeColor, flexShrink: 0 }} />
                                   {hasZoneRow ? (
                                     <div style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: j.zone_color!, flexShrink: 0 }} />
                                   ) : (
@@ -2686,7 +2756,7 @@ export default function JobsPage() {
                                     {j.scheduled_time ? fmtTime(j.scheduled_time) : "—"}
                                   </span>
                                   <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: 13, fontWeight: 700, color: "#1A1917", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    <div style={{ fontSize: 13, fontWeight: 700, color: "#1A1917", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: visualRow.strikethrough ? "line-through" : "none" }}>
                                       {j.client_name}
                                     </div>
                                     {tech ? (
@@ -2697,6 +2767,14 @@ export default function JobsPage() {
                                       <div style={{ fontSize: 10, color: "#DC2626", fontWeight: 700 }}>Unassigned</div>
                                     )}
                                   </div>
+                                  {visualRow.showCheckmark && (
+                                    <Check size={12} color="#16A34A" strokeWidth={3} style={{ flexShrink: 0 }} />
+                                  )}
+                                  {visualRow.showNoShowBadge && (
+                                    <span style={{ fontSize: 8, fontWeight: 800, color: "#FFFFFF", backgroundColor: "#991B1B", padding: "2px 5px", borderRadius: 3, letterSpacing: "0.05em", flexShrink: 0 }}>
+                                      NO SHOW
+                                    </span>
+                                  )}
                                   <span style={{ fontSize: 12, fontWeight: 800, color: "#1A1917", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
                                     ${(j.billed_amount ?? j.amount ?? 0).toFixed(0)}
                                   </span>
@@ -2718,6 +2796,7 @@ export default function JobsPage() {
           <JobPanel job={selectedJob} employees={data?.employees || []} onClose={() => setSelectedJob(null)} onUpdate={load} mobile />
         )}
         <JobWizard open={showWizard} onClose={() => setShowWizard(false)} onCreated={() => { setShowWizard(false); load(); }} />
+        <LegendPopover open={legendOpen} onClose={() => setLegendOpen(false)} mobile={isMobile} anchorRect={legendAnchor} />
       </DashboardLayout>
     );
   }
@@ -2826,6 +2905,22 @@ export default function JobsPage() {
                 </div>
               )}
 
+              {/* [AI.7.5] Legend button — opens popover decoding the 7
+                  canonical status visuals so techs/office can read the
+                  board without memorizing the color/border code. */}
+              <button
+                ref={legendBtnRef}
+                onClick={() => {
+                  setLegendAnchor(legendBtnRef.current?.getBoundingClientRect() ?? null);
+                  setLegendOpen(o => !o);
+                }}
+                style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, padding: "5px 10px", borderRadius: 7, border: "1.5px solid #E5E2DC", backgroundColor: legendOpen ? "var(--brand-dim)" : "#FAFAF9", color: legendOpen ? "var(--brand)" : "#6B7280", cursor: "pointer", fontFamily: FF, flexShrink: 0 }}
+                title="Show status legend"
+              >
+                <Info size={12} />
+                Legend
+              </button>
+
               {/* View toggle */}
               <div style={{ display: "flex", border: "1px solid #E5E2DC", borderRadius: 8, overflow: "hidden" }}>
                 <button onClick={() => setDesktopView("timeline")} style={{ padding: "5px 10px", border: "none", cursor: "pointer", backgroundColor: desktopView === "timeline" ? "var(--brand)" : "#FAFAF9", color: desktopView === "timeline" ? "#fff" : "#6B7280", display: "flex" }}><LayoutGrid size={14} /></button>
@@ -2930,12 +3025,35 @@ export default function JobsPage() {
                       // because routing a tech without a zone is a real
                       // dispatch failure, not a stylistic choice.
                       const hasZoneD = !!j.zone_name && !!j.zone_color;
+                      // [AI.7.5] Visual status — drives left-edge color,
+                      // checkmark, no-show badge, and cancelled treatment.
+                      // Active state replaces the zone-color border with
+                      // an animated amber stripe for at-a-glance "live".
+                      const visualD = STATUS_VISUALS[getJobVisualStatus(j)];
+                      const leftEdgeColor: string = visualD.stripe
+                        ?? visualD.borderOverride
+                        ?? (hasZoneD && j.zone_color ? j.zone_color : "#DC2626");
                       return (
                       <div key={j.id} onClick={() => setSelectedJob(j)}
-                        style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 10, padding: "14px 16px", cursor: "pointer", borderLeft: `4px solid ${hasZoneD ? j.zone_color : "#DC2626"}` }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                        style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 10, padding: "14px 16px", cursor: "pointer", position: "relative", overflow: "hidden", opacity: visualD.bodyOpacity, filter: visualD.desaturate ? "grayscale(1)" : "none" }}>
+                        {visualD.stripe ? (
+                          <div className="qleno-active-stripe" style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: 4, backgroundColor: visualD.stripe }} />
+                        ) : (
+                          <div style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: 4, backgroundColor: leftEdgeColor }} />
+                        )}
+                        {visualD.showCheckmark && (
+                          <div style={{ position: "absolute", top: 8, right: 8, width: 18, height: 18, borderRadius: "50%", backgroundColor: "#16A34A", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <Check size={11} color="#FFFFFF" strokeWidth={3} />
+                          </div>
+                        )}
+                        {visualD.showNoShowBadge && (
+                          <div style={{ position: "absolute", top: 8, right: 8, fontSize: 9, fontWeight: 800, color: "#FFFFFF", backgroundColor: "#991B1B", padding: "3px 7px", borderRadius: 4, letterSpacing: "0.05em" }}>
+                            NO SHOW
+                          </div>
+                        )}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, paddingLeft: 4 }}>
                           <div>
-                            <div style={{ fontSize: 14, fontWeight: 800, color: "#1A1917" }}>{j.client_name}</div>
+                            <div style={{ fontSize: 14, fontWeight: 800, color: "#1A1917", textDecoration: visualD.strikethrough ? "line-through" : "none" }}>{j.client_name}</div>
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2, flexWrap: "wrap" }}>
                               <div style={{ fontSize: 11, color: "var(--brand)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>{fmtSvc(j.service_type)}</div>
                               {hasZoneD ? (
