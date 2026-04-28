@@ -820,31 +820,158 @@ export async function runPhesDataMigration(): Promise<void> {
     console.warn("[phes-migration] jaira-client_type-fix — non-fatal:", err?.message ?? err);
   }
 
-  // [AI.7.6] Backfill clients.zip from clients.address text where the zip
-  // column is null but the address has a 5-digit zip embedded (MC import
-  // dropped zip into address only on some rows). Without this, the
-  // dispatch zone resolver falls back to regex on every render — slow,
-  // and only catches embedded zips in specific positions. A real
-  // clients.zip lets the resolver hit the indexed array test on
-  // service_zones.zip_codes.
+  // [AI.7.7] Multi-source clients.* backfill. Replaces the AI.7.6
+  // narrow zip-only regex pass. Reality check on the schema: there
+  // are NO address columns on recurring_schedules — the per-occurrence
+  // job-level override (jobs.address_street/city/state/zip) is the
+  // actual carrier the MC import populated. So for clients whose
+  // clients.zip / city / state are null, the backfill walks:
   //
-  // Idempotent — only fires when zip is null AND a 5-digit pattern
-  // exists in the address. Does NOT bulk-assign or guess: extracted
-  // value is exactly what's in the address text. Per Sal's standing
-  // rule we don't paper over with a default zone.
+  //   1. Most recent jobs.address_zip / city / state / street for
+  //      this client (preferred — that's what the import wrote)
+  //   2. Parsed extraction from clients.address itself when the
+  //      job-level path didn't yield a zip
+  //
+  // Idempotent: only fires when clients.zip IS NULL on entry. Logs
+  // pre/post counts + source breakdown + remaining-NULL list so the
+  // ship report has structured data without DB shell access.
   try {
-    const r = await db.execute(sql`
-      UPDATE clients
-      SET zip = SUBSTRING(address FROM '\\y(\\d{5})\\y')
-      WHERE zip IS NULL
-        AND address IS NOT NULL
-        AND SUBSTRING(address FROM '\\y(\\d{5})\\y') IS NOT NULL
-      RETURNING id
+    const preCountRow = await db.execute(sql`
+      SELECT count(*)::int AS n
+      FROM clients
+      WHERE company_id = ${PHES} AND zip IS NULL
     `);
-    const n = (r.rows ?? []).length;
-    if (n > 0) console.log(`[phes-migration] Backfilled clients.zip from address text on ${n} rows`);
+    const preCount = Number((preCountRow.rows[0] as any)?.n ?? 0);
+
+    // Pull every client with NULL zip plus their most recent job's
+    // address_* fields in one pass. LATERAL JOIN gets the latest job
+    // per client (by scheduled_date desc, id desc).
+    const candidates = await db.execute(sql`
+      SELECT
+        c.id, c.address AS client_address, c.city AS client_city,
+        c.state AS client_state, c.zip AS client_zip,
+        j.address_street, j.address_city, j.address_state, j.address_zip
+      FROM clients c
+      LEFT JOIN LATERAL (
+        SELECT address_street, address_city, address_state, address_zip
+        FROM jobs
+        WHERE jobs.client_id = c.id
+          AND jobs.company_id = c.company_id
+          AND (jobs.address_zip IS NOT NULL OR jobs.address_street IS NOT NULL)
+        ORDER BY jobs.scheduled_date DESC NULLS LAST, jobs.id DESC
+        LIMIT 1
+      ) j ON true
+      WHERE c.company_id = ${PHES}
+        AND c.zip IS NULL
+    `);
+
+    let fromJobZip = 0;
+    let fromJobStreet = 0;
+    let fromClientAddress = 0;
+    let stillNull = 0;
+    const stillNullIds: number[] = [];
+
+    const ZIP_RE = /\b(\d{5})(?:-\d{4})?\b/;
+
+    for (const row of candidates.rows as any[]) {
+      const id = Number(row.id);
+      const jobZip = row.address_zip ? String(row.address_zip).trim() : null;
+      const jobStreet = row.address_street ? String(row.address_street).trim() : null;
+      const jobCity = row.address_city ? String(row.address_city).trim() : null;
+      const jobState = row.address_state ? String(row.address_state).trim() : null;
+      const clientAddr = row.client_address ? String(row.client_address).trim() : null;
+
+      let zip: string | null = null;
+      let street: string | null = null;
+      let city: string | null = null;
+      let state: string | null = null;
+      let source: "job_zip" | "job_street" | "client_address" | null = null;
+
+      // Source 1: explicit job-level zip column
+      if (jobZip) {
+        const m = jobZip.match(ZIP_RE);
+        if (m) {
+          zip = m[1];
+          street = jobStreet || null;
+          city = jobCity || null;
+          state = jobState || "IL";
+          source = "job_zip";
+        }
+      }
+      // Source 2: parse zip out of job's address_street text
+      if (!zip && jobStreet) {
+        const m = jobStreet.match(ZIP_RE);
+        if (m) {
+          zip = m[1];
+          // Strip the zip block from the street text (best-effort)
+          street = jobStreet.replace(/,?\s*\b\d{5}(?:-\d{4})?\b\s*$/, "").trim() || null;
+          city = jobCity || null;
+          state = jobState || "IL";
+          source = "job_street";
+        }
+      }
+      // Source 3: parse zip out of clients.address itself
+      if (!zip && clientAddr) {
+        const m = clientAddr.match(ZIP_RE);
+        if (m) {
+          zip = m[1];
+          // Best-effort split: "123 Main St, Chicago, IL 60608" -> {street, city, state, zip}
+          // Strip trailing ", IL 60608" or " IL 60608" first.
+          const noZip = clientAddr.replace(/,?\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?\s*$/, "").trim();
+          // Now split on commas; last segment is city, rest is street.
+          const parts = noZip.split(",").map(p => p.trim()).filter(Boolean);
+          if (parts.length >= 2) {
+            city = parts[parts.length - 1];
+            street = parts.slice(0, -1).join(", ");
+          } else {
+            street = noZip || null;
+          }
+          state = "IL"; // Phes default per spec
+          source = "client_address";
+        }
+      }
+
+      if (!zip) {
+        stillNull++;
+        if (stillNullIds.length < 10) stillNullIds.push(id);
+        continue;
+      }
+
+      try {
+        await db.execute(sql`
+          UPDATE clients
+          SET
+            zip   = ${zip},
+            city  = COALESCE(NULLIF(city,  ''), ${city}),
+            state = COALESCE(NULLIF(state, ''), ${state}),
+            address = COALESCE(NULLIF(address, ''), ${street})
+          WHERE id = ${id} AND company_id = ${PHES} AND zip IS NULL
+        `);
+      } catch (err: any) {
+        console.warn(`[AI.7.7] backfill update failed for client ${id}:`, err?.message ?? err);
+        continue;
+      }
+
+      if (source === "job_zip") fromJobZip++;
+      else if (source === "job_street") fromJobStreet++;
+      else if (source === "client_address") fromClientAddress++;
+    }
+
+    const postCountRow = await db.execute(sql`
+      SELECT count(*)::int AS n
+      FROM clients
+      WHERE company_id = ${PHES} AND zip IS NULL
+    `);
+    const postCount = Number((postCountRow.rows[0] as any)?.n ?? 0);
+
+    console.log(
+      `[AI.7.7] clients.zip backfill: pre=${preCount} post=${postCount} ` +
+      `sources={job_zip:${fromJobZip}, job_street:${fromJobStreet}, client_address:${fromClientAddress}} ` +
+      `remaining=${stillNull}` +
+      (stillNullIds.length > 0 ? ` first10_ids=[${stillNullIds.join(",")}]` : "")
+    );
   } catch (err: any) {
-    console.warn("[phes-migration] zip-backfill — non-fatal:", err?.message ?? err);
+    console.warn("[AI.7.7] clients backfill — non-fatal:", err?.message ?? err);
   }
 
   // [AI.7.6] Same backfill for account_properties.zip — commercial

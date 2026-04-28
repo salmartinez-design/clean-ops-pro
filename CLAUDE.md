@@ -210,6 +210,17 @@
   Phes data migration backfills `clients.zip` and `account_properties.zip`
   from any 5-digit pattern in the address text on every cold-start
   (idempotent, only fires when zip IS NULL).
+  *(AI.7.7)* The `clients.*` backfill is multi-source: walks the
+  client's most-recent `jobs.address_zip` first (the per-job override
+  the MC import populated when `clients.*` was empty), falls back to
+  parsing the zip out of `jobs.address_street`, then parses
+  `clients.address`. State defaults to `IL` for Phes when the source
+  doesn't provide one. **There are NO address columns on
+  `recurring_schedules`** — historical assumption to the contrary
+  led to AI.7.6 still leaving Geraldine / Pegah / Connie / Daveco
+  with NULL zip until this fix landed. If a future spec refers to
+  `recurring_schedules.service_address` or `recurring_schedules.zip`,
+  flag it — those don't exist; the carrier is `jobs.address_*`.
 
 ## Hard Rules — Never Reverse
 - No QuickBooks bidirectional sync — QB is write-only (Qleno pushes to QB, never pulls)
