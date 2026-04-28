@@ -1640,10 +1640,22 @@ function JobHoverCard({ job, assignedName }: { job: DispatchJob; assignedName?: 
   const hasZoneBadge = !!(job.zone_name || job.client_zip);
 
   const sectionBorder = "1px solid #F0EEE9";
+  // [AI.7.8] Typography refresh — section headers bumped to 12px caps with
+  // tighter tracking; matched to a single labelStyle so every section reads
+  // consistently. Sal's note: previous 10/11px caps competed with body
+  // copy and the popover felt like a form, not a hero card.
   const labelStyle: React.CSSProperties = {
-    fontSize: 10, fontWeight: 700, color: "#9E9B94",
-    textTransform: "uppercase" as const, letterSpacing: "0.05em", marginBottom: 4,
+    fontSize: 12, fontWeight: 700, color: "#6B6860",
+    textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 6,
   };
+  const valueStyle: React.CSSProperties = {
+    fontSize: 17, fontWeight: 600, color: "#1A1917", lineHeight: 1.25,
+  };
+  // Zone chip color (15% opacity tint of the actual zone color, gray
+  // fallback when unmapped — the missing-zone state is now the loud red
+  // chip on the card body, so a soft chip here is fine).
+  const zoneChipBg = job.zone_color ? `${job.zone_color}26` : "#F3F4F6";
+  const zoneChipBorder = job.zone_color ? `${job.zone_color}55` : "#E5E2DC";
 
   return (
     // Native click bubbles up to parent JobChip → opens JobPanel drawer.
@@ -1663,21 +1675,22 @@ function JobHoverCard({ job, assignedName }: { job: DispatchJob; assignedName?: 
       fontFamily: FF, padding: 0,
     }}>
       {/* ─── HEADER ─── */}
-      <div style={{ padding: "14px 16px 12px", borderBottom: sectionBorder }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#1A1917", flex: 1, minWidth: 0 }}>
+      <div style={{ padding: "20px 20px 16px", borderBottom: sectionBorder }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#1A1917", flex: 1, minWidth: 0, lineHeight: 1.2, wordBreak: "break-word" }}>
             {job.client_name}
           </div>
           <span style={{
-            flexShrink: 0, fontSize: 10, fontWeight: 700, padding: "2px 8px",
-            borderRadius: 10, backgroundColor: statusPill.bg, color: statusPill.fg,
-            textTransform: "uppercase" as const, letterSpacing: "0.03em",
+            flexShrink: 0, fontSize: 13, fontWeight: 700, padding: "4px 10px",
+            borderRadius: 14, backgroundColor: statusPill.bg, color: statusPill.fg,
+            textTransform: "uppercase" as const, letterSpacing: "0.04em",
+            lineHeight: 1.1, marginTop: 4,
           }}>
             {statusPill.label}
           </span>
         </div>
         {job.address && (
-          <div style={{ fontSize: 12, color: "#6B6860", marginBottom: job.client_phone ? 6 : 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 500, color: "#1A1917", lineHeight: 1.35, marginBottom: 8 }}>
             {job.address}
           </div>
         )}
@@ -1685,45 +1698,40 @@ function JobHoverCard({ job, assignedName }: { job: DispatchJob; assignedName?: 
           <a
             href={`tel:${job.client_phone}`}
             onClick={e => e.stopPropagation()}
-            style={{ fontSize: 12, color: "#2D9B83", textDecoration: "none", fontWeight: 600, display: "inline-block" }}
+            style={{ fontSize: 13, color: "#2D9B83", textDecoration: "none", fontWeight: 600, display: "inline-block" }}
           >
             {job.client_phone}
           </a>
         )}
         {hasZoneBadge && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-            {/* Dot: zone_color when mapped, muted gray when the zip isn't
-                in any service_zones row (e.g. Shannon @ 60062 Northbrook). */}
-            <div style={{
-              width: 8, height: 8, borderRadius: "50%",
-              backgroundColor: job.zone_color || "#9CA3AF",
-              flexShrink: 0,
-            }} />
-            {job.zone_name && (
-              <span style={{ fontSize: 11, color: "#6B6860" }}>{job.zone_name}</span>
-            )}
-            {job.client_zip && (
-              <span style={{
-                fontSize: 11, fontWeight: 500, color: "#6B6860",
-                padding: "1px 6px", borderRadius: 4,
-                backgroundColor: "#F3F4F6", marginLeft: job.zone_name ? 2 : 0,
-              }}>
-                {job.client_zip}
-              </span>
-            )}
+          <div style={{ marginTop: 10 }}>
+            <span style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              fontSize: 13, fontWeight: 600, color: "#1A1917",
+              padding: "4px 10px", borderRadius: 12,
+              backgroundColor: zoneChipBg, border: `1px solid ${zoneChipBorder}`,
+            }}>
+              <div style={{
+                width: 8, height: 8, borderRadius: "50%",
+                backgroundColor: job.zone_color || "#9CA3AF",
+                flexShrink: 0,
+              }} />
+              {job.zone_name && <span>{job.zone_name}</span>}
+              {job.client_zip && <span style={{ color: "#6B6860", fontWeight: 500 }}>{job.client_zip}</span>}
+            </span>
           </div>
         )}
       </div>
 
       {/* ─── SERVICE + FREQUENCY + LAST SERVICE ─── */}
-      <div style={{ padding: "10px 16px", borderBottom: sectionBorder }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: "#1A1917" }}>
+      <div style={{ padding: "16px 20px", borderBottom: sectionBorder }}>
+        <div style={{ fontSize: 15, fontWeight: 500, color: "#1A1917", lineHeight: 1.3 }}>
           {fmtSvc(job.service_type)}
-          <span style={{ color: "#9E9B94", fontWeight: 500, margin: "0 6px" }}>·</span>
+          <span style={{ color: "#C4C0BB", fontWeight: 500, margin: "0 8px" }}>·</span>
           {isRecurring ? fmtSvc(job.frequency) : "One Time"}
         </div>
         {lastServiceRelative && (
-          <div style={{ fontSize: 11, color: "#6B6860", marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: "#6B6860", marginTop: 6 }}>
             Last service: {job.last_service_date} ({lastServiceRelative})
           </div>
         )}
@@ -1731,84 +1739,84 @@ function JobHoverCard({ job, assignedName }: { job: DispatchJob; assignedName?: 
 
       {/* ─── ENTRY INSTRUCTIONS (conditional) ─── */}
       {entryInstructions && (
-        <div style={{ padding: "10px 16px", borderBottom: sectionBorder, backgroundColor: "#FFFBEB" }}>
-          <div style={{ ...labelStyle, color: "#92400E" }}>🔑 Entry</div>
-          <div style={{ fontSize: 12, color: "#1A1917", lineHeight: 1.4 }}>
+        <div style={{ padding: "16px 20px", borderBottom: sectionBorder, backgroundColor: "#FFFBEB" }}>
+          <div style={{ ...labelStyle, color: "#92400E" }}>Entry</div>
+          <div style={{ fontSize: 13, color: "#1A1917", lineHeight: 1.45 }}>
             {entryInstructions.length > 180 ? entryInstructions.slice(0, 180) + "…" : entryInstructions}
           </div>
         </div>
       )}
 
       {/* ─── TIME BLOCK ─── */}
-      <div style={{ padding: "10px 16px", borderBottom: sectionBorder }}>
+      <div style={{ padding: "16px 20px", borderBottom: sectionBorder }}>
         <div style={labelStyle}>Time</div>
-        <div style={{ fontSize: 12, fontWeight: 600, color: "#1A1917" }}>
-          Scheduled: {fmtTime(job.scheduled_time)} – {fmtTime(endTime)}
+        <div style={valueStyle}>
+          {fmtTime(job.scheduled_time)} – {fmtTime(endTime)}
         </div>
         {actualTimes && (
-          <div style={{ fontSize: 12, color: "#6B6860", marginTop: 2 }}>
+          <div style={{ fontSize: 13, color: "#6B6860", marginTop: 4 }}>
             Actual: {actualTimes.start} – {actualTimes.end}
             {job.actual_hours != null && (
               <span style={{ marginLeft: 6, color: "#9E9B94" }}>({job.actual_hours.toFixed(2)}h)</span>
             )}
           </div>
         )}
-        <div style={{ fontSize: 11, color: "#9E9B94", marginTop: 2 }}>
+        <div style={{ fontSize: 12, color: "#9E9B94", marginTop: 4 }}>
           Allowed: {allowedH.toFixed(2)}h
         </div>
       </div>
 
       {/* ─── TOTAL + PAYMENT ─── */}
-      <div style={{ padding: "10px 16px", borderBottom: sectionBorder, display: "grid", gridTemplateColumns: paymentLabel ? "1fr 1fr" : "1fr", gap: "0 16px" }}>
+      <div style={{ padding: "16px 20px", borderBottom: sectionBorder, display: "grid", gridTemplateColumns: paymentLabel ? "1fr 1fr" : "1fr", gap: "0 20px" }}>
         <div>
           <div style={labelStyle}>Total</div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#1A1917" }}>${(job.amount || 0).toFixed(2)}</div>
+          <div style={valueStyle}>${(job.amount || 0).toFixed(2)}</div>
         </div>
         {paymentLabel && (
           <div>
             <div style={labelStyle}>Payment</div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "#1A1917" }}>{paymentLabel}</div>
+            <div style={valueStyle}>{paymentLabel}</div>
           </div>
         )}
       </div>
 
       {/* ─── TECHNICIAN (name only, no pay $) ─── */}
-      <div style={{ padding: "10px 16px", borderBottom: liveClock ? sectionBorder : undefined }}>
+      <div style={{ padding: "16px 20px", borderBottom: liveClock ? sectionBorder : undefined }}>
         <div style={labelStyle}>
           {(job.technicians?.length ?? 0) > 1 ? `Team (${job.technicians!.length})` : "Technician"}
         </div>
         {job.technicians && job.technicians.length > 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {job.technicians.map((t, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 17 }}>
                 <div style={{
-                  width: 20, height: 20, borderRadius: "50%",
+                  width: 26, height: 26, borderRadius: "50%",
                   backgroundColor: t.is_primary ? "#DCFCE7" : "#F3F4F6",
                   color: t.is_primary ? "#15803D" : "#6B7280",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 9, fontWeight: 700, flexShrink: 0,
+                  fontSize: 11, fontWeight: 700, flexShrink: 0,
                 }}>
                   {t.name.split(" ").map(p => p[0]).join("").slice(0, 2)}
                 </div>
-                <span style={{ fontWeight: 600, color: "#1A1917" }}>{t.name}</span>
+                <span style={{ fontWeight: 600, color: "#1A1917", fontSize: 17 }}>{t.name}</span>
                 {t.is_primary && (job.technicians!.length > 1) && (
-                  <span style={{ fontSize: 9, color: "#9E9B94" }}>Primary</span>
+                  <span style={{ fontSize: 10, color: "#9E9B94", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700 }}>Primary</span>
                 )}
               </div>
             ))}
           </div>
         ) : assignedName ? (
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#1A1917" }}>{assignedName}</div>
+          <div style={valueStyle}>{assignedName}</div>
         ) : (
-          <div style={{ fontSize: 12, color: "#D97706", fontWeight: 600 }}>Unassigned</div>
+          <div style={{ ...valueStyle, color: "#D97706" }}>Unassigned</div>
         )}
       </div>
 
       {/* ─── JOB CLOCKS (conditional — only when live clock entry exists) ─── */}
       {liveClock && (
-        <div style={{ padding: "10px 16px", borderBottom: sectionBorder }}>
+        <div style={{ padding: "16px 20px", borderBottom: sectionBorder }}>
           <div style={labelStyle}>Job Clocks</div>
-          <div style={{ fontSize: 12, color: "#1A1917", fontWeight: 500 }}>
+          <div style={{ fontSize: 13, color: "#1A1917", fontWeight: 500, lineHeight: 1.5 }}>
             {liveClock.clock_in_at && (
               <div>
                 <span style={{ color: "#9E9B94" }}>In:</span>{" "}
@@ -1827,7 +1835,7 @@ function JobHoverCard({ job, assignedName }: { job: DispatchJob; assignedName?: 
               </div>
             )}
             {liveClock.is_flagged && (
-              <div style={{ color: "#D97706", fontWeight: 600, marginTop: 2 }}>Flagged</div>
+              <div style={{ color: "#D97706", fontWeight: 600, marginTop: 4 }}>Flagged</div>
             )}
           </div>
         </div>
@@ -1835,16 +1843,16 @@ function JobHoverCard({ job, assignedName }: { job: DispatchJob; assignedName?: 
 
       {/* ─── OFFICE NOTES (optional, only when non-empty after tag strip) ─── */}
       {officeNotesCleaned && (
-        <div style={{ padding: "8px 16px 10px", borderTop: sectionBorder }}>
-          <div style={{ fontSize: 11, color: "#6B6860", fontStyle: "italic", lineHeight: 1.4 }}>
+        <div style={{ padding: "12px 20px 14px", borderTop: sectionBorder }}>
+          <div style={{ fontSize: 12, color: "#6B6860", fontStyle: "italic", lineHeight: 1.45 }}>
             {officeNotesCleaned.length > 120 ? officeNotesCleaned.slice(0, 120) + "…" : officeNotesCleaned}
           </div>
         </div>
       )}
 
       {/* ─── FOOTER ─── */}
-      <div style={{ padding: "8px 16px 12px", borderTop: sectionBorder, fontSize: 11, color: "#9E9B94", textAlign: "center" }}>
-        → Click for full details
+      <div style={{ padding: "12px 20px 16px", borderTop: sectionBorder, fontSize: 12, fontWeight: 500, color: "#9E9B94", textAlign: "center" }}>
+        Click for full details &rarr;
       </div>
     </div>
   );
