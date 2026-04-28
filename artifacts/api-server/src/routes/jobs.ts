@@ -2459,10 +2459,21 @@ router.patch("/:id/address", requireAuth, async (req, res) => {
     if (!ctx.rows.length) return res.status(404).json({ error: "Job not found" });
     const r = ctx.rows[0] as any;
 
-    const hasJobOverride = !!r.j_addr && (
-      String(r.j_addr ?? "").trim() !== String(r.c_addr ?? "").trim()
-      || String(r.j_zip ?? "").trim() !== String(r.c_zip ?? "").trim()
-    );
+    // Auto-pick mode. Earlier rule treated any non-null jobs.address_street
+    // as a "job override" even when clients.address was NULL, which routed
+    // every edit to the job level on clients with missing address data and
+    // left the canonical client record stale. Corrected: only treat as
+    // override when the client actually HAS an address AND the job's value
+    // is intentionally different. Missing client data goes to client mode
+    // so the edit fills in the canonical record.
+    const clientHasAddress = !!String(r.c_addr ?? "").trim();
+    const jobAddrTrim = String(r.j_addr ?? "").trim();
+    const jobZipTrim = String(r.j_zip ?? "").trim();
+    const cAddrTrim = String(r.c_addr ?? "").trim();
+    const cZipTrim = String(r.c_zip ?? "").trim();
+    const hasJobOverride = clientHasAddress
+      && !!jobAddrTrim
+      && (jobAddrTrim !== cAddrTrim || jobZipTrim !== cZipTrim);
     const mode: "client" | "job" = hasJobOverride ? "job" : "client";
 
     // Server-side geocode (defense in depth).
