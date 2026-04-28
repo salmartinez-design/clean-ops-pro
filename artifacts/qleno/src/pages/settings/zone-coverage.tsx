@@ -11,7 +11,7 @@
  * permissions on the API endpoints (admin.ts).
  */
 import { useEffect, useState } from "react";
-import { AdminLayout } from "@/components/layout/admin-layout";
+import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { getAuthHeaders } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { MapPin, RefreshCw, AlertTriangle, Check, X } from "lucide-react";
@@ -78,7 +78,10 @@ export default function AdminZoneCoverage() {
   async function load() {
     setLoading(true);
     try {
-      const r = await fetch("/api/admin/clients-missing-zip", { headers: getAuthHeaders() });
+      // [AI.8] source=page_mount is the telemetry flag — server logs
+      // a "[AI.8] zone-coverage page viewed" line only on this branch,
+      // so the sidebar's 60s poll doesn't spam logs.
+      const r = await fetch("/api/admin/clients-missing-zip?source=page_mount", { headers: getAuthHeaders() });
       if (!r.ok) {
         const body = await r.text();
         throw new Error(body || `HTTP ${r.status}`);
@@ -161,7 +164,7 @@ export default function AdminZoneCoverage() {
   }
 
   return (
-    <AdminLayout>
+    <DashboardLayout>
       <div style={{ padding: "24px 32px", fontFamily: FF }}>
         {/* HEADER */}
         <div style={{ marginBottom: 24 }}>
@@ -392,7 +395,7 @@ export default function AdminZoneCoverage() {
           </div>
         </>
       )}
-    </AdminLayout>
+    </DashboardLayout>
   );
 }
 

@@ -76,7 +76,7 @@ const AdminDashboard      = lazy(() => import("@/pages/admin/index"));
 const AdminCompanies      = lazy(() => import("@/pages/admin/companies"));
 const AdminBilling        = lazy(() => import("@/pages/admin/billing"));
 const AdminCleancyclopedia= lazy(() => import("@/pages/admin/cleancyclopedia"));
-const AdminZoneCoverage   = lazy(() => import("@/pages/admin/zone-coverage"));
+const ZoneCoveragePage    = lazy(() => import("@/pages/settings/zone-coverage"));
 const NotificationsPage   = lazy(() => import("@/pages/notifications"));
 const NotFound            = lazy(() => import("@/pages/not-found"));
 
@@ -152,6 +152,7 @@ function Router() {
         <Route path="/company/zones" component={ZonesPage} />
         <Route path="/company/addons" component={AddOnCatalogPage} />
         <Route path="/company/rates" component={RatesPage} />
+        <Route path="/settings/zone-coverage" component={ZoneCoveragePage} />
         <Route path="/survey/:token" component={SurveyPage} />
         <Route path="/route-sequences" component={RouteSequencesPage} />
         <Route path="/intelligence/churn" component={ChurnBoardPage} />
@@ -182,7 +183,6 @@ function Router() {
         <Route path="/admin/companies" component={AdminCompanies} />
         <Route path="/admin/billing" component={AdminBilling} />
         <Route path="/admin/cleancyclopedia" component={AdminCleancyclopedia} />
-        <Route path="/admin/zone-coverage" component={AdminZoneCoverage} />
 
         <Route component={NotFound} />
       </Switch>

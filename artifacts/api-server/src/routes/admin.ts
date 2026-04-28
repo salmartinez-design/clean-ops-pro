@@ -471,6 +471,13 @@ router.get("/clients-missing-zip", ...isSuperAdminOrOwner, async (req, res) => {
       return res.status(400).json({ error: "Bad Request", message: "company_id required" });
     }
 
+    // [AI.8] Page-view telemetry. Fires only when the page sends
+    // ?source=page_mount — sidebar polls (every 60s for the badge count)
+    // skip the log to avoid drowning Railway logs in heartbeat noise.
+    if (req.query.source === "page_mount") {
+      console.log(`[AI.8] zone-coverage page viewed by user_id=${auth.userId} company_id=${companyId}`);
+    }
+
     const rows = await db.execute(sql`
       SELECT
         c.id,
