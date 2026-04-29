@@ -79,6 +79,12 @@ const AdminCleancyclopedia= lazy(() => import("@/pages/admin/cleancyclopedia"));
 const NotificationsPage   = lazy(() => import("@/pages/notifications"));
 const NotFound            = lazy(() => import("@/pages/not-found"));
 
+// [job-card-redesign] Dev-only visual test page — gated by PROD env.
+// Doesn't ship to production: the lazy import only runs when the route
+// renders, and the route below is only mounted when import.meta.env.PROD
+// is false.
+const JobsVisualTestPage  = lazy(() => import("@/pages/jobs-visual-test"));
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { staleTime: 30_000, retry: false },
@@ -103,6 +109,7 @@ function Router() {
         <Route path="/accept-invite" component={AcceptInvitePage} />
         <Route path="/dashboard" component={Dashboard} />
         <Route path="/dispatch" component={JobsPage} />
+        {!import.meta.env.PROD && <Route path="/jobs/visual-test" component={JobsVisualTestPage} />}
         {/* [Q2] JobsListPage moved to /reports/jobs. Keep /jobs and /jobs/list
             as redirects for old bookmarks. */}
         <Route path="/jobs"><Redirect to="/reports/jobs" /></Route>

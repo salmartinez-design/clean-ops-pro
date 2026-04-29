@@ -339,6 +339,61 @@ router.get("/", requireAuth, async (req, res) => {
       });
     }
 
+    // [job-card-redesign] Add-ons per job — drives the "+N" pill on the
+    // dispatch chip and the full add-on list in the hover popover. Names
+    // come from pricing_addons (preferred, the modern path) with a
+    // fallback to the legacy add_ons table for rows imported before
+    // pricing_addons existed. Subtotals already reflect quantity × unit
+    // price as written by PATCH /api/jobs/:id, so the chip can sum them
+    // into a delta without re-multiplying.
+    const addOnRows = await db.execute(sql`
+      SELECT jao.job_id, jao.quantity, jao.unit_price, jao.subtotal,
+             COALESCE(pa.name, ao.name) AS name
+        FROM job_add_ons jao
+        LEFT JOIN add_ons ao ON ao.id = jao.add_on_id
+        LEFT JOIN pricing_addons pa ON pa.id = jao.pricing_addon_id
+       WHERE jao.job_id = ANY(ARRAY[${sql.raw(idList)}]::int[])
+    `);
+    const addOnsByJob = new Map<number, Array<{ name: string; quantity: number; unit_price: number; subtotal: number }>>();
+    for (const r of addOnRows.rows as any[]) {
+      if (!addOnsByJob.has(r.job_id)) addOnsByJob.set(r.job_id, []);
+      addOnsByJob.get(r.job_id)!.push({
+        name: r.name ?? "Add-on",
+        quantity: r.quantity != null ? parseFloat(String(r.quantity)) : 1,
+        unit_price: r.unit_price != null ? parseFloat(String(r.unit_price)) : 0,
+        subtotal: r.subtotal != null ? parseFloat(String(r.subtotal)) : 0,
+      });
+    }
+
+    // [job-card-redesign] is_new_client — true when the residential client
+    // has zero completed jobs strictly before today's board date. Drives
+    // the "NEW" pill + inset white outline on the chip. Commercial jobs
+    // (account_id set) always read false — the account contract is the
+    // billing entity, not a person, and "first job for this account"
+    // doesn't carry the same operational signal.
+    const residentialClientIds: number[] = [];
+    const seenClientIds = new Set<number>();
+    for (const j of jobs) {
+      if (!j.account_id && j.client_id != null && !seenClientIds.has(j.client_id)) {
+        seenClientIds.add(j.client_id);
+        residentialClientIds.push(j.client_id);
+      }
+    }
+    const clientsWithPriorComplete = new Set<number>();
+    if (residentialClientIds.length > 0) {
+      const clientList = residentialClientIds.join(",");
+      const priorRows = await db.execute(sql`
+        SELECT DISTINCT client_id FROM jobs
+         WHERE company_id = ${companyId}
+           AND status = 'complete'
+           AND scheduled_date < ${date}
+           AND client_id = ANY(ARRAY[${sql.raw(clientList)}]::int[])
+      `);
+      for (const r of priorRows.rows as any[]) {
+        if (r.client_id != null) clientsWithPriorComplete.add(r.client_id);
+      }
+    }
+
     const mappedJobs = jobs.map(j => {
       const clock = clockMap.get(j.id);
       const photos = photoMap.get(j.id) || { before: 0, after: 0 };
@@ -475,6 +530,16 @@ router.get("/", requireAuth, async (req, res) => {
         // interchangeable.
         commission_basis: isCommercial ? "commercial_hourly" : "residential_pool",
         commercial_hourly_rate: isCommercial ? commercialHourlyRate : null,
+        // [job-card-redesign] Add-ons drive the "+N" chip pill and the
+        // hover popover's full add-on list. Empty array (not null) when
+        // a job has none, so the frontend can `.length` directly.
+        add_ons: addOnsByJob.get(j.id) ?? [],
+        // [job-card-redesign] is_new_client — first-ever job for this
+        // residential client (no prior completed). Commercial jobs read
+        // false; clients with no client_id (rare/legacy) also read false.
+        is_new_client: !isCommercial && j.client_id != null
+          ? !clientsWithPriorComplete.has(j.client_id)
+          : false,
       };
     });
 
