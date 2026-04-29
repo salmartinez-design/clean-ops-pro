@@ -171,6 +171,52 @@ async function runBookingSchemaGuard(): Promise<void> {
         UNIQUE (company_id, slug)
       )
     ` },
+    // ── service_types table ──────────────────────────────────────────────────
+    // [commercial-workflow 2026-04-29] Hierarchical service types
+    // (parent_slug = residential | commercial). Replaces hardcoded
+    // SERVICE_TYPES / COMMERCIAL_SERVICE_TYPES arrays in the wizard.
+    // Slugs match the existing serviceTypeEnum so historical jobs
+    // continue to type-check. UNIQUE (company_id, slug) lets the
+    // seed below ON CONFLICT DO NOTHING.
+    { label: "CREATE service_types", stmt: `
+      CREATE TABLE IF NOT EXISTS service_types (
+        id                    SERIAL PRIMARY KEY,
+        company_id            INTEGER NOT NULL,
+        parent_slug           TEXT NOT NULL CHECK (parent_slug IN ('residential', 'commercial')),
+        slug                  TEXT NOT NULL,
+        name                  TEXT NOT NULL,
+        description           TEXT,
+        is_active             BOOLEAN NOT NULL DEFAULT true,
+        display_order         INTEGER NOT NULL DEFAULT 100,
+        default_allowed_hours NUMERIC(5,2),
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (company_id, slug)
+      )
+    ` },
+    // ── recurring_schedule_addons_days table ─────────────────────────────────
+    // [commercial-workflow 2026-04-29] Per-add-on, per-weekday
+    // scoping for recurring schedule add-ons. CASCADE delete with
+    // the parent recurring_schedule_add_ons row. Day convention:
+    // 0=Sun..6=Sat (matches recurring_schedules.parking_fee_days).
+    { label: "CREATE recurring_schedule_addons_days", stmt: `
+      CREATE TABLE IF NOT EXISTS recurring_schedule_addons_days (
+        id                          SERIAL PRIMARY KEY,
+        recurring_schedule_addon_id INTEGER NOT NULL
+                                    REFERENCES recurring_schedule_add_ons(id) ON DELETE CASCADE,
+        day_of_week                 SMALLINT NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+        created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (recurring_schedule_addon_id, day_of_week)
+      )
+    ` },
+    // ── quotes.client_type ───────────────────────────────────────────────────
+    // [commercial-workflow 2026-04-29] Per-quote type override.
+    // Quote flow's Type toggle (Residential/Commercial) defaults to
+    // the client's primary client_type but can be overridden — the
+    // bridge for first-time crossovers (residential client gets a
+    // commercial quote, etc). Per Sal's decision: client primary
+    // type stays sticky on conversion; the booked job carries the
+    // quote's type, but clients.client_type is unchanged.
+    { label: "quotes.client_type", stmt: "ALTER TABLE quotes ADD COLUMN IF NOT EXISTS client_type TEXT CHECK (client_type IS NULL OR client_type IN ('residential', 'commercial'))" },
     // ── follow_up_steps table ────────────────────────────────────────────────
     { label: "CREATE follow_up_steps", stmt: `
       CREATE TABLE IF NOT EXISTS follow_up_steps (
@@ -933,6 +979,45 @@ async function runAcquisitionSourcesSeed(): Promise<void> {
   console.log(`[acquisition-sources-seed] Ensured ${sources.length} Phes default sources.`);
 }
 
+// [commercial-workflow 2026-04-29] Seed Phes-default service types
+// (5 residential + 7 commercial = 12 rows). Each slug matches an
+// existing serviceTypeEnum value so historical jobs stay valid;
+// `name` is the display label per Sal's spec. default_allowed_hours
+// stays NULL on first seed — operators set per-tenant defaults via
+// the management UI in PR #2 (Sal will fill in 2.5 for Standard
+// Clean, 4.0 for Deep Clean, etc., once that surface ships).
+//
+// Idempotent: ON CONFLICT (company_id, slug) DO NOTHING. Safe to
+// re-run on every cold-start. Existing rows are not overwritten,
+// so any operator edits to display name / order / default hours
+// stick across deploys.
+async function runServiceTypesSeed(): Promise<void> {
+  const services = [
+    // Residential (parent_slug='residential')
+    { parent: "residential", slug: "standard_clean",     name: "Standard Clean",     order: 10 },
+    { parent: "residential", slug: "deep_clean",         name: "Deep Clean",         order: 20 },
+    { parent: "residential", slug: "move_in",            name: "Move In",            order: 30 },
+    { parent: "residential", slug: "move_out",           name: "Move Out",           order: 40 },
+    { parent: "residential", slug: "post_construction",  name: "Post-Construction",  order: 50 },
+    // Commercial (parent_slug='commercial')
+    { parent: "commercial",  slug: "office_cleaning",    name: "Office Cleaning",    order: 110 },
+    { parent: "commercial",  slug: "common_areas",       name: "Common Areas",       order: 120 },
+    { parent: "commercial",  slug: "ppm_common_areas",   name: "PPM Common Areas",   order: 130 },
+    { parent: "commercial",  slug: "retail_store",       name: "Retail Store",       order: 140 },
+    { parent: "commercial",  slug: "medical_office",     name: "Medical Office",     order: 150 },
+    { parent: "commercial",  slug: "ppm_turnover",       name: "PPM Turnover",       order: 160 },
+    { parent: "commercial",  slug: "post_event",         name: "Post Event",         order: 170 },
+  ];
+  for (const s of services) {
+    await db.execute(sql`
+      INSERT INTO service_types (company_id, parent_slug, slug, name, is_active, display_order)
+      VALUES (${PHES}, ${s.parent}, ${s.slug}, ${s.name}, true, ${s.order})
+      ON CONFLICT (company_id, slug) DO NOTHING
+    `);
+  }
+  console.log(`[service-types-seed] Ensured ${services.length} Phes default service types (5 residential + 7 commercial).`);
+}
+
 export async function runPhesDataMigration(): Promise<void> {
   await runBookingSchemaGuard();
 
@@ -958,6 +1043,12 @@ export async function runPhesDataMigration(): Promise<void> {
     await runAcquisitionSourcesSeed();
   } catch (err: any) {
     console.warn("[phes-migration] acquisition-sources-seed — non-fatal:", err?.message ?? err);
+  }
+
+  try {
+    await runServiceTypesSeed();
+  } catch (err: any) {
+    console.warn("[phes-migration] service-types-seed — non-fatal:", err?.message ?? err);
   }
 
   try {

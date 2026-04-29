@@ -80,3 +80,7 @@ export * from "./client_audit_log";
 export * from "./commercial_service_types";
 // [scheduling-engine 2026-04-29] Tenant-managed acquisition sources
 export * from "./acquisition_sources";
+// [commercial-workflow 2026-04-29] Hierarchical service types +
+// per-day add-on scoping
+export * from "./service_types";
+export * from "./recurring_schedule_addons_days";
