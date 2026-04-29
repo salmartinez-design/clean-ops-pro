@@ -153,6 +153,24 @@ async function runBookingSchemaGuard(): Promise<void> {
         created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     ` },
+    // ── acquisition_sources table ────────────────────────────────────────────
+    // [scheduling-engine 2026-04-29] Tenant-managed acquisition sources
+    // table. Replaces the hardcoded SOURCE_LABELS map in
+    // customer-profile.tsx. Per-tenant rows; clients.referral_source
+    // continues storing the slug as text. Idempotent — uniqueness on
+    // (company_id, slug) so the seed step below can be safely re-run.
+    { label: "CREATE acquisition_sources", stmt: `
+      CREATE TABLE IF NOT EXISTS acquisition_sources (
+        id            SERIAL PRIMARY KEY,
+        company_id    INTEGER NOT NULL,
+        slug          TEXT NOT NULL,
+        name          TEXT NOT NULL,
+        is_active     BOOLEAN NOT NULL DEFAULT true,
+        display_order INTEGER NOT NULL DEFAULT 100,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (company_id, slug)
+      )
+    ` },
     // ── follow_up_steps table ────────────────────────────────────────────────
     { label: "CREATE follow_up_steps", stmt: `
       CREATE TABLE IF NOT EXISTS follow_up_steps (
@@ -886,6 +904,35 @@ async function runScheduleHorizonBackfill(): Promise<void> {
   console.log(`[schedule-horizon-backfill] Ran with 90-day window. (Per-company create counts in [recurring-jobs] log lines above.)`);
 }
 
+// [scheduling-engine 2026-04-29] Seed Phes-default acquisition sources.
+// Idempotent — ON CONFLICT (company_id, slug) DO NOTHING so the seed
+// step is safe to re-run on every cold-start. Operators can rename
+// the display via UPDATE; we only insert, never overwrite. New
+// tenants will need their own seed (or a default-tenant template
+// later); this targets PHES (company_id=1) only.
+async function runAcquisitionSourcesSeed(): Promise<void> {
+  const sources = [
+    { slug: "google_ads",            name: "Google Ads",             order: 10 },
+    { slug: "google_business_profile", name: "Google Business Profile", order: 20 },
+    { slug: "thumbtack",             name: "Thumbtack",              order: 30 },
+    { slug: "yelp",                  name: "Yelp",                   order: 40 },
+    { slug: "facebook",              name: "Facebook",               order: 50 },
+    { slug: "instagram",             name: "Instagram",              order: 60 },
+    { slug: "referral",              name: "Referral",               order: 70 },
+    { slug: "word_of_mouth",         name: "Word of Mouth",          order: 80 },
+    { slug: "repeat_customer",       name: "Repeat Customer",        order: 90 },
+    { slug: "other",                 name: "Other",                  order: 999 },
+  ];
+  for (const s of sources) {
+    await db.execute(sql`
+      INSERT INTO acquisition_sources (company_id, slug, name, is_active, display_order)
+      VALUES (${PHES}, ${s.slug}, ${s.name}, true, ${s.order})
+      ON CONFLICT (company_id, slug) DO NOTHING
+    `);
+  }
+  console.log(`[acquisition-sources-seed] Ensured ${sources.length} Phes default sources.`);
+}
+
 export async function runPhesDataMigration(): Promise<void> {
   await runBookingSchemaGuard();
 
@@ -905,6 +952,12 @@ export async function runPhesDataMigration(): Promise<void> {
     await runScheduleHorizonBackfill();
   } catch (err: any) {
     console.warn("[phes-migration] schedule-horizon-backfill — non-fatal:", err?.message ?? err);
+  }
+
+  try {
+    await runAcquisitionSourcesSeed();
+  } catch (err: any) {
+    console.warn("[phes-migration] acquisition-sources-seed — non-fatal:", err?.message ?? err);
   }
 
   try {

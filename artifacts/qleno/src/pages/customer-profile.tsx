@@ -438,6 +438,104 @@ function EditProfileDrawer({ client, onClose, onSave, onToast }: { client: any; 
   });
   const [saving, setSaving] = useState(false);
 
+  // [scheduling-engine 2026-04-29] Tenant-managed acquisition sources.
+  // Replaces the hardcoded SOURCE_LABELS dropdown — fetches from the
+  // server, supports an inline "+ Add new source" UI that writes to
+  // the acquisition_sources table. Dropdown stays editable in the
+  // form; existing referral_source values that don't match an active
+  // source still display via SOURCE_LABELS fallback.
+  const [sources, setSources] = useState<Array<{ id: number; slug: string; name: string }>>([]);
+  const [addingSource, setAddingSource] = useState(false);
+  const [newSourceName, setNewSourceName] = useState("");
+  const [savingSource, setSavingSource] = useState(false);
+  const [sourceError, setSourceError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await apiFetch("/api/acquisition-sources");
+        if (cancelled) return;
+        const list = Array.isArray(r) ? r : (r?.data ?? []);
+        setSources(list as any);
+      } catch { /* fall back to SOURCE_LABELS — UI still renders */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  async function addSource() {
+    const trimmed = newSourceName.trim();
+    if (!trimmed) return;
+    setSavingSource(true);
+    setSourceError(null);
+    try {
+      const row = await apiFetch("/api/acquisition-sources", {
+        method: "POST",
+        body: JSON.stringify({ name: trimmed }),
+      });
+      const created = (row as any)?.data ?? row;
+      setSources(s => [...s, created].sort((a: any, b: any) =>
+        (a.display_order ?? 100) - (b.display_order ?? 100) || a.id - b.id));
+      setForm(f => ({ ...f, referral_source: created.slug }));
+      setAddingSource(false);
+      setNewSourceName("");
+    } catch (err: any) {
+      setSourceError(err?.message ?? "Could not add source");
+    } finally {
+      setSavingSource(false);
+    }
+  }
+
+  // [scheduling-engine 2026-04-29] Google Places autocomplete on the
+  // EditProfileDrawer's Street Address. Same pattern as HomesTab —
+  // load the Maps Places script once, attach Autocomplete to the
+  // input ref, parse address_components on select to patch street /
+  // city / state / zip in one go. The four discrete fields stay
+  // editable (e.g. apartment/suite numbers, manual zip override).
+  // Server-side resolveZoneForZip on PUT /api/clients/:id then
+  // assigns the zone — no preview wired here.
+  const addressInputRef = useRef<HTMLInputElement | null>(null);
+  const [mapsReady, setMapsReady] = useState(false);
+  useEffect(() => {
+    const key = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY ?? "";
+    if ((window as any).google?.maps?.places) { setMapsReady(true); return; }
+    const scriptId = "gmap-places-script";
+    if (document.getElementById(scriptId)) {
+      const existing = document.getElementById(scriptId) as HTMLScriptElement;
+      existing.addEventListener("load", () => setMapsReady(true));
+      return;
+    }
+    if (!key) return;
+    const s = document.createElement("script");
+    s.id = scriptId;
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`;
+    s.async = true; s.defer = true;
+    s.onload = () => setMapsReady(true);
+    document.head.appendChild(s);
+  }, []);
+  useEffect(() => {
+    if (!mapsReady || !addressInputRef.current) return;
+    const g = (window as any).google;
+    if (!g?.maps?.places?.Autocomplete) return;
+    const ac = new g.maps.places.Autocomplete(addressInputRef.current, {
+      componentRestrictions: { country: "us" },
+      fields: ["address_components", "formatted_address", "geometry"],
+      types: ["address"],
+    });
+    const listener = ac.addListener("place_changed", () => {
+      const place = ac.getPlace();
+      if (!place?.address_components) return;
+      const get = (type: string) =>
+        place.address_components.find((c: any) => c.types.includes(type))?.long_name ?? "";
+      const getShort = (type: string) =>
+        place.address_components.find((c: any) => c.types.includes(type))?.short_name ?? "";
+      const street = `${get("street_number")} ${get("route")}`.trim();
+      const city = get("locality") || get("sublocality") || get("postal_town");
+      const state = getShort("administrative_area_level_1");
+      const zip = get("postal_code");
+      setForm(f => ({ ...f, address: street, city, state, zip }));
+    });
+    return () => { listener?.remove?.(); };
+  }, [mapsReady]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
@@ -509,7 +607,21 @@ function EditProfileDrawer({ client, onClose, onSave, onToast }: { client: any; 
           <div style={{ borderTop: "1px solid #E5E2DC", paddingTop: 12 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#6B6860", textTransform: "uppercase" as const, letterSpacing: "0.07em", marginBottom: 12 }}>Service Address</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div>{lbl("Street Address")}<input value={form.address} onChange={upd("address")} style={inp} /></div>
+              <div>
+                {lbl("Street Address")}
+                {/* [scheduling-engine 2026-04-29] Address input wired
+                    to the addressInputRef ref so Google Places can
+                    attach its Autocomplete. The four city/state/zip
+                    fields below stay editable for unit/apt overrides. */}
+                <input
+                  ref={addressInputRef}
+                  value={form.address}
+                  onChange={upd("address")}
+                  placeholder={mapsReady ? "Start typing — Google suggests addresses" : "Street address"}
+                  autoComplete="off"
+                  style={inp}
+                />
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 70px 100px", gap: 10 }}>
                 <div>{lbl("City")}<input value={form.city} onChange={upd("city")} style={inp} /></div>
                 <div>{lbl("State")}<input value={form.state} onChange={upd("state")} style={inp} /></div>
@@ -530,10 +642,50 @@ function EditProfileDrawer({ client, onClose, onSave, onToast }: { client: any; 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div>
                 {lbl("Acquisition Source")}
+                {/* [scheduling-engine 2026-04-29] Sources fetched from
+                    /api/acquisition-sources. If the existing
+                    referral_source value isn't in the active list
+                    (e.g. legacy slug from SOURCE_LABELS), show it as
+                    a one-off option so the form doesn't lose it on
+                    first save. "+ Add new source" inline writes a
+                    new row to the table and selects it. */}
                 <select value={form.referral_source} onChange={upd("referral_source")} style={{ ...inp, background: "#FFFFFF" }}>
                   <option value="">Not set</option>
-                  {Object.entries(SOURCE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  {sources.map(s => <option key={s.id} value={s.slug}>{s.name}</option>)}
+                  {form.referral_source && !sources.some(s => s.slug === form.referral_source) && (
+                    <option value={form.referral_source}>
+                      {SOURCE_LABELS[form.referral_source] || form.referral_source.replace(/_/g, " ")} (legacy)
+                    </option>
+                  )}
                 </select>
+                {!addingSource ? (
+                  <button type="button" onClick={() => { setAddingSource(true); setSourceError(null); }}
+                    style={{ marginTop: 6, fontSize: 12, fontWeight: 600, color: "var(--brand)", background: "transparent", border: "none", padding: 0, cursor: "pointer", fontFamily: FF }}>
+                    + Add new source
+                  </button>
+                ) : (
+                  <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input
+                        autoFocus
+                        value={newSourceName}
+                        onChange={e => setNewSourceName(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") addSource(); if (e.key === "Escape") { setAddingSource(false); setNewSourceName(""); } }}
+                        placeholder="e.g. BNI Networking"
+                        style={{ ...inp, flex: 1 }}
+                      />
+                      <button type="button" onClick={addSource} disabled={savingSource || !newSourceName.trim()}
+                        style={{ padding: "0 14px", borderRadius: 7, border: "none", background: "var(--brand)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: savingSource ? "wait" : "pointer", fontFamily: FF, opacity: !newSourceName.trim() ? 0.5 : 1 }}>
+                        {savingSource ? "…" : "Add"}
+                      </button>
+                      <button type="button" onClick={() => { setAddingSource(false); setNewSourceName(""); setSourceError(null); }}
+                        style={{ padding: "0 12px", borderRadius: 7, border: "1px solid #E5E2DC", background: "#FFFFFF", color: "#6B6860", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: FF }}>
+                        Cancel
+                      </button>
+                    </div>
+                    {sourceError && <div style={{ fontSize: 11, color: "#991B1B" }}>{sourceError}</div>}
+                  </div>
+                )}
               </div>
               <div>{lbl("Client Since")}<input value={form.client_since} onChange={upd("client_since")} type="date" style={inp} /></div>
               <div>{lbl("Internal Notes")}<textarea value={form.notes} onChange={upd("notes")} rows={3} style={{ ...inp, resize: "vertical" as const }} /></div>
