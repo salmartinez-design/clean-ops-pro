@@ -258,9 +258,18 @@ export default function EditJobModal({
   const [calcBusy, setCalcBusy] = useState(false);
   const [calcError, setCalcError] = useState<string>("");
 
-  // Cascade prompt state
+  // [cascade-scope 2026-04-29] Four cascade options now. 'remove_this'
+  // shares the write path with 'this_job' but lets the operator signal
+  // intent ("skip the schedule's default add-on for this visit only").
+  // 'all' updates the template + every non-paid occurrence including
+  // past — the route warns when there are paid past jobs.
+  type CascadeChoice = "this_job" | "this_and_future" | "all" | "remove_this";
   const [cascadePromptOpen, setCascadePromptOpen] = useState(false);
-  const [cascadeChoice, setCascadeChoice] = useState<"this_job" | "this_and_future">("this_job");
+  const [cascadeChoice, setCascadeChoice] = useState<CascadeChoice>("this_job");
+  // [edit-decouple 2026-04-29] When the route returns warn=true, we
+  // open this confirmation dialog. User confirms → we re-submit with
+  // force_unlock: true so per-field warn locks pass through.
+  const [warnPrompt, setWarnPrompt] = useState<{ message: string; field?: string } | null>(null);
 
   const [saving, setSaving] = useState(false);
 
@@ -598,7 +607,7 @@ export default function EditJobModal({
     submit("this_job");
   }
 
-  async function submit(cascade: "this_job" | "this_and_future") {
+  async function submit(cascade: CascadeChoice, opts?: { force_unlock?: boolean }) {
     setSaving(true);
     try {
       // Build add-ons payload. We persist into job_add_ons via add_on_id (legacy
@@ -631,6 +640,11 @@ export default function EditJobModal({
         team_user_ids: selectedTechIds,
         instructions,
         cascade_scope: cascade,
+        // [edit-decouple 2026-04-29] When the route returned warn=true on
+        // a previous attempt and the operator confirmed in the dialog,
+        // we replay the request with this flag set so per-field warn
+        // locks (price-on-completed, all-with-paid-past) pass through.
+        force_unlock: opts?.force_unlock === true,
       };
       // [AH] Commercial-only fields. service_type is a real enum value the
       // user picked from the commercial dropdown; hourly_rate persists to
@@ -675,7 +689,14 @@ export default function EditJobModal({
       const d = await r.json().catch(() => ({}));
       if (!r.ok) {
         console.error("[edit-job-modal] PATCH failed", { status: r.status, body: d, payload });
-        if (r.status === 409) {
+        // [edit-decouple 2026-04-29] 409 + warn=true is a "are you sure"
+        // signal — surface a confirm dialog and let the operator re-submit
+        // with force_unlock: true. Other 409s stay as terminal errors
+        // (cancelled job, hard-locked field, tech clocked in).
+        if (r.status === 409 && d.warn === true) {
+          setWarnPrompt({ message: d.message || "This change requires confirmation.", field: d.field });
+          setCascadePromptOpen(false);
+        } else if (r.status === 409) {
           toast({ title: "Cannot edit", description: d.message || "Job is locked or a tech is clocked in.", variant: "destructive" });
         } else {
           toast({ title: "Save failed", description: d.message || d.error || `HTTP ${r.status}`, variant: "destructive" });
@@ -1261,10 +1282,12 @@ export default function EditJobModal({
               );
             })()}
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 18 }}>
-              {[
-                { v: "this_job" as const, label: "This job only", sub: "Other future jobs in this schedule won't change." },
-                { v: "this_and_future" as const, label: "This and all future occurrences", sub: "Updates the schedule template + all future scheduled jobs." },
-              ].map(opt => {
+              {([
+                { v: "this_job",        label: "Just this visit",                  sub: "Default. Writes to this job + its add-ons. Other occurrences won't change." },
+                { v: "this_and_future", label: "This and all future visits",       sub: "Updates the schedule template + every future scheduled occurrence. Past visits stay untouched." },
+                { v: "all",             label: "All visits in the series",         sub: "Backfills past + future. Paid past jobs are skipped to protect the audit trail." },
+                { v: "remove_this",     label: "Remove from this visit only",      sub: "Use when an add-on (parking, etc.) is normally on the schedule but isn't happening this time. Schedule template stays intact." },
+              ] as Array<{ v: CascadeChoice; label: string; sub: string }>).map(opt => {
                 const sel = cascadeChoice === opt.v;
                 return (
                   <button key={opt.v} type="button" onClick={() => setCascadeChoice(opt.v)}
@@ -1288,6 +1311,41 @@ export default function EditJobModal({
               <button onClick={() => submit(cascadeChoice)} disabled={saving}
                 style={{ flex: 2, padding: "10px", borderRadius: 8, border: "none", background: "var(--brand, #00C9A0)", color: "#FFFFFF", fontSize: 13, fontWeight: 700, cursor: saving ? "wait" : "pointer", fontFamily: FF }}>
                 {saving ? "Applying…" : "Apply changes"}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* [edit-decouple 2026-04-29] Confirmation dialog for warn-locked
+          edits. Opens when the route returns 409 + warn=true. The
+          operator's "Confirm and save" re-submits the same payload with
+          force_unlock: true so the per-field warn lock passes through. */}
+      {warnPrompt && (
+        <>
+          <div onClick={() => setWarnPrompt(null)}
+            style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,16,18,0.55)", zIndex: 220 }} />
+          <div style={{
+            position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+            zIndex: 221, width: 440, maxWidth: "92vw",
+            backgroundColor: "#FFFFFF", border: "1px solid #E5E2DC", borderRadius: 12,
+            boxShadow: "0 16px 48px rgba(0,0,0,0.18)", padding: "20px 22px",
+            fontFamily: FF,
+          }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: "#1A1917", marginBottom: 8 }}>
+              Confirm change
+            </div>
+            <div style={{ fontSize: 13, color: "#1A1917", lineHeight: 1.5, marginBottom: 18 }}>
+              {warnPrompt.message}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setWarnPrompt(null)} disabled={saving}
+                style={{ flex: 1, padding: "10px", borderRadius: 8, border: "1px solid #E5E2DC", background: "#FFFFFF", color: "#6B7280", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FF }}>
+                Cancel
+              </button>
+              <button onClick={() => { setWarnPrompt(null); submit(cascadeChoice, { force_unlock: true }); }} disabled={saving}
+                style={{ flex: 2, padding: "10px", borderRadius: 8, border: "none", background: "#D97706", color: "#FFFFFF", fontSize: 13, fontWeight: 700, cursor: saving ? "wait" : "pointer", fontFamily: FF }}>
+                {saving ? "Saving…" : "Confirm and save"}
               </button>
             </div>
           </div>

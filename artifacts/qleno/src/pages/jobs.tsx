@@ -1391,12 +1391,19 @@ function JobPanel({ job, employees, onClose, onUpdate, mobile }: {
               <DollarSign size={13} /> Charge Client
             </button>
           )}
-          {/* [AG] Edit button — opens the focused edit modal. Disabled with the
-              same isLocked rule as Reschedule (complete / cancelled / locked_at). */}
+          {/* [edit-decouple 2026-04-29] Edit button is ALWAYS enabled,
+              even on completed/cancelled/locked jobs. Per-field lock
+              logic inside EditJobModal + the PATCH route protects the
+              fields that actually need it (paid billed_amount stays
+              hard-locked; actual_start/end + invoiced billed_amount
+              warn-then-unlock; service_type/frequency stay locked on
+              completed jobs). The blanket "you can't edit a completed
+              job" gate was wrong — operators legitimately need to fix
+              tech assignments and clock-in timestamps after the fact
+              for payroll. Audit log captures every unlocked edit. */}
           <button
-            disabled={isLocked}
-            onClick={() => { if (!isLocked) setEditOpen(true); }}
-            style={{ padding: "10px 12px", border: `1px solid ${isLocked ? "#E5E2DC" : "#A7F3D0"}`, borderRadius: 8, backgroundColor: isLocked ? "#F8F7F4" : "#ECFDF5", color: isLocked ? "#9E9B94" : "#065F46", fontSize: 13, fontWeight: 600, cursor: isLocked ? "not-allowed" : "pointer", fontFamily: FF, opacity: isLocked ? 0.6 : 1 }}>
+            onClick={() => setEditOpen(true)}
+            style={{ padding: "10px 12px", border: "1px solid #A7F3D0", borderRadius: 8, backgroundColor: "#ECFDF5", color: "#065F46", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FF }}>
             Edit
           </button>
           <button
