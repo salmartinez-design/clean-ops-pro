@@ -807,8 +807,18 @@ router.patch("/:id", requireAuth, async (req, res) => {
       });
     }
 
-    if (cascade_scope !== "this_job" && cascade_scope !== "this_and_future") {
-      return res.status(400).json({ error: "cascade_scope must be 'this_job' or 'this_and_future'" });
+    // [cascade-scope 2026-04-29] Four valid scopes now:
+    //   this_job          — write to this job + job_add_ons (default)
+    //   this_and_future   — schedule template + future occurrences
+    //   all               — full series including past (warn if paid)
+    //   remove_this       — same write path as this_job; signals operator
+    //                       intent to remove a schedule-default add-on
+    //                       from this occurrence only (no schedule edit).
+    const VALID_CASCADE = ["this_job", "this_and_future", "all", "remove_this"] as const;
+    if (!VALID_CASCADE.includes(cascade_scope)) {
+      return res.status(400).json({
+        error: `cascade_scope must be one of: ${VALID_CASCADE.join(", ")}`,
+      });
     }
 
     // ── Pull current job + actor identity ──────────────────────────────────
@@ -816,17 +826,86 @@ router.patch("/:id", requireAuth, async (req, res) => {
       SELECT id, company_id, recurring_schedule_id, status, locked_at,
              service_type, frequency, scheduled_date, scheduled_time,
              allowed_hours, base_fee, hourly_rate, manual_rate_override, notes,
-             assigned_user_id, client_id
+             assigned_user_id, client_id, billed_amount,
+             charge_succeeded_at, charge_failed_at
       FROM jobs WHERE id = ${jobId} AND company_id = ${companyId} LIMIT 1
     `);
     if (!jobRows.rows.length) return res.status(404).json({ error: "Job not found" });
     const before = jobRows.rows[0] as Record<string, unknown>;
 
-    if (before.status === "complete" || before.status === "cancelled" || before.locked_at != null) {
+    // [edit-decouple 2026-04-29] Per-field lock matrix replaces the prior
+    // blanket "completed/cancelled/locked = no edits". Operators need to
+    // fix tech assignments and clock-in timestamps after the fact for
+    // payroll, and surfacing edits via the audit log is more useful than
+    // hiding the door entirely.
+    //
+    //   Free fields:        notes, address, scheduled_date/time,
+    //                       allowed_hours, instructions, manual_rate_override,
+    //                       team_user_ids, add_ons, parking_*, days_of_week
+    //   Hard-locked fields on completed: service_type, frequency
+    //                       (changing these changes commission routing /
+    //                        recurrence semantics — use void-and-rebook)
+    //   Warn-then-unlock:   base_fee on completed (warn if invoiced),
+    //                       hourly_rate on completed
+    //   Hard-locked when paid: base_fee, hourly_rate
+    //                       (charge_succeeded_at IS NOT NULL means money
+    //                        moved — refund flow, not edit)
+    //   Always free:        team_user_ids, instructions, address fields,
+    //                       notes, add_ons (audit-trailed in all cases)
+    //
+    // Caller signals "I see the warning, proceed" via `force_unlock: true`
+    // in the body. Without it, warn-locked field edits return 409.
+    const force_unlock = req.body?.force_unlock === true;
+    const isCompleted = before.status === "complete";
+    const isCancelled = before.status === "cancelled";
+    const isPaid = before.charge_succeeded_at != null;
+
+    if (isCancelled) {
+      // Cancelled jobs stay locked. Restore-from-cancelled is a different
+      // flow (uncancel route, not editor).
       return res.status(409).json({
-        error: "Job is locked",
-        message: "Completed, cancelled, or locked jobs cannot be edited.",
+        error: "Cancelled job",
+        message: "Cancelled jobs cannot be edited. Restore the job first.",
       });
+    }
+
+    if (isCompleted) {
+      // Hard locks on completed jobs.
+      if (service_type !== undefined && service_type !== before.service_type) {
+        return res.status(409).json({
+          error: "Field locked",
+          field: "service_type",
+          message: "Service type can't change on a completed job. Cancel and re-book if the wrong type was billed.",
+        });
+      }
+      if (frequency !== undefined && frequency !== before.frequency) {
+        return res.status(409).json({
+          error: "Field locked",
+          field: "frequency",
+          message: "Frequency can't change on a completed job. Cancel and re-book if the recurrence was wrong.",
+        });
+      }
+      // Warn-locked: pricing on completed jobs. Hard-locked when paid.
+      const priceChanged =
+        (base_fee !== undefined && String(base_fee) !== String(before.base_fee ?? "")) ||
+        (hourly_rate !== undefined && String(hourly_rate ?? "") !== String(before.hourly_rate ?? ""));
+      if (priceChanged) {
+        if (isPaid) {
+          return res.status(409).json({
+            error: "Field locked",
+            field: "base_fee",
+            message: "Job is already paid. Issue a refund or surcharge instead of editing the price.",
+          });
+        }
+        if (!force_unlock) {
+          return res.status(409).json({
+            error: "Confirmation required",
+            field: "base_fee",
+            warn: true,
+            message: "This job is completed. Changing the price may require manual invoice adjustment. Re-submit with force_unlock=true to confirm.",
+          });
+        }
+      }
     }
 
     if (cascade_scope === "this_and_future" && before.recurring_schedule_id == null) {
@@ -834,6 +913,44 @@ router.patch("/:id", requireAuth, async (req, res) => {
         error: "Cannot cascade",
         message: "This job is not part of a recurring schedule. Use cascade_scope='this_job'.",
       });
+    }
+    if (cascade_scope === "all" && before.recurring_schedule_id == null) {
+      return res.status(400).json({
+        error: "Cannot cascade",
+        message: "This job is not part of a recurring schedule. Use cascade_scope='this_job'.",
+      });
+    }
+    if (cascade_scope === "remove_this" && before.recurring_schedule_id == null) {
+      // remove_this only makes sense on a recurring job — it's the
+      // operator's way of saying "skip the schedule's default add-on
+      // for this occurrence." On a one-off, this_job is equivalent.
+      return res.status(400).json({
+        error: "Cannot scope",
+        message: "remove_this only applies to recurring jobs. Use this_job for one-offs.",
+      });
+    }
+
+    // [cascade-scope 2026-04-29] cascade='all' warns when any past
+    // occurrence in the series has been paid. Operator must confirm
+    // via force_unlock=true to proceed (same flag used by the
+    // per-field warn-then-unlock above).
+    if (cascade_scope === "all" && before.recurring_schedule_id != null) {
+      const paidPast = await db.execute(sql`
+        SELECT COUNT(*)::int AS n FROM jobs
+         WHERE recurring_schedule_id = ${Number(before.recurring_schedule_id)}
+           AND company_id = ${companyId}
+           AND charge_succeeded_at IS NOT NULL
+           AND scheduled_date < ${String(before.scheduled_date)}
+      `);
+      const n = Number((paidPast.rows[0] as any)?.n ?? 0);
+      if (n > 0 && !force_unlock) {
+        return res.status(409).json({
+          error: "Confirmation required",
+          warn: true,
+          paid_past_count: n,
+          message: `This recurring series has ${n} past paid occurrence${n === 1 ? "" : "s"}. Backfilling 'all' will leave those paid jobs untouched but template + past unpaid will update. Re-submit with force_unlock=true to confirm.`,
+        });
+      }
     }
 
     // ── In-progress guard: open timeclock blocks date/time/team edits ──────
@@ -1029,12 +1146,19 @@ router.patch("/:id", requireAuth, async (req, res) => {
         }
       }
 
-      // ── Cascade: this_and_future ─────────────────────────────────────────
+      // ── Cascade: this_and_future or all ──────────────────────────────────
+      // [cascade-scope 2026-04-29] 'all' shares the schedule-template
+      // update + cadence-pattern logic with 'this_and_future'; the only
+      // semantic difference is the date filter for the future-jobs
+      // cascade (no `> CURRENT_DATE` filter on 'all') and an explicit
+      // skip of paid past occurrences. We treat them under one block
+      // and branch on `cascadeAllScope` at the SQL level.
       let futureCount = 0;
       let futureClockedSkipped = 0;
       let futureDeleted = 0;     // [AI] Hybrid cascade: jobs whose date no longer matches new pattern
       let futureInserted = 0;    // [AI] Hybrid cascade: new dates the new pattern requires
-      if (cascade_scope === "this_and_future" && before.recurring_schedule_id != null) {
+      const cascadeAllScope = cascade_scope === "all";
+      if ((cascade_scope === "this_and_future" || cascadeAllScope) && before.recurring_schedule_id != null) {
         const scheduleId = Number(before.recurring_schedule_id);
 
         // [AI] Detect day-pattern change so we know whether to run the AG
@@ -1138,14 +1262,25 @@ router.patch("/:id", requireAuth, async (req, res) => {
         if (nextManualOverride !== undefined) pushFj("manual_rate_override", nextManualOverride);
 
         if (futureJobsSet.length > 0 || dayPatternChanged) {
-          // Find candidate future job ids first, exclude any currently clocked-in.
+          // Find candidate jobs in the series. For 'this_and_future' we
+          // only touch future scheduled jobs. For 'all' we widen the
+          // window to include past too, but skip jobs whose money has
+          // already moved (charge_succeeded_at IS NOT NULL) — those need
+          // refund/surcharge flows, not silent overwrites — and skip
+          // completed jobs whose status would otherwise be downgraded.
+          // Cancelled jobs are excluded both ways. The current job
+          // updates via the main UPDATE statement so we exclude it
+          // here to avoid double-write.
           const candidates = await tx.execute(sql`
             SELECT j.id, j.scheduled_date::text AS scheduled_date
             FROM jobs j
             WHERE j.recurring_schedule_id = ${scheduleId}
               AND j.company_id = ${companyId}
-              AND j.scheduled_date > CURRENT_DATE
-              AND j.status = 'scheduled'
+              AND j.id != ${jobId}
+              AND j.status NOT IN ('cancelled')
+              AND ${cascadeAllScope
+                  ? sql`j.charge_succeeded_at IS NULL AND j.status != 'complete'`
+                  : sql`j.scheduled_date > CURRENT_DATE AND j.status = 'scheduled'`}
           `);
           type Cand = { id: number; scheduled_date: string };
           const cands = (candidates.rows as unknown as Cand[]).map(r => ({ id: Number(r.id), scheduled_date: String(r.scheduled_date) }));

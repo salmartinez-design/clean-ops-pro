@@ -546,7 +546,14 @@ router.get("/", requireAuth, async (req, res) => {
     const jobsByEmployee = new Map<number, typeof mappedJobs>();
     const unassigned: typeof mappedJobs = [];
 
+    // [hotfix] Belt-and-suspenders: even with the unique partial index
+    // landing in phes-data-migration, if any data sneaks through (or an
+    // upstream join fans out unexpectedly) we don't want React rendering
+    // two chips for the same job.id. Dedupe by id at grouping time.
+    const seenIds = new Set<number>();
     for (const job of mappedJobs) {
+      if (seenIds.has(job.id)) continue;
+      seenIds.add(job.id);
       if (!job.assigned_user_id) {
         unassigned.push(job);
       } else {

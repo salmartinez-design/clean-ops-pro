@@ -740,8 +740,70 @@ async function runScopeVisibility(): Promise<void> {
   console.log("[scope-visibility] Completed.");
 }
 
+// [hotfix 2026-04-29] Dedupe duplicate jobs and add a partial unique
+// index that prevents the same client from booking two overlapping
+// non-cancelled jobs at the same date+time going forward.
+//
+// The bug Sal saw was Jaira Estrada's chip rendering twice on the
+// dispatch board. Most likely cause: a second insert path (booking
+// re-submit, recurring engine race, manual import) wrote a duplicate
+// row that the dispatch read happily painted twice. We dedupe on
+// startup (keep lowest id, delete the rest) and lock the door behind
+// us so it can't recur.
+//
+// Constraint scope:
+//   (company_id, client_id, scheduled_date, scheduled_time)
+//   WHERE status NOT IN ('cancelled')
+//
+// - Cancelled jobs are allowed to coexist with active ones (you can
+//   cancel + rebook on the same slot).
+// - NULL scheduled_time stays NULL-distinct per Postgres default,
+//   which is fine — "no specific time" can legitimately apply to
+//   multiple jobs.
+async function runJobsDedupeAndConstraint(): Promise<void> {
+  // Step 1: dedupe. Keep lowest job id per (company, client, date, time)
+  // when status is non-cancelled, delete the rest. Audit log + photos +
+  // job_add_ons + job_technicians cascade via FK ON DELETE CASCADE
+  // (already configured on those tables).
+  const deleted = await db.execute(sql`
+    WITH dupes AS (
+      SELECT id,
+             ROW_NUMBER() OVER (
+               PARTITION BY company_id, client_id, scheduled_date,
+                            COALESCE(scheduled_time::text, '')
+               ORDER BY id ASC
+             ) AS rn
+      FROM jobs
+      WHERE status NOT IN ('cancelled')
+    )
+    DELETE FROM jobs
+    WHERE id IN (SELECT id FROM dupes WHERE rn > 1)
+    RETURNING id
+  `);
+  const removed = (deleted.rows ?? []).length;
+  if (removed > 0) {
+    console.log(`[jobs-dedupe] Removed ${removed} duplicate job row(s) (kept lowest id per client/date/time).`);
+  }
+
+  // Step 2: add the partial unique index. CONCURRENTLY would be ideal
+  // for a busy production table, but it can't run inside a transaction
+  // and we need this to block startup so subsequent inserts hit the
+  // constraint. With a sub-1k jobs/day table this completes instantly.
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_jobs_no_double_book
+      ON jobs (company_id, client_id, scheduled_date, scheduled_time)
+      WHERE status NOT IN ('cancelled')
+  `);
+}
+
 export async function runPhesDataMigration(): Promise<void> {
   await runBookingSchemaGuard();
+
+  try {
+    await runJobsDedupeAndConstraint();
+  } catch (err: any) {
+    console.warn("[phes-migration] jobs-dedupe — non-fatal:", err?.message ?? err);
+  }
 
   try {
     await runScopeZoneFix();
