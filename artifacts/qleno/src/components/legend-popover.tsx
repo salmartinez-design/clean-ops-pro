@@ -69,6 +69,20 @@ function ExampleTile({ status }: { status: JobVisualStatus }) {
           NO SHOW
         </div>
       )}
+      {/* [job-card-redesign] UNPAID badge mirrors the chip pill so the
+          legend tile reads the same as the real chip on the timeline.
+          Lives top-left to avoid colliding with the checkmark badge. */}
+      {status === "completed_unpaid" && (
+        <div style={{ position: "absolute", top: 3, left: 7, fontSize: 8, fontWeight: 800, color: "#FFFFFF", backgroundColor: "#BA7517", padding: "1px 4px", borderRadius: 3, letterSpacing: "0.05em" }}>
+          UNPAID
+        </div>
+      )}
+      {/* [job-card-redesign] LATE badge mirrors the chip pill. */}
+      {status === "late_clockin" && (
+        <div style={{ position: "absolute", top: 3, left: 7, fontSize: 8, fontWeight: 800, color: "#FFFFFF", backgroundColor: "#DC2626", padding: "1px 4px", borderRadius: 3, letterSpacing: "0.05em" }}>
+          LATE
+        </div>
+      )}
     </div>
   );
 }

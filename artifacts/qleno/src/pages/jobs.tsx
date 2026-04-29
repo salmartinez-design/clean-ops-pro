@@ -15,6 +15,7 @@ import {
   Building2, AlertTriangle, Repeat, Phone, MessageSquare, Send, Check, Info,
 } from "lucide-react";
 import { getJobVisualStatus, STATUS_VISUALS, ensureJobStatusStyles, LIVE_OPS } from "@/lib/job-status";
+import { computePriceDelta } from "@/lib/price-delta";
 import LegendPopover from "@/components/legend-popover";
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
@@ -2368,6 +2369,14 @@ function JobHoverCard({ job, assignedName }: { job: DispatchJob; assignedName?: 
   );
 }
 
+// [job-card-redesign] Re-exported for the dev-only visual test page at
+// /jobs/visual-test. Production code should NOT import this — chips on
+// the dispatch board route through the page's own <EmployeeRow> /
+// <UnassignedGanttRow> hierarchy. The export is here to keep the test
+// page in its own file without duplicating chip logic.
+export { JobChip as _JobChipForTesting };
+export type { DispatchJob as _DispatchJobForTesting };
+
 // ─── DESKTOP: JOB CHIP ─────────────────────────────────────────────────────────
 //
 // [job-card-redesign] Two-row layout:
@@ -2389,7 +2398,7 @@ function JobHoverCard({ job, assignedName }: { job: DispatchJob; assignedName?: 
 // elaborations (live timer pill, progress bar, NEW pill) are derived
 // from job fields directly — they don't fit the "every-surface" contract
 // and would noise up the canonical visual.
-function JobChip({ job, onClick, assignedName, isUnassigned }: { job: DispatchJob; onClick: (j: DispatchJob) => void; assignedName?: string; isUnassigned?: boolean }) {
+function JobChip({ job, onClick, assignedName, isUnassigned, forceStatus }: { job: DispatchJob; onClick: (j: DispatchJob) => void; assignedName?: string; isUnassigned?: boolean; /** Test-only override for visual status. Used by /jobs/visual-test to render every lifecycle state side-by-side, bypassing LIVE_OPS / clock-derivation gates. Production callers should never set this. */ forceStatus?: import("@/lib/job-status").JobVisualStatus }) {
   const left = ((timeToMins(job.scheduled_time) - DAY_START) / 30) * SLOT_W;
   const width = Math.max(SLOT_W, (job.duration_minutes / 30) * SLOT_W);
   const isComplete = job.status === "complete";
@@ -2397,7 +2406,7 @@ function JobChip({ job, onClick, assignedName, isUnassigned }: { job: DispatchJo
   const isCommercial = !!job.account_id || job.client_type === "commercial";
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: `chip-${job.id}`, data: { job, originalLeft: left, type: isUnassigned ? "unassigned" : undefined }, disabled: isComplete });
 
-  const status = getJobVisualStatus(job);
+  const status = forceStatus ?? getJobVisualStatus(job);
   const visual = STATUS_VISUALS[status];
 
   const ZONE_FALLBACK = "#9CA3AF";
@@ -2415,21 +2424,15 @@ function JobChip({ job, onClick, assignedName, isUnassigned }: { job: DispatchJo
   const isWide   = width >= 192;
   const showDuration = width >= 320;
 
-  // Price + delta. base_fee → original quote (jobs.base_fee, lands on
-  // payload as `amount`); billed_amount → current price (separate field
-  // on payload, set when add-ons or manual overrides re-price the job).
-  // Show delta only when both are present, both are non-zero, and they
-  // actually differ. Hourly jobs hide delta — the rate × hours math is
-  // surfaced elsewhere; subtracting hourly amounts isn't meaningful.
-  const isHourly = job.billing_method === "hourly" && job.hourly_rate != null;
-  const baseFee = Number(job.amount ?? 0);
-  const billed = job.billed_amount != null ? Number(job.billed_amount) : null;
-  const priceDisplay = isHourly
-    ? `$${(job.hourly_rate ?? 0).toFixed(0)}/hr`
-    : `$${Math.round(billed ?? baseFee)}`;
-  const deltaAmount = !isHourly && billed != null && baseFee > 0 && Math.abs(billed - baseFee) >= 0.5
-    ? billed - baseFee
-    : null;
+  // Price + delta routed through a pure helper so the three render
+  // cases (billed null / billed === base_fee / billed differs) are
+  // testable without mounting React. See lib/price-delta.ts.
+  const { display: priceDisplay, deltaAmount } = computePriceDelta({
+    amount: job.amount,
+    billedAmount: job.billed_amount,
+    hourlyRate: job.hourly_rate,
+    billingMethod: job.billing_method,
+  });
 
   // Live timer for active jobs. Computed at render time; chip re-renders
   // on parent state changes (drag, hover, dispatch poll) so the value is

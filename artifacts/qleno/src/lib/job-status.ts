@@ -172,7 +172,7 @@ export interface StatusVisual {
 export const STATUS_VISUALS: Record<JobVisualStatus, StatusVisual> = {
   scheduled: {
     label: "Scheduled",
-    description: "Job on the board, no tech clocked in yet.",
+    description: "On the board. Tech hasn't started yet.",
     swatch: "#A78BFA",
     stripe: null,
     bodyOpacity: 1,
@@ -184,8 +184,8 @@ export const STATUS_VISUALS: Record<JobVisualStatus, StatusVisual> = {
     showCarIcon: false,
   },
   active: {
-    label: "Active",
-    description: "Tech is clocked in. Stripe pulses while live.",
+    label: "In progress",
+    description: "Tech is on the job right now.",
     swatch: "#A78BFA",
     stripe: "#F59E0B",
     bodyOpacity: 1,
@@ -197,8 +197,8 @@ export const STATUS_VISUALS: Record<JobVisualStatus, StatusVisual> = {
     showCarIcon: false,
   },
   en_route: {
-    label: "En route",
-    description: "Tech tapped 'On My Way' but hasn't clocked in yet.",
+    label: "On the way",
+    description: "Tech tapped \"On My Way\" and is heading to the job.",
     swatch: "#A78BFA",
     stripe: null,
     bodyOpacity: 1,
@@ -210,8 +210,8 @@ export const STATUS_VISUALS: Record<JobVisualStatus, StatusVisual> = {
     showCarIcon: true,
   },
   completed: {
-    label: "Completed",
-    description: "Job finished. Tech clocked out and office marked complete.",
+    label: "Done",
+    description: "Job finished and payment is in.",
     swatch: "#A78BFA",
     stripe: null,
     bodyOpacity: 0.6,
@@ -223,8 +223,8 @@ export const STATUS_VISUALS: Record<JobVisualStatus, StatusVisual> = {
     showCarIcon: false,
   },
   completed_unpaid: {
-    label: "Completed (unpaid)",
-    description: "Job done but online charge has not succeeded. Amber ring.",
+    label: "Done — unpaid",
+    description: "Job is done but the payment hasn't gone through yet.",
     swatch: "#BA7517",
     stripe: null,
     bodyOpacity: 0.6,
@@ -236,8 +236,8 @@ export const STATUS_VISUALS: Record<JobVisualStatus, StatusVisual> = {
     showCarIcon: false,
   },
   late_clockin: {
-    label: "Late clock-in",
-    description: "Past start time + 5 min, tech still has not clocked in.",
+    label: "Late",
+    description: "Tech is more than 5 minutes late and hasn't clocked in.",
     swatch: "#A78BFA",
     stripe: null,
     bodyOpacity: 1,
@@ -250,7 +250,7 @@ export const STATUS_VISUALS: Record<JobVisualStatus, StatusVisual> = {
   },
   no_show: {
     label: "No show",
-    description: "Past start time + 30 min, no clock-in. Action required.",
+    description: "Tech is 30+ minutes late with no clock-in. Call them now.",
     swatch: "#EF4444",
     stripe: null,
     bodyOpacity: 0.85,
@@ -263,7 +263,7 @@ export const STATUS_VISUALS: Record<JobVisualStatus, StatusVisual> = {
   },
   cancelled: {
     label: "Cancelled",
-    description: "Manually cancelled. Strikethrough + desaturated.",
+    description: "Won't run today. Cancelled by office or client.",
     swatch: "#9CA3AF",
     stripe: null,
     bodyOpacity: 0.5,
@@ -276,7 +276,7 @@ export const STATUS_VISUALS: Record<JobVisualStatus, StatusVisual> = {
   },
   unassigned: {
     label: "Unassigned",
-    description: "No primary tech yet. Surfaces in Unassigned row.",
+    description: "Nobody is assigned yet. Drag a tech onto the job.",
     swatch: "#FBBF24",
     stripe: null,
     bodyOpacity: 1,
