@@ -62,7 +62,8 @@ const STATUS: Record<string, { bg: string; border: string; text: string; dot: st
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 interface ClockEntry { id: number; clock_in_at: string | null; clock_out_at: string | null; distance_from_job_ft: number | null; is_flagged: boolean; }
 interface JobTechCommission { user_id: number; name: string; is_primary: boolean; est_hours: number; calc_pay: number; final_pay: number; pay_override: number | null; }
-interface DispatchJob { id: number; client_id: number; client_name: string; client_phone?: string | null; client_zip?: string | null; client_notes?: string | null; client_payment_method?: string | null; /* [tile redesign] residential or commercial badge; commercial when account_id is set OR client_type === 'commercial' */ client_type?: "residential" | "commercial" | null; address: string | null; /* [inline-edit] raw fields for address editor mode detection */ job_address_street?: string | null; job_address_city?: string | null; job_address_state?: string | null; job_address_zip?: string | null; client_address?: string | null; client_city?: string | null; client_state?: string | null; client_address_zip?: string | null; assigned_user_id: number | null; assigned_user_name?: string; service_type: string; status: string; scheduled_date: string; scheduled_time: string | null; frequency: string; amount: number; duration_minutes: number; notes: string | null; office_notes?: string | null; before_photo_count: number; after_photo_count: number; clock_entry: ClockEntry | null; zone_id?: number | null; zone_color?: string | null; zone_name?: string | null; branch_id?: number | null; branch_name?: string | null; last_service_date?: string | null; account_id?: number | null; account_name?: string | null; billing_method?: string | null; hourly_rate?: number | null; estimated_hours?: number | null; actual_hours?: number | null; billed_hours?: number | null; billed_amount?: number | null; charge_failed_at?: string | null; charge_succeeded_at?: string | null; property_access_notes?: string | null; booking_location?: string | null; technicians?: JobTechCommission[]; est_hours_per_tech?: number | null; est_pay_per_tech?: number | null; company_res_pct?: number | null; /* [AI.7.4] Commission routing — 'commercial_hourly' or 'residential_pool' */ commission_basis?: "commercial_hourly" | "residential_pool" | null; commercial_hourly_rate?: number | null; /* [AF] completion lock state */ locked_at?: string | null; actual_end_time?: string | null; completed_by_user_id?: number | null; }
+interface JobAddOn { name: string; quantity: number; unit_price: number; subtotal: number; }
+interface DispatchJob { id: number; client_id: number; client_name: string; client_phone?: string | null; client_zip?: string | null; client_notes?: string | null; client_payment_method?: string | null; /* [tile redesign] residential or commercial badge; commercial when account_id is set OR client_type === 'commercial' */ client_type?: "residential" | "commercial" | null; address: string | null; /* [inline-edit] raw fields for address editor mode detection */ job_address_street?: string | null; job_address_city?: string | null; job_address_state?: string | null; job_address_zip?: string | null; client_address?: string | null; client_city?: string | null; client_state?: string | null; client_address_zip?: string | null; assigned_user_id: number | null; assigned_user_name?: string; service_type: string; status: string; scheduled_date: string; scheduled_time: string | null; frequency: string; amount: number; duration_minutes: number; notes: string | null; office_notes?: string | null; before_photo_count: number; after_photo_count: number; clock_entry: ClockEntry | null; zone_id?: number | null; zone_color?: string | null; zone_name?: string | null; branch_id?: number | null; branch_name?: string | null; last_service_date?: string | null; account_id?: number | null; account_name?: string | null; billing_method?: string | null; hourly_rate?: number | null; estimated_hours?: number | null; actual_hours?: number | null; billed_hours?: number | null; billed_amount?: number | null; charge_failed_at?: string | null; charge_succeeded_at?: string | null; property_access_notes?: string | null; booking_location?: string | null; technicians?: JobTechCommission[]; est_hours_per_tech?: number | null; est_pay_per_tech?: number | null; company_res_pct?: number | null; /* [AI.7.4] Commission routing — 'commercial_hourly' or 'residential_pool' */ commission_basis?: "commercial_hourly" | "residential_pool" | null; commercial_hourly_rate?: number | null; /* [AF] completion lock state */ locked_at?: string | null; actual_end_time?: string | null; completed_by_user_id?: number | null; /* [job-card-redesign] Add-ons drive the +N pill on the chip and the full list in the popover. is_new_client = first-ever residential job (no prior completed). en_route_at scaffolds the "On My Way" status; column doesn't exist yet, so the field is always undefined until the SMS engine lands. */ add_ons?: JobAddOn[]; is_new_client?: boolean; en_route_at?: string | null; }
 interface Employee { id: number; name: string; role: string; jobs: DispatchJob[]; zone?: { zone_id: number; zone_color: string; zone_name: string } | null; time_off?: 'pto' | 'sick' | 'absent' | null; commission_rate?: number | null; }
 interface DispatchData { employees: Employee[]; unassigned_jobs: DispatchJob[]; }
 
@@ -2256,6 +2257,25 @@ function JobHoverCard({ job, assignedName }: { job: DispatchJob; assignedName?: 
         </div>
       </div>
 
+      {/* ─── ADD-ONS (only when present) ─── */}
+      {job.add_ons && job.add_ons.length > 0 && (
+        <div style={{ padding: "16px 20px", borderBottom: sectionBorder }}>
+          <div style={labelStyle}>Add-ons ({job.add_ons.length})</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {job.add_ons.map((a, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, fontSize: 13, color: "#1A1917" }}>
+                <span style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {a.quantity > 1 ? `${a.quantity}× ` : ""}{a.name}
+                </span>
+                <span style={{ fontWeight: 600, color: "#6B6860", flexShrink: 0 }}>
+                  ${a.subtotal.toFixed(2)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ─── TOTAL + PAYMENT ─── */}
       <div style={{ padding: "16px 20px", borderBottom: sectionBorder, display: "grid", gridTemplateColumns: paymentLabel ? "1fr 1fr" : "1fr", gap: "0 20px" }}>
         <div>
@@ -2349,40 +2369,36 @@ function JobHoverCard({ job, assignedName }: { job: DispatchJob; assignedName?: 
 }
 
 // ─── DESKTOP: JOB CHIP ─────────────────────────────────────────────────────────
+//
+// [job-card-redesign] Two-row layout:
+//   Row 1 (identity + money): [status icon] [LATE pill] [NEW pill]
+//                             [client name] [RES/COM] · · · [live timer]
+//                             [price] [delta]
+//   Row 2 (context):           [recurring ✓] [service · cadence · duration]
+//                              · · · [+N add-ons]
+//
+// Width breakpoints (SLOT_W = 64 px / 30 min):
+//   wide   ≥ 192 px (3 slots = 1.5 h+) — full two-row layout
+//   medium 120–191 px                  — drop add-ons pill, drop NEW pill,
+//                                        drop duration on row 2
+//   narrow < 120 px (< 1 h)            — single-line: name + price only,
+//                                        all pills hidden
+//
+// Status routes through getJobVisualStatus(); STATUS_VISUALS owns stripe,
+// border, opacity, checkmark, no-show, car-icon flag. Chip-specific
+// elaborations (live timer pill, progress bar, NEW pill) are derived
+// from job fields directly — they don't fit the "every-surface" contract
+// and would noise up the canonical visual.
 function JobChip({ job, onClick, assignedName, isUnassigned }: { job: DispatchJob; onClick: (j: DispatchJob) => void; assignedName?: string; isUnassigned?: boolean }) {
-  // [X] `sc` (status color palette) no longer needed — border uses its own
-  // priority-based color logic below; zone-tinted bg replaces the
-  // status.bg fallback entirely. `assignedName` is still passed through
-  // to JobHoverCard (unassigned fallback display) but is not rendered in
-  // the card body itself.
   const left = ((timeToMins(job.scheduled_time) - DAY_START) / 30) * SLOT_W;
   const width = Math.max(SLOT_W, (job.duration_minutes / 30) * SLOT_W);
   const isComplete = job.status === "complete";
-  const isRecurring = job.frequency && job.frequency !== "on_demand";
+  const isRecurring = !!job.frequency && job.frequency !== "on_demand";
+  const isCommercial = !!job.account_id || job.client_type === "commercial";
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: `chip-${job.id}`, data: { job, originalLeft: left, type: isUnassigned ? "unassigned" : undefined }, disabled: isComplete });
 
-  // [AB] Full-opacity zone-color card matching MC's Job Schedule visual
-  // weight. Previous 15% alpha tint was spec'd to feel "subtle" but read
-  // as washed-out in practice — failed the "glance from across the room"
-  // test. MC uses saturated fills with white text; matching that now.
-  //
-  // Border priority (unchanged from X/V):
-  //   1. red   — late clock-in OR at-risk (today, past start−15 min, no clock-in)
-  //   2. amber — in_progress
-  //   3. green — complete
-  //   4. zone color at full opacity — scheduled default (same as bg,
-  //      so status state-changes are the only visible border transition)
-  //
-  // Text: white by default, but if the zone color's perceptual luminance
-  // exceeds 0.65 (e.g. gold #FFD700 for Tinley/Orlando/Palos Park at
-  // ~0.79) we flip to dark text so the chip stays legible. Fallback when
-  // zone is null/missing: neutral #9CA3AF (Tailwind gray-400) with white
-  // text — distinct from "colored" chips without being alarming.
-  // [AI.7.5] Visual status routes through the canonical helper so the
-  // Gantt chip, mobile card, compact rows, my-jobs view, and Legend
-  // all paint from one source. Status drives the border override,
-  // amber stripe, body opacity, checkmark badge, and no-show badge.
-  const visual = STATUS_VISUALS[getJobVisualStatus(job)];
+  const status = getJobVisualStatus(job);
+  const visual = STATUS_VISUALS[status];
 
   const ZONE_FALLBACK = "#9CA3AF";
   const bgColor = job.zone_color || ZONE_FALLBACK;
@@ -2392,12 +2408,68 @@ function JobChip({ job, onClick, assignedName, isUnassigned }: { job: DispatchJo
   const primaryText   = isLightZone ? "#1A1917" : "#FFFFFF";
   const secondaryText = isLightZone ? "#4B5563" : "rgba(255,255,255,0.90)";
   const iconTint      = isLightZone ? "#6B7280" : "rgba(255,255,255,0.90)";
+  const pillTint      = isLightZone ? "rgba(0,0,0,0.10)" : "rgba(255,255,255,0.20)";
+
+  // Width tiers
+  const isNarrow = width < 120;
+  const isWide   = width >= 192;
+  const showDuration = width >= 320;
+
+  // Price + delta. base_fee → original quote (jobs.base_fee, lands on
+  // payload as `amount`); billed_amount → current price (separate field
+  // on payload, set when add-ons or manual overrides re-price the job).
+  // Show delta only when both are present, both are non-zero, and they
+  // actually differ. Hourly jobs hide delta — the rate × hours math is
+  // surfaced elsewhere; subtracting hourly amounts isn't meaningful.
+  const isHourly = job.billing_method === "hourly" && job.hourly_rate != null;
+  const baseFee = Number(job.amount ?? 0);
+  const billed = job.billed_amount != null ? Number(job.billed_amount) : null;
+  const priceDisplay = isHourly
+    ? `$${(job.hourly_rate ?? 0).toFixed(0)}/hr`
+    : `$${Math.round(billed ?? baseFee)}`;
+  const deltaAmount = !isHourly && billed != null && baseFee > 0 && Math.abs(billed - baseFee) >= 0.5
+    ? billed - baseFee
+    : null;
+
+  // Live timer for active jobs. Computed at render time; chip re-renders
+  // on parent state changes (drag, hover, dispatch poll) so the value is
+  // approximate but acceptable for v1.
+  const clockInAt = job.clock_entry?.clock_in_at;
+  const elapsedMin = status === "active" && clockInAt
+    ? Math.max(0, Math.round((Date.now() - new Date(clockInAt).getTime()) / 60000))
+    : 0;
+  const allowedMin = job.duration_minutes > 0 ? job.duration_minutes : 60;
+  const progressFraction = status === "active" && clockInAt
+    ? Math.min(1, elapsedMin / allowedMin)
+    : 0;
+  const timerLabel = elapsedMin >= 60
+    ? `${Math.floor(elapsedMin / 60)}h ${elapsedMin % 60}m`
+    : `${elapsedMin}m`;
+
+  // Late minutes for the LATE pill — only when status is late_clockin.
+  // Mirrors the math in getJobVisualStatus(): now − scheduled_time.
+  const lateMin = (() => {
+    if (status !== "late_clockin") return 0;
+    const startMins = timeToMins(job.scheduled_time);
+    const now = new Date();
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+    return Math.max(0, nowMins - startMins);
+  })();
+
+  const addOnCount = job.add_ons?.length ?? 0;
+  const isNew = job.is_new_client === true;
 
   const [hovered, setHovered] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function onEnter() { hoverTimer.current = setTimeout(() => setHovered(true), 400); }
   function onLeave() { if (hoverTimer.current) clearTimeout(hoverTimer.current); setHovered(false); }
+
+  // Inset white outline for new clients — single 1.5px box-shadow inset.
+  // Composed with the existing card shadow.
+  const baseShadow = "0 1px 4px rgba(0,0,0,0.12)";
+  const newShadow = isNew ? "inset 0 0 0 1.5px rgba(255,255,255,0.55)" : null;
+  const composedShadow = newShadow ? `${newShadow}, ${baseShadow}` : baseShadow;
 
   return (
     <div ref={setNodeRef}
@@ -2407,7 +2479,7 @@ function JobChip({ job, onClick, assignedName, isUnassigned }: { job: DispatchJo
       style={{
         position: "absolute", top: 10, left, width, height: ROW_H - 20,
         borderRadius: 8, backgroundColor: bgColor,
-        border: `${visual.borderOverride ? 2 : 2}px solid ${borderColor}`,
+        border: `2px solid ${borderColor}`,
         boxSizing: "border-box", overflow: "visible",
         cursor: isComplete ? "default" : isDragging ? "grabbing" : "grab",
         opacity: isDragging ? 0.3 : visual.bodyOpacity,
@@ -2415,73 +2487,164 @@ function JobChip({ job, onClick, assignedName, isUnassigned }: { job: DispatchJo
         transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined,
         zIndex: hovered ? 50 : isDragging ? 0 : 2,
         userSelect: "none", display: "flex", flexDirection: "row",
-        boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
+        boxShadow: composedShadow,
       }}>
-      {/* [AI.7.5] Active stripe — 4px amber bar with slow opacity pulse.
-          Reduced-motion users see a steady solid bar (CSS media query
-          drops the animation). Stripe-only animation, body stays still. */}
+      {/* [AI.7.5] Active stripe — 4px amber bar with slow opacity pulse. */}
       {visual.stripe && (
         <div className="qleno-active-stripe" style={{
           width: 4, alignSelf: "stretch", backgroundColor: visual.stripe,
           borderTopLeftRadius: 6, borderBottomLeftRadius: 6, flexShrink: 0,
         }} />
       )}
-      {/* [tile redesign] 3-line hero per spec:
-            line 1: client name + Res/Comm pill (corner)
-            line 2: service type
-            line 3: $price (right-aligned)
-          Time is implied by the chip's horizontal position on the Gantt
-          axis, so the textual time line was dropped to make room. Glance
-          icons (clock-in, photos, recurring) still ride next to the client
-          name. Pill colors adapt to zone luminance.
-       */}
+
+      {/* [job-card-redesign] In-progress progress bar — 3px white bar
+          riding the top edge, fills based on elapsed/allowed. Inside the
+          card so it inherits border-radius clipping. Hidden when the job
+          isn't active (or has no clock-in yet). */}
+      {status === "active" && progressFraction > 0 && (
+        <div style={{
+          position: "absolute", top: 0, left: 0, right: 0, height: 3,
+          backgroundColor: "rgba(0,0,0,0.18)", borderTopLeftRadius: 6, borderTopRightRadius: 6,
+          overflow: "hidden", zIndex: 2, pointerEvents: "none",
+        }}>
+          <div style={{
+            width: `${progressFraction * 100}%`, height: "100%",
+            backgroundColor: "rgba(255,255,255,0.92)",
+          }} />
+        </div>
+      )}
+
       <div style={{ flex: 1, minWidth: 0, padding: "6px 10px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 2 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
-          {job.clock_entry?.clock_in_at && <Clock size={9} style={{ color: iconTint, flexShrink: 0 }} />}
-          {job.after_photo_count > 0 && <Camera size={9} style={{ color: iconTint, flexShrink: 0 }} />}
-          {isRecurring && <Repeat size={9} style={{ color: iconTint, flexShrink: 0 }} />}
-          <span style={{ fontSize: 11, fontWeight: 700, color: primaryText, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: 0, textDecoration: visual.strikethrough ? "line-through" : "none" }}>
-            {job.client_name}
-          </span>
-          {/* Res/Comm pill: commercial when account_id is set OR client_type === 'commercial' */}
-          {(() => {
-            const isCommercial = !!job.account_id || job.client_type === "commercial";
-            return (
+        {isNarrow ? (
+          // ── Narrow: single line, name + price ──
+          <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+            {visual.showCarIcon && <CarIconInline tint={primaryText} />}
+            <span style={{ fontSize: 11, fontWeight: 700, color: primaryText, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: 0, textDecoration: visual.strikethrough ? "line-through" : "none" }}>
+              {job.client_name}
+            </span>
+            <span style={{ fontSize: 11, fontWeight: 800, color: primaryText, whiteSpace: "nowrap", flexShrink: 0 }}>
+              {priceDisplay}
+            </span>
+          </div>
+        ) : (
+          <>
+            {/* ── Top row ── */}
+            <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+              {/* Status icons (left of name) */}
+              {visual.showCarIcon && <CarIconInline tint={primaryText} />}
+              {!visual.showCarIcon && job.clock_entry?.clock_in_at && status !== "active" && (
+                <Clock size={9} style={{ color: iconTint, flexShrink: 0 }} />
+              )}
+              {/* LATE pill — replaces other status icons when late_clockin */}
+              {status === "late_clockin" && lateMin > 0 && (
+                <span style={{
+                  flexShrink: 0, fontSize: 8, fontWeight: 800,
+                  padding: "1px 5px", borderRadius: 4,
+                  backgroundColor: "#DC2626", color: "#FFFFFF",
+                  textTransform: "uppercase", letterSpacing: "0.05em", lineHeight: 1.2,
+                }}>
+                  Late {lateMin}m
+                </span>
+              )}
+              {/* UNPAID pill — completed but online charge has not succeeded */}
+              {status === "completed_unpaid" && (
+                <span style={{
+                  flexShrink: 0, fontSize: 8, fontWeight: 800,
+                  padding: "1px 5px", borderRadius: 4,
+                  backgroundColor: "#BA7517", color: "#FFFFFF",
+                  textTransform: "uppercase", letterSpacing: "0.05em", lineHeight: 1.2,
+                }}>
+                  Unpaid
+                </span>
+              )}
+              {/* NEW pill — first-ever job for residential client */}
+              {isNew && isWide && (
+                <span style={{
+                  flexShrink: 0, fontSize: 9, fontWeight: 700,
+                  padding: "1px 5px", borderRadius: 4,
+                  backgroundColor: "#FFFFFF", color: bgColor,
+                  textTransform: "uppercase", letterSpacing: "0.05em", lineHeight: 1.2,
+                }}>
+                  New
+                </span>
+              )}
+              {/* Photo glance icon stays — useful at-a-glance signal */}
+              {job.after_photo_count > 0 && status !== "active" && (
+                <Camera size={9} style={{ color: iconTint, flexShrink: 0 }} />
+              )}
+              <span style={{ fontSize: 11, fontWeight: 700, color: primaryText, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: 0, textDecoration: visual.strikethrough ? "line-through" : "none" }}>
+                {job.client_name}
+              </span>
+              {/* RES/COM badge — three-letter mono */}
               <span style={{
                 flexShrink: 0,
                 fontSize: 8, fontWeight: 800,
                 padding: "1px 5px", borderRadius: 4,
-                backgroundColor: isLightZone ? "rgba(0,0,0,0.10)" : "rgba(255,255,255,0.20)",
+                backgroundColor: pillTint,
                 color: primaryText,
                 textTransform: "uppercase", letterSpacing: "0.05em",
                 lineHeight: 1.2,
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
               }}>
-                {isCommercial ? "Comm" : "Res"}
+                {isCommercial ? "COM" : "RES"}
               </span>
-            );
-          })()}
-        </div>
-        <span style={{ fontSize: 10, fontWeight: 500, color: secondaryText, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {scopeLabel(job)}
-        </span>
-        {/* [tile redesign] Reactive price. The dispatch payload's `amount`
-            field is the source of truth (server reads jobs.base_fee or
-            jobs.billed_amount). Every dispatch refresh picks up changes
-            from add-ons, manual rate overrides, hour adjustments, and
-            discounts applied via PATCH /api/jobs/:id. Hourly jobs show
-            the rate plus an "/hr" suffix so dispatchers see the unit. */}
-        {width > 80 && (() => {
-          const isHourly = job.billing_method === "hourly" && job.hourly_rate != null;
-          const display = isHourly
-            ? `$${(job.hourly_rate ?? 0).toFixed(0)}/hr`
-            : `$${Math.round(Number(job.amount ?? 0))}`;
-          return (
-            <span style={{ fontSize: 11, fontWeight: 800, color: primaryText, whiteSpace: "nowrap", alignSelf: "flex-start" }}>
-              {display}
-            </span>
-          );
-        })()}
+              {/* Live timer pill — only on active jobs, only on wider chips */}
+              {status === "active" && isWide && elapsedMin > 0 && (
+                <span style={{
+                  flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3,
+                  fontSize: 9, fontWeight: 700,
+                  padding: "1px 5px", borderRadius: 4,
+                  backgroundColor: "rgba(255,255,255,0.25)", color: primaryText,
+                  lineHeight: 1.2,
+                }}>
+                  <span style={{ width: 4, height: 4, borderRadius: "50%", backgroundColor: primaryText, display: "inline-block" }} />
+                  {timerLabel}
+                </span>
+              )}
+              {/* Price (right-aligned) */}
+              <span style={{ fontSize: 11, fontWeight: 800, color: primaryText, whiteSpace: "nowrap", flexShrink: 0 }}>
+                {priceDisplay}
+              </span>
+              {/* Price delta pill */}
+              {deltaAmount != null && (
+                <span style={{
+                  flexShrink: 0, fontSize: 8, fontWeight: 700,
+                  padding: "1px 4px", borderRadius: 3,
+                  backgroundColor: deltaAmount > 0 ? "rgba(34,197,94,0.85)" : "rgba(239,68,68,0.85)",
+                  color: "#FFFFFF", lineHeight: 1.2, whiteSpace: "nowrap",
+                }}>
+                  {deltaAmount > 0 ? "↑" : "↓"} ${Math.abs(Math.round(deltaAmount))}
+                </span>
+              )}
+            </div>
+
+            {/* ── Bottom row ── */}
+            <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+              {isRecurring && <Check size={9} style={{ color: iconTint, flexShrink: 0 }} strokeWidth={3} />}
+              <span style={{ fontSize: 10, fontWeight: 500, color: secondaryText, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: 0 }}>
+                {scopeLabel(job)}
+              </span>
+              {showDuration && allowedMin > 0 && (
+                <span style={{ fontSize: 10, fontWeight: 600, color: secondaryText, whiteSpace: "nowrap", flexShrink: 0 }}>
+                  {Math.round((allowedMin / 60) * 10) / 10}h
+                </span>
+              )}
+              {/* Add-ons +N pill */}
+              {addOnCount > 0 && isWide && (
+                <span style={{
+                  flexShrink: 0, fontSize: 9, fontWeight: 700,
+                  padding: "1px 5px", borderRadius: 4,
+                  backgroundColor: pillTint, color: primaryText,
+                  lineHeight: 1.2, whiteSpace: "nowrap",
+                }}>
+                  +{addOnCount}
+                </span>
+              )}
+            </div>
+          </>
+        )}
       </div>
+
       {/* [AI.7.5] Completed checkmark badge — top-right corner. */}
       {visual.showCheckmark && (
         <div style={{ position: "absolute", top: -4, right: -4, width: 16, height: 16, borderRadius: "50%", backgroundColor: "#16A34A", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", zIndex: 3 }}>
@@ -2496,6 +2659,42 @@ function JobChip({ job, onClick, assignedName, isUnassigned }: { job: DispatchJo
       )}
       {hovered && !isDragging && <JobHoverCard job={job} assignedName={assignedName} />}
     </div>
+  );
+}
+
+// [job-card-redesign] Side-profile car SVG with motion lines for the
+// en_route status. Lucide ships a "Car" icon but it's a front view and
+// has no motion lines, so we draw our own. The wrapper class
+// `qleno-en-route-icon` ties into the keyframes injected via
+// ensureJobStatusStyles() — translateX 0 → 1.5px → 0 over 0.8s. The
+// element respects prefers-reduced-motion via the same CSS file.
+function CarIconInline({ tint }: { tint: string }) {
+  return (
+    <span
+      className="qleno-en-route-icon"
+      aria-label="On the way"
+      style={{
+        display: "inline-flex", alignItems: "center", flexShrink: 0,
+        width: 18, height: 11,
+      }}
+    >
+      <svg width="18" height="11" viewBox="0 0 18 11" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Motion lines (trailing) */}
+        <line x1="0.5" y1="3.5" x2="3"   y2="3.5" stroke={tint} strokeWidth="1" strokeLinecap="round" opacity="0.85" />
+        <line x1="0.5" y1="6"   x2="2.5" y2="6"   stroke={tint} strokeWidth="1" strokeLinecap="round" opacity="0.55" />
+        <line x1="0.5" y1="8.5" x2="2"   y2="8.5" stroke={tint} strokeWidth="1" strokeLinecap="round" opacity="0.30" />
+        {/* Car body — side profile */}
+        <path
+          d="M5 7.5 V5 L6.5 3 H11.5 L13 5 V7.5 Z"
+          stroke={tint} strokeWidth="1" strokeLinejoin="round" fill="none"
+        />
+        {/* Hood + trunk extension */}
+        <line x1="13" y1="7.5" x2="16.5" y2="7.5" stroke={tint} strokeWidth="1" strokeLinecap="round" />
+        {/* Wheels */}
+        <circle cx="7"    cy="9" r="1.3" stroke={tint} strokeWidth="1" fill="none" />
+        <circle cx="12.5" cy="9" r="1.3" stroke={tint} strokeWidth="1" fill="none" />
+      </svg>
+    </span>
   );
 }
 

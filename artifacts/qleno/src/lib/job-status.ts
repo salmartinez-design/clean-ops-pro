@@ -10,7 +10,19 @@
  * compact rows, my-jobs (tech view), and the Legend popover.
  *
  * Routing precedence (top wins on conflict):
- *   cancelled → no_show → late_clockin → completed → active → unassigned → scheduled
+ *   cancelled → completed_unpaid → completed → active → no_show → en_route
+ *   → late_clockin → unassigned → scheduled
+ *
+ * en_route is scaffolded but inert: it requires `en_route_at` (set when
+ * the field tech taps "On My Way"). The schema column doesn't exist yet
+ * — the SMS / mobile-tech engine will add it later. Callers that don't
+ * pass en_route_at will never see this status. It still has a
+ * STATUS_VISUALS entry so the chip can render the animated car icon
+ * the moment the column lands.
+ *
+ * completed_unpaid fires only for online-payment jobs (stripe/square).
+ * Cash/check completion stays "completed" — there's no charge signal
+ * to derive from, and reconciliation lives in a separate workflow.
  */
 
 /**
@@ -31,6 +43,8 @@ export type JobVisualStatus =
   | "scheduled"
   | "active"
   | "completed"
+  | "completed_unpaid"
+  | "en_route"
   | "late_clockin"
   | "no_show"
   | "cancelled"
@@ -42,6 +56,15 @@ export interface JobStatusInput {
   scheduled_time?: string | null;
   assigned_user_id?: number | null;
   clock_entry?: { clock_in_at?: string | null; clock_out_at?: string | null } | null;
+  /** Set when the tech taps "On My Way" in the mobile app. Inert until
+   *  the SMS engine + schema column land — callers that don't supply
+   *  it never trigger en_route. */
+  en_route_at?: string | null;
+  /** Online-payment signals. completed_unpaid fires when status='complete'
+   *  AND payment method is stripe/square AND charge_succeeded_at is null.
+   *  Cash/check completion stays "completed" regardless. */
+  client_payment_method?: string | null;
+  charge_succeeded_at?: string | null;
 }
 
 const LATE_GRACE_MIN = 5;
@@ -62,9 +85,17 @@ function isToday(dateStr: string | null | undefined, now: Date): boolean {
   return dateStr.startsWith(`${y}-${m}-${d}`);
 }
 
+function isUnpaidOnlineJob(job: JobStatusInput): boolean {
+  const m = job.client_payment_method;
+  if (m !== "stripe" && m !== "square") return false;
+  return !job.charge_succeeded_at;
+}
+
 export function getJobVisualStatus(job: JobStatusInput, now: Date = new Date()): JobVisualStatus {
   if (job.status === "cancelled") return "cancelled";
-  if (job.status === "complete") return "completed";
+  if (job.status === "complete") {
+    return isUnpaidOnlineJob(job) ? "completed_unpaid" : "completed";
+  }
 
   const hasClockIn = !!job.clock_entry?.clock_in_at;
   const hasClockOut = !!job.clock_entry?.clock_out_at;
@@ -81,15 +112,26 @@ export function getJobVisualStatus(job: JobStatusInput, now: Date = new Date()):
   // needed) but the function returns scheduled/unassigned instead so
   // the board doesn't paint "NO SHOW" badges on import data with
   // stale scheduled_times that pre-date go-live.
+  //
+  // En route slots between no_show and late_clockin: a tech who said
+  // "on my way" 10 min after start should read EN ROUTE, not LATE
+  // (the office knows they're coming). But once we're past the
+  // no_show threshold (30 min), en_route loses — there's an
+  // operational problem regardless of what the tech radioed.
   if (LIVE_OPS && isToday(job.scheduled_date, now) && !hasClockIn) {
     const nowMins = now.getHours() * 60 + now.getMinutes();
     const startMins = timeToMins(job.scheduled_time);
     if (startMins > 0) {
       const minsLate = nowMins - startMins;
       if (minsLate >= NO_SHOW_THRESHOLD_MIN) return "no_show";
+      if (job.en_route_at) return "en_route";
       if (minsLate >= LATE_GRACE_MIN) return "late_clockin";
     }
   }
+
+  // En route can also fire BEFORE scheduled start (tech is heading
+  // there early). No clock-in yet, en_route_at set.
+  if (job.en_route_at && !hasClockIn) return "en_route";
 
   if (job.assigned_user_id == null) return "unassigned";
   return "scheduled";
@@ -121,6 +163,10 @@ export interface StatusVisual {
   desaturate: boolean;
   /** Border color override (red for late/no_show, default for others). */
   borderOverride: string | null;
+  /** Whether to render an animated car icon left of the client name
+   *  (en_route only). The icon + motion-line markup is owned by each
+   *  consumer; this flag is the trigger. */
+  showCarIcon: boolean;
 }
 
 export const STATUS_VISUALS: Record<JobVisualStatus, StatusVisual> = {
@@ -135,6 +181,7 @@ export const STATUS_VISUALS: Record<JobVisualStatus, StatusVisual> = {
     strikethrough: false,
     desaturate: false,
     borderOverride: null,
+    showCarIcon: false,
   },
   active: {
     label: "Active",
@@ -147,6 +194,20 @@ export const STATUS_VISUALS: Record<JobVisualStatus, StatusVisual> = {
     strikethrough: false,
     desaturate: false,
     borderOverride: null,
+    showCarIcon: false,
+  },
+  en_route: {
+    label: "En route",
+    description: "Tech tapped 'On My Way' but hasn't clocked in yet.",
+    swatch: "#A78BFA",
+    stripe: null,
+    bodyOpacity: 1,
+    showCheckmark: false,
+    showNoShowBadge: false,
+    strikethrough: false,
+    desaturate: false,
+    borderOverride: null,
+    showCarIcon: true,
   },
   completed: {
     label: "Completed",
@@ -159,6 +220,20 @@ export const STATUS_VISUALS: Record<JobVisualStatus, StatusVisual> = {
     strikethrough: false,
     desaturate: false,
     borderOverride: null,
+    showCarIcon: false,
+  },
+  completed_unpaid: {
+    label: "Completed (unpaid)",
+    description: "Job done but online charge has not succeeded. Amber ring.",
+    swatch: "#BA7517",
+    stripe: null,
+    bodyOpacity: 0.6,
+    showCheckmark: true,
+    showNoShowBadge: false,
+    strikethrough: false,
+    desaturate: false,
+    borderOverride: "#BA7517",
+    showCarIcon: false,
   },
   late_clockin: {
     label: "Late clock-in",
@@ -171,6 +246,7 @@ export const STATUS_VISUALS: Record<JobVisualStatus, StatusVisual> = {
     strikethrough: false,
     desaturate: false,
     borderOverride: "#DC2626",
+    showCarIcon: false,
   },
   no_show: {
     label: "No show",
@@ -183,6 +259,7 @@ export const STATUS_VISUALS: Record<JobVisualStatus, StatusVisual> = {
     strikethrough: false,
     desaturate: false,
     borderOverride: "#991B1B",
+    showCarIcon: false,
   },
   cancelled: {
     label: "Cancelled",
@@ -195,6 +272,7 @@ export const STATUS_VISUALS: Record<JobVisualStatus, StatusVisual> = {
     strikethrough: true,
     desaturate: true,
     borderOverride: null,
+    showCarIcon: false,
   },
   unassigned: {
     label: "Unassigned",
@@ -207,6 +285,7 @@ export const STATUS_VISUALS: Record<JobVisualStatus, StatusVisual> = {
     strikethrough: false,
     desaturate: false,
     borderOverride: "#F59E0B",
+    showCarIcon: false,
   },
 };
 
@@ -231,8 +310,17 @@ export function ensureJobStatusStyles(): void {
     .qleno-active-stripe {
       animation: qleno-active-stripe-pulse 2s ease-in-out infinite;
     }
+    @keyframes qleno-en-route-drive {
+      0%   { transform: translateX(0); }
+      50%  { transform: translateX(1.5px); }
+      100% { transform: translateX(0); }
+    }
+    .qleno-en-route-icon {
+      animation: qleno-en-route-drive 0.8s ease-in-out infinite;
+    }
     @media (prefers-reduced-motion: reduce) {
       .qleno-active-stripe { animation: none; opacity: 1; }
+      .qleno-en-route-icon { animation: none; }
     }
   `;
   document.head.appendChild(style);

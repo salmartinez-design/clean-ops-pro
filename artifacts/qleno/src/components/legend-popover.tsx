@@ -14,7 +14,9 @@ const FF = "'Plus Jakarta Sans', sans-serif";
 const STATUS_ORDER: JobVisualStatus[] = [
   "scheduled",
   "active",
+  "en_route",
   "completed",
+  "completed_unpaid",
   "late_clockin",
   "no_show",
   "cancelled",
@@ -37,8 +39,23 @@ function ExampleTile({ status }: { status: JobVisualStatus }) {
     }}>
       {v.stripe && <div className="qleno-active-stripe" style={stripeStyle} />}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", overflow: "hidden", color: "#1A1917" }}>
-        <div style={{ fontSize: 10, fontWeight: 800, lineHeight: 1.1, textDecoration: v.strikethrough ? "line-through" : "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          Sample Client
+        <div style={{ display: "flex", alignItems: "center", gap: 3, minWidth: 0 }}>
+          {v.showCarIcon && (
+            <span className="qleno-en-route-icon" style={{ display: "inline-flex", flexShrink: 0, width: 14, height: 9 }}>
+              <svg width="14" height="9" viewBox="0 0 18 11" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <line x1="0.5" y1="3.5" x2="3"   y2="3.5" stroke="#1A1917" strokeWidth="1" strokeLinecap="round" opacity="0.85" />
+                <line x1="0.5" y1="6"   x2="2.5" y2="6"   stroke="#1A1917" strokeWidth="1" strokeLinecap="round" opacity="0.55" />
+                <line x1="0.5" y1="8.5" x2="2"   y2="8.5" stroke="#1A1917" strokeWidth="1" strokeLinecap="round" opacity="0.30" />
+                <path d="M5 7.5 V5 L6.5 3 H11.5 L13 5 V7.5 Z" stroke="#1A1917" strokeWidth="1" strokeLinejoin="round" fill="none" />
+                <line x1="13" y1="7.5" x2="16.5" y2="7.5" stroke="#1A1917" strokeWidth="1" strokeLinecap="round" />
+                <circle cx="7"    cy="9" r="1.3" stroke="#1A1917" strokeWidth="1" fill="none" />
+                <circle cx="12.5" cy="9" r="1.3" stroke="#1A1917" strokeWidth="1" fill="none" />
+              </svg>
+            </span>
+          )}
+          <div style={{ fontSize: 10, fontWeight: 800, lineHeight: 1.1, textDecoration: v.strikethrough ? "line-through" : "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
+            Sample Client
+          </div>
         </div>
         <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.7, marginTop: 1 }}>9:00 AM</div>
       </div>
