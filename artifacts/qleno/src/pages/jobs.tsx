@@ -422,12 +422,14 @@ function InlineAddressEdit({ job, onUpdate }: { job: DispatchJob; onUpdate: () =
   const { toast } = useToast();
   const API = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-  // Mode detection mirrors the server-side decision so the subtitle is truthful.
-  const hasJobOverride = !!job.job_address_street && (
-    String(job.job_address_street ?? "").trim() !== String(job.client_address ?? "").trim()
-    || String(job.job_address_zip ?? "").trim() !== String(job.client_address_zip ?? "").trim()
-  );
-  const mode: "client" | "job" = hasJobOverride ? "job" : "client";
+  // [permanent vs one-time] The user explicitly chooses via the
+  // "Save permanently for this client" checkbox. Default is one-time
+  // (job-level override) so a wrong click does not cascade unintended
+  // changes to the client record. The server still cascades to client
+  // mode automatically when the client has no address on file at all,
+  // so a freshly-imported client with NULL address gets the canonical
+  // record filled in regardless of the checkbox.
+  const clientHasAddress = !!String(job.client_address ?? "").trim();
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -437,6 +439,7 @@ function InlineAddressEdit({ job, onUpdate }: { job: DispatchJob; onUpdate: () =
     address: string; city: string; state: string; zip: string;
     lat: number; lng: number; formatted: string;
   } | null>(null);
+  const [permanent, setPermanent] = useState(false);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -533,11 +536,13 @@ function InlineAddressEdit({ job, onUpdate }: { job: DispatchJob; onUpdate: () =
   function open() {
     setPickedAddress(null);
     setError(null);
+    setPermanent(false);
     setEditing(true);
   }
   function cancel() {
     setPickedAddress(null);
     setError(null);
+    setPermanent(false);
     setEditing(false);
   }
 
@@ -546,6 +551,10 @@ function InlineAddressEdit({ job, onUpdate }: { job: DispatchJob; onUpdate: () =
       setError("Pick an address from the suggestions.");
       return;
     }
+    // Resolve the effective mode. If the client has no address on file
+    // (NULL/empty), the server will auto-cascade to client mode regardless
+    // of this flag; we still send the user's intent so audit log is honest.
+    const requestedMode: "client" | "job" = permanent ? "client" : "job";
     setSaving(true);
     setError(null);
     try {
@@ -557,6 +566,7 @@ function InlineAddressEdit({ job, onUpdate }: { job: DispatchJob; onUpdate: () =
           city:    pickedAddress.city,
           state:   pickedAddress.state,
           zip:     pickedAddress.zip,
+          mode:    requestedMode,
         }),
       });
       if (!r.ok) {
@@ -565,14 +575,20 @@ function InlineAddressEdit({ job, onUpdate }: { job: DispatchJob; onUpdate: () =
         setSaving(false);
         return;
       }
+      // Server may have upgraded our requested mode to "client" if the
+      // client had no address on file. Read the response to surface the
+      // accurate result in the toast.
+      const body = await r.json().catch(() => ({} as any));
+      const effectiveMode = body?.data?.mode ?? requestedMode;
       toast({
         title: "Address updated",
-        description: mode === "client"
-          ? "Applied to all future jobs for this client."
+        description: effectiveMode === "client"
+          ? "Applied to this client and all future jobs."
           : "Applied as a one-time override for this job only.",
       });
       setEditing(false);
       setPickedAddress(null);
+      setPermanent(false);
       onUpdate();
     } catch (e: any) {
       setError(e.message || "Network error.");
@@ -638,10 +654,39 @@ function InlineAddressEdit({ job, onUpdate }: { job: DispatchJob; onUpdate: () =
             </div>
           </div>
         )}
+        {/* [permanent toggle] After Google verifies the address the user
+            decides whether the change cascades to the client record (and
+            all future jobs) or stays as a one-time override on this job
+            only. Default is one-time. The toggle hides when the client
+            has no address on file at all because the server cascades
+            unconditionally in that case (no canonical record to override). */}
+        {pickedAddress && clientHasAddress && (
+          <label style={{
+            display: "flex", alignItems: "flex-start", gap: 8,
+            fontSize: 12, color: "#1A1917", lineHeight: 1.4,
+            cursor: saving ? "default" : "pointer",
+            background: "#F8F7F4", border: "1px solid #E5E2DC",
+            borderRadius: 6, padding: "8px 10px",
+          }}>
+            <input
+              type="checkbox"
+              checked={permanent}
+              onChange={e => setPermanent(e.target.checked)}
+              disabled={saving}
+              style={{ marginTop: 2, flexShrink: 0, accentColor: "#2D9B83" }}
+            />
+            <span>
+              <span style={{ fontWeight: 600 }}>Save permanently for this client.</span>
+              <span style={{ color: "#6B6860" }}> Apply this address to all future jobs for this client.</span>
+            </span>
+          </label>
+        )}
         <div style={{ fontSize: 11, color: "#6B6860", lineHeight: 1.4 }}>
-          {mode === "client"
-            ? "This updates all future jobs for this client."
-            : "This is a one-time override for this job only."}
+          {!clientHasAddress
+            ? "This client has no address on file. The new address will become their default."
+            : permanent
+              ? "This will update the client and apply to all future jobs."
+              : "This is a one-time override for this job only."}
         </div>
         {error && (
           <div style={{ fontSize: 12, color: "#991B1B", background: "#FEE2E2", border: "1px solid #FCA5A5", borderRadius: 6, padding: "6px 8px" }}>

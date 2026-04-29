@@ -2436,8 +2436,9 @@ router.patch("/:id/address", requireAuth, async (req, res) => {
     const jobId = parseInt(req.params.id);
     const companyId = req.auth!.companyId!;
     const userId = req.auth!.userId!;
-    const { address, city, state, zip } = (req.body ?? {}) as {
+    const { address, city, state, zip, mode: requestedMode } = (req.body ?? {}) as {
       address?: string; city?: string; state?: string; zip?: string;
+      mode?: "client" | "job";
     };
 
     if (!address || !address.trim()) {
@@ -2459,22 +2460,30 @@ router.patch("/:id/address", requireAuth, async (req, res) => {
     if (!ctx.rows.length) return res.status(404).json({ error: "Job not found" });
     const r = ctx.rows[0] as any;
 
-    // Auto-pick mode. Earlier rule treated any non-null jobs.address_street
-    // as a "job override" even when clients.address was NULL, which routed
-    // every edit to the job level on clients with missing address data and
-    // left the canonical client record stale. Corrected: only treat as
-    // override when the client actually HAS an address AND the job's value
-    // is intentionally different. Missing client data goes to client mode
-    // so the edit fills in the canonical record.
+    // Mode resolution. Frontend now sends an explicit mode (the popover's
+    // "permanent change" checkbox controls it: unchecked = job, checked =
+    // client). Auto-pick stays as a backwards-compatible fallback for any
+    // future caller that omits mode, AND for the case where a client has no
+    // address on file at all (NULL) — we always cascade to client level
+    // there because there is no canonical record to override.
     const clientHasAddress = !!String(r.c_addr ?? "").trim();
     const jobAddrTrim = String(r.j_addr ?? "").trim();
     const jobZipTrim = String(r.j_zip ?? "").trim();
     const cAddrTrim = String(r.c_addr ?? "").trim();
     const cZipTrim = String(r.c_zip ?? "").trim();
-    const hasJobOverride = clientHasAddress
+    const autoPickedJobOverride = clientHasAddress
       && !!jobAddrTrim
       && (jobAddrTrim !== cAddrTrim || jobZipTrim !== cZipTrim);
-    const mode: "client" | "job" = hasJobOverride ? "job" : "client";
+
+    let mode: "client" | "job";
+    if (requestedMode === "client" || requestedMode === "job") {
+      // Honor the explicit choice unless the client has no address yet.
+      // Even if the user picked "job", a client with no canonical address
+      // gets the cascade so future jobs are not orphaned.
+      mode = (!clientHasAddress) ? "client" : requestedMode;
+    } else {
+      mode = autoPickedJobOverride ? "job" : "client";
+    }
 
     // Server-side geocode (defense in depth).
     const fullAddress = [address, city, state, zip].filter(Boolean).join(", ");
