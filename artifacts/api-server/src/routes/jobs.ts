@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, usersTable, jobPhotosTable, timeclockTable, invoicesTable, scorecardsTable, serviceZonesTable, serviceZoneEmployeesTable, companiesTable, accountsTable, accountRateCardsTable, accountPropertiesTable, paymentsTable } from "@workspace/db/schema";
+import { jobsTable, clientsTable, usersTable, jobPhotosTable, timeclockTable, invoicesTable, scorecardsTable, serviceZonesTable, serviceZoneEmployeesTable, companiesTable, accountsTable, accountRateCardsTable, accountPropertiesTable, paymentsTable, recurringSchedulesTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, count, desc, sql, notExists, inArray, isNotNull } from "drizzle-orm";
 import { requireAuth } from "../lib/auth.js";
 import { logAudit } from "../lib/audit.js";
@@ -1240,36 +1240,43 @@ router.patch("/:id", requireAuth, async (req, res) => {
           ? parking_fee_days
           : null;
 
-        const inserted = await tx.execute(sql`
-          INSERT INTO recurring_schedules
-            (company_id, customer_id, frequency, day_of_week, days_of_week,
-             custom_frequency_weeks, start_date, end_date, scheduled_time,
-             assigned_employee_id, service_type, duration_minutes, base_fee,
-             commercial_hourly_rate, notes, instructions, is_active,
-             parking_fee_enabled, parking_fee_amount, parking_fee_days)
-          VALUES
-            (${companyId}, ${Number(before.client_id)},
-             ${fmap.f}::recurring_frequency,
-             ${scheduleDow}::recurring_day,
-             ${scheduleDays}::int[],
-             ${fmap.weeks},
-             ${effectiveDate}::date,
-             NULL,
-             ${effectiveTime},
-             ${primaryUid},
-             ${effectiveServiceType},
-             ${durationMin},
-             ${effectiveBaseFee},
-             ${effectiveHourlyRate},
-             ${effectiveNotes},
-             ${effectiveNotes},
-             true,
-             ${effParkingEnabled},
-             ${effParkingAmount},
-             ${effParkingDays}::int[])
-          RETURNING id
-        `);
-        createdScheduleId = Number((inserted.rows[0] as any).id);
+        // [recurring-on-save 2026-04-30 / fix #25] Switched from raw
+        // `sql` template to Drizzle ORM .insert().values().returning()
+        // because the previous tag interpolated `${scheduleDays}` (a
+        // JS array) by spreading each element as a separate scalar
+        // bind — yielding `($5, $6, $7, $8, $9)::int[]` which is
+        // invalid SQL and shifted every subsequent param off by N-1.
+        // The ORM path uses the schema's column codecs (notably
+        // integer().array() for days_of_week / parking_fee_days and
+        // the pgEnum types for frequency / day_of_week) and binds
+        // each value as exactly one parameter. Same pattern as
+        // POST /api/recurring (routes/recurring.ts:54-66).
+        const [insertedRow] = await tx
+          .insert(recurringSchedulesTable)
+          .values({
+            company_id: companyId,
+            customer_id: Number(before.client_id),
+            frequency: fmap.f as any,
+            day_of_week: scheduleDow as any,
+            days_of_week: scheduleDays,
+            custom_frequency_weeks: fmap.weeks,
+            start_date: effectiveDate,
+            end_date: null,
+            scheduled_time: effectiveTime as any,
+            assigned_employee_id: primaryUid,
+            service_type: effectiveServiceType,
+            duration_minutes: durationMin,
+            base_fee: effectiveBaseFee,
+            commercial_hourly_rate: effectiveHourlyRate,
+            notes: effectiveNotes,
+            instructions: effectiveNotes,
+            is_active: true,
+            parking_fee_enabled: effParkingEnabled,
+            parking_fee_amount: effParkingAmount,
+            parking_fee_days: effParkingDays,
+          })
+          .returning({ id: recurringSchedulesTable.id });
+        createdScheduleId = Number(insertedRow.id);
         setParts.recurring_schedule_id = createdScheduleId;
       }
 
