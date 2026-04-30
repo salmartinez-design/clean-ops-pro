@@ -1,0 +1,175 @@
+# [PR #28 / 2026-04-30] Playwright e2e workflow.
+#
+# Runs the e2e suite against a fully ephemeral local stack:
+# Postgres service container → schema bootstrap → api-server →
+# frontend → playwright. Zero production blast radius.
+#
+# CADENCE: ADVISORY-ONLY for the first phase. This workflow does
+# NOT block PR merges. Sal's plan: flip to blocking after we have
+# ~5 stable e2e tests across different surfaces and a track record
+# of <2% flake rate. Until then a red e2e on a PR is a heads-up,
+# not a stop-sign.
+#
+# Future-self: when flipping to blocking, set `required_status_checks`
+# in branch protection to include "e2e" and remove the
+# `continue-on-error: true` on the playwright step below. Don't
+# remove the comment above without re-evaluating flake rate first.
+#
+# GitHub Secrets needed (Sal will add these to repo settings):
+#   E2E_TEST_OWNER_EMAIL     — owner-role test user email
+#   E2E_TEST_OWNER_PASSWORD  — owner-role test user password
+# (Optional, for future role-specific tests:)
+#   E2E_TEST_ADMIN_EMAIL / E2E_TEST_ADMIN_PASSWORD
+#   E2E_TEST_TECH_EMAIL  / E2E_TEST_TECH_PASSWORD
+#
+# DATABASE_URL is generated inside the workflow against the
+# postgres service container — NOT a secret. Production credentials
+# never enter this workflow.
+
+name: e2e
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel in-flight runs on the same PR when a new commit lands.
+# Keeps the queue tight on rapid push cycles.
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: cascade smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: qleno_e2e
+          POSTGRES_PASSWORD: qleno_e2e
+          POSTGRES_DB: qleno_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qleno_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://qleno_e2e:qleno_e2e@localhost:5432/qleno_e2e
+      # CI flag — drives playwright retries=1, single worker, github reporter.
+      CI: "true"
+      # Frontend serves on :3000 via `serve`; api-server on :5000.
+      # See the "Start api-server" + "Start frontend" steps below.
+      E2E_BASE_URL: http://localhost:3000
+      E2E_SOURCE_CLIENT_ID: "21"
+      # Snapshot seed identity — the api-server's seedIfNeeded +
+      # phes-data-migration scripts seed the snapshot. The default
+      # owner credentials below match the seeded Phes owner; Sal
+      # will replace these with secrets-driven values once the
+      # GitHub Secrets are populated.
+      E2E_TEST_OWNER_EMAIL: ${{ secrets.E2E_TEST_OWNER_EMAIL }}
+      E2E_TEST_OWNER_PASSWORD: ${{ secrets.E2E_TEST_OWNER_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers (chromium only)
+        working-directory: artifacts/qleno
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build frontend
+        working-directory: artifacts/qleno
+        env:
+          PORT: "5000"
+          BASE_PATH: "/"
+        run: pnpm run build
+
+      # The api-server's seedIfNeeded + runPhesDataMigration on
+      # boot-up creates the schema, the demo company, the owner
+      # user, the Phes data fixture (including Jaira at id=21).
+      # We start it in the background and wait for the health
+      # endpoint before launching the frontend serve + tests.
+      - name: Start api-server
+        env:
+          PORT: "5000"
+          BASE_PATH: "/"
+          # Disable comms — tests should never trigger SMS/email
+          # even though the local SMTP/Twilio stubs would no-op.
+          # Belt + suspenders.
+          COMMS_ENABLED: "false"
+          NODE_ENV: "test"
+        run: |
+          npx tsx artifacts/api-server/src/index.ts > /tmp/api-server.log 2>&1 &
+          echo $! > /tmp/api-server.pid
+          # Wait up to 60s for the health endpoint. Phes data
+          # migration takes ~15s on a cold DB; keep the budget
+          # comfortable.
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:5000/api/health > /dev/null 2>&1; then
+              echo "api-server up after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          curl -sf http://localhost:5000/api/health || (echo "api-server failed to start"; tail -200 /tmp/api-server.log; exit 1)
+
+      - name: Start frontend (static serve of dist/public)
+        run: |
+          npx serve artifacts/qleno/dist/public -p 3000 -s > /tmp/frontend.log 2>&1 &
+          echo $! > /tmp/frontend.pid
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/ > /dev/null 2>&1; then
+              echo "frontend up after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          curl -sf http://localhost:3000/ || (echo "frontend failed to start"; tail -200 /tmp/frontend.log; exit 1)
+
+      - name: Run Playwright e2e suite
+        working-directory: artifacts/qleno
+        # ADVISORY for the first phase — see header comment for the
+        # blocking-rollover plan. Removes a flake-induced merge
+        # block while we tune the suite.
+        continue-on-error: true
+        run: pnpm run test:e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: artifacts/qleno/playwright-report/
+          retention-days: 7
+
+      - name: Upload api-server log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-server-log
+          path: /tmp/api-server.log
+          retention-days: 7
+
+      - name: Stop services
+        if: always()
+        run: |
+          [ -f /tmp/api-server.pid ] && kill "$(cat /tmp/api-server.pid)" || true
+          [ -f /tmp/frontend.pid ] && kill "$(cat /tmp/frontend.pid)" || true
