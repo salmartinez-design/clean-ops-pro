@@ -41,9 +41,13 @@ concurrency:
 
 jobs:
   e2e:
-    name: cascade smoke
+    # Job name surfaces as the GitHub check-run name. Keeping it
+    # short (`e2e`) matches what branch-protection rules reference
+    # in docs/branch-protection-setup.md once Sal flips this from
+    # advisory to required.
+    name: e2e
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
 
     services:
       postgres:
@@ -145,18 +149,36 @@ jobs:
           # any throw shows up in the public workflow output.
           ( npx tsx artifacts/api-server/src/index.ts 2>&1 | tee /tmp/api-server.log ) &
           echo $! > /tmp/api-server.pid
-          # Wait up to 90s for the health endpoint. Phes data
-          # migration takes ~15s on a cold DB; first cold boot in
-          # CI also creates ~30 tables via runPhesDataMigration's
-          # CREATE TABLE IF NOT EXISTS sweep, so give it room.
-          for i in $(seq 1 90); do
-            if curl -sf http://localhost:5000/api/health > /dev/null 2>&1; then
+
+          # Probe /api/healthz — the simple "server bound to port"
+          # endpoint, no DB dependency. /api/health (DB-checked) can
+          # return 503 during seed warm-up because seedIfNeeded +
+          # runPhesDataMigration hold transactions on shared tables
+          # while the SELECT 1 ping waits behind them. Healthz is the
+          # right readiness signal for "server can answer requests";
+          # the proof-of-life Playwright spec does the actual /api/health
+          # status assertion after the suite starts.
+          for i in $(seq 1 120); do
+            if curl -sf http://localhost:5000/api/healthz > /dev/null 2>&1; then
               echo "api-server up after ${i}s"
               break
             fi
             sleep 1
           done
-          curl -sf http://localhost:5000/api/health || (echo "api-server failed to start"; echo "===== api-server.log (last 400 lines) ====="; tail -400 /tmp/api-server.log; exit 1)
+          curl -sf http://localhost:5000/api/healthz || (echo "api-server failed to start"; echo "===== api-server.log (last 400 lines) ====="; tail -400 /tmp/api-server.log; exit 1)
+
+          # Give seed + phes-data-migration extra time to finish
+          # their background work. Tests that hit auth (login) need
+          # the seeded test user planted; tests that read clients/jobs
+          # need the snapshot rows. 30 s is generous for CI's empty
+          # Postgres + idempotent migrations.
+          echo "waiting 30s for background seed + data migration to complete"
+          sleep 30
+
+          # Confirm /api/health responds (200 ok or 503 db-error are
+          # both fine — the proof-of-life test will assert details).
+          curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5000/api/health || true
+
           # Also confirm the frontend is being served at the
           # SPA root so Playwright doesn't get a 404 on /.
           curl -sf http://localhost:5000/ > /dev/null || (echo "frontend not being served"; tail -50 /tmp/api-server.log; exit 1)

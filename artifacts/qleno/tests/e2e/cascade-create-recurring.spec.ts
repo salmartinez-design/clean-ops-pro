@@ -36,7 +36,18 @@ import { cloneClient, cleanupTestClient, getDbClient, type TestClientHandle } fr
 // Override via env if your snapshot uses a different id.
 const SOURCE_CLIENT_ID = Number(process.env.E2E_SOURCE_CLIENT_ID ?? 21);
 
+// Skip the entire suite when the test creds aren't present. This
+// unblocks PR-time CI before Sal lands the GitHub Secrets — the
+// workflow stays green and the cascade test flips on automatically
+// the first PR after secrets are configured. Same gate is used by
+// every auth-requiring spec in this directory.
+const HAS_CREDS = Boolean(
+  process.env.E2E_TEST_OWNER_EMAIL && process.env.E2E_TEST_OWNER_PASSWORD,
+);
+
 test.describe("cascade-create-recurring", () => {
+  test.skip(!HAS_CREDS, "E2E_TEST_OWNER_EMAIL/PASSWORD not set — auth-requiring tests skipped");
+
   let pg: Client;
   let handle: TestClientHandle | null = null;
 
