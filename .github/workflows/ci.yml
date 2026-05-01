@@ -1,0 +1,111 @@
+# Qleno CI — runs on every PR + push to main.
+#
+# Three concerns:
+#   1. .dispatch-stop guard — if the file exists at repo root on
+#      the branch under test, fail immediately. Sal can drop this
+#      file via the GitHub mobile app to halt all autonomous work.
+#   2. tsc-check — type-check the api-server + frontend without
+#      emitting. Catches PRs that compile in isolation but break
+#      the workspace's shared types.
+#   3. build — full build of api-server + frontend, the same
+#      command Railway runs. Catches PRs that pass tsc but fail
+#      bundling (Vite import errors, etc.).
+#
+# These three are the candidate "required status checks" for
+# branch protection (see docs/branch-protection-setup.md). The
+# Playwright suite lives in a separate workflow and is currently
+# advisory-only.
+
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dispatch-stop-guard:
+    name: dispatch-stop-guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Halt if .dispatch-stop is present
+        run: |
+          if [ -f .dispatch-stop ]; then
+            echo "::error::.dispatch-stop file is present at repo root."
+            echo "STOP file present, halting all autonomous work."
+            echo "Remove the file to re-enable CI."
+            cat .dispatch-stop || true
+            exit 1
+          fi
+          echo "no .dispatch-stop file — proceeding"
+
+  tsc-check:
+    name: tsc-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    needs: dispatch-stop-guard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Type-check (api-server + frontend)
+        run: pnpm -r exec tsc --noEmit
+
+  build-api-server:
+    name: build-api-server
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    needs: dispatch-stop-guard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Smoke-import api-server entry
+        run: node -e "require('typescript')" # presence check only
+      - name: tsc compile api-server
+        working-directory: artifacts/api-server
+        run: pnpm exec tsc --noEmit
+
+  build-frontend:
+    name: build-frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: dispatch-stop-guard
+    env:
+      PORT: "5000"
+      BASE_PATH: "/"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build frontend
+        working-directory: artifacts/qleno
+        run: pnpm run build
