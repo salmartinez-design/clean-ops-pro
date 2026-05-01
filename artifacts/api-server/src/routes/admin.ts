@@ -13,6 +13,24 @@ import type { Request, Response, NextFunction } from "express";
 
 const router = Router();
 
+// Kill switch: when DISPATCH_AUTONOMOUS_MODE !== "true", reject requests that
+// identify themselves as the Dispatch agent. Sal flips the env var to "true"
+// before an overnight Dispatch session and back to "false" (or unsets it) in
+// the morning or whenever something goes wrong. Daytime super-admin access
+// (no X-Dispatch-Agent header) is unaffected so Sal's normal admin work keeps
+// flowing.
+router.use((req: Request, res: Response, next: NextFunction) => {
+  const isDispatchRequest =
+    req.header("x-dispatch-agent") === "true" ||
+    req.header("x-dispatch-agent") === "1";
+  if (!isDispatchRequest) return next();
+  if (process.env.DISPATCH_AUTONOMOUS_MODE === "true") return next();
+  res.status(503).json({
+    error: "Service Unavailable",
+    message: "Dispatch mode disabled by operator",
+  });
+});
+
 const PLAN_MRR: Record<string, number> = {
   starter: 49,
   growth: 149,
