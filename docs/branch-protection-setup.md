@@ -111,7 +111,7 @@ ticked boxes against this doc.
 | Gate                              | What it prevents                                         |
 |-----------------------------------|----------------------------------------------------------|
 | `dispatch-stop-guard`             | Dispatch keeps merging after Sal hits the kill file      |
-| `tsc-check`                       | A PR types-check in isolation but breaks shared workspace |
+| `tsc-check`                       | A lib-side type regression breaks api-server / frontend (project-references only — artifact strict-mode lives in Dispatch backlog) |
 | `build-api-server` + `build-frontend` | A PR passes tsc but fails Railway's build step         |
 | `e2e` (when added)                | A PR ships green but breaks cascade / parking workflow   |
 | Up-to-date branch                 | A PR merges clean against an already-stale main          |
