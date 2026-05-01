@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, clientsTable, usersTable, jobPhotosTable, timeclockTable, invoicesTable, scorecardsTable, serviceZonesTable, serviceZoneEmployeesTable, companiesTable, accountsTable, accountRateCardsTable, accountPropertiesTable, paymentsTable, recurringSchedulesTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, count, desc, sql, notExists, inArray, isNotNull } from "drizzle-orm";
+import { eq, and, gte, lte, count, desc, sql, notExists, inArray, isNotNull, isNull } from "drizzle-orm";
 import { requireAuth } from "../lib/auth.js";
 import { logAudit } from "../lib/audit.js";
 import { generateJobCompletionPdf } from "../lib/generate-job-pdf.js";
@@ -1902,11 +1902,22 @@ router.patch("/:id", requireAuth, async (req, res) => {
           type Cand = { id: number; scheduled_date: string };
           const cands = (candidates.rows as unknown as Cand[]).map(r => ({ id: Number(r.id), scheduled_date: String(r.scheduled_date) }));
           const candIds = cands.map(c => c.id);
-          const clockedRows = candIds.length === 0 ? { rows: [] as any[] } : await tx.execute(sql`
-            SELECT DISTINCT job_id FROM timeclock
-            WHERE clock_out_at IS NULL AND job_id = ANY(${candIds}::int[])
-          `);
-          const clockedSet = new Set((clockedRows.rows as Array<{ job_id: number }>).map(r => Number(r.job_id)));
+          // [PR / 2026-05-01 — comprehensive array-bind audit fix]
+          // Was: tx.execute(sql`... = ANY(${candIds}::int[])`) which
+          // spreads candIds into N scalar parameters per the same bug
+          // that hit PR #25's INSERT (fixed in #26) and PR #38's
+          // recurring_schedules UPDATE (fixed in #40). Drizzle's
+          // inArray() helper binds the array as a single parameter.
+          const clockedRowsRes = candIds.length === 0
+            ? [] as Array<{ job_id: number }>
+            : await tx
+                .selectDistinct({ job_id: timeclockTable.job_id })
+                .from(timeclockTable)
+                .where(and(
+                  isNull(timeclockTable.clock_out_at),
+                  inArray(timeclockTable.job_id, candIds),
+                ));
+          const clockedSet = new Set(clockedRowsRes.map(r => Number(r.job_id)));
 
           // [AI] Hybrid cascade. Build the new pattern's valid future-date set
           // and bucket each candidate job:
@@ -1989,23 +2000,38 @@ router.patch("/:id", requireAuth, async (req, res) => {
           futureClockedSkipped = skippedClockedUpdate + skippedClockedDelete;
 
           // UPDATE matching jobs in place.
+          // [PR / 2026-05-01 — comprehensive array-bind audit fix]
+          // Was: hand-rolled `sql\`UPDATE jobs SET ${setSql} WHERE id =
+          // ANY(${toUpdate}::int[])\`` — same bug class as PR #25 /
+          // PR #40. Switched to Drizzle ORM `.update().set().where(
+          // inArray(...))`. The set fields are scalars (frequency,
+          // service_type, scheduled_time, allowed_hours, base_fee,
+          // hourly_rate, notes, manual_rate_override) — none are
+          // arrays — so they're safe in the parameterised set object.
+          // The WHERE id IN (...) is the array-bind risk; inArray()
+          // binds the JS number[] as ONE int[] parameter.
           if (toUpdate.length > 0 && futureJobsSet.length > 0) {
-            const setClauses = futureJobsSet.map((c, i) => sql`${sql.identifier(c)} = ${futureJobsVals[i]}`);
-            const setSql = sql.join(setClauses, sql`, `);
-            const updRes = await tx.execute(sql`
-              UPDATE jobs SET ${setSql}
-              WHERE id = ANY(${toUpdate}::int[])
-            `);
+            const updJobsSet: Record<string, unknown> = {};
+            for (let i = 0; i < futureJobsSet.length; i++) {
+              updJobsSet[futureJobsSet[i]] = futureJobsVals[i];
+            }
+            const updRes = await tx
+              .update(jobsTable)
+              .set(updJobsSet as any)
+              .where(inArray(jobsTable.id, toUpdate));
             futureCount = (updRes as any).rowCount ?? toUpdate.length;
           } else {
             futureCount = toUpdate.length;
           }
 
           // DELETE non-matching jobs (only when day pattern changed).
+          // [PR / 2026-05-01 — comprehensive array-bind audit fix]
+          // Same bug class. Drizzle .delete().where(inArray()) binds
+          // the array as a single int[] parameter.
           if (toDelete.length > 0) {
-            const delRes = await tx.execute(sql`
-              DELETE FROM jobs WHERE id = ANY(${toDelete}::int[])
-            `);
+            const delRes = await tx
+              .delete(jobsTable)
+              .where(inArray(jobsTable.id, toDelete));
             futureDeleted = (delRes as any).rowCount ?? toDelete.length;
           }
 
