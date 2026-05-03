@@ -1157,8 +1157,13 @@ export default function EditJobModal({
                         return (
                           <button key={p.label} type="button"
                             onClick={() => {
-                              setFrequency(p.frequency);
-                              setDaysOfWeek([...p.days]);
+                              if (active) {
+                                setFrequency("custom_days");
+                                setDaysOfWeek([]);
+                              } else {
+                                setFrequency(p.frequency);
+                                setDaysOfWeek([...p.days]);
+                              }
                             }}
                             style={{
                               fontSize: 11, fontWeight: 600, padding: "5px 10px", borderRadius: 6,
