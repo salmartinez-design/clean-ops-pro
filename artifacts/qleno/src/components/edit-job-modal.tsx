@@ -825,18 +825,24 @@ export default function EditJobModal({
       return;
     }
 
-    // [PR / 2026-04-30] Recurring job — classify the diff and branch:
-    //   template-only → auto-cascade (this_and_future), no picker.
-    //                   Editing schedule-template fields IS editing
-    //                   the schedule; the second screen would just ask
-    //                   the same question wearing different clothes.
+    // [PR / 2026-05-03] Recurring job — classify the diff and branch:
+    //   template-only → picker WITH "this_and_future" preselected.
+    //                   Default click-through matches the prior auto-cascade
+    //                   behavior, but the picker is now visible so the
+    //                   operator can pick "all" to backfill past unpaid
+    //                   completed jobs (engine skips paid past per audit
+    //                   policy). Hiding the picker entirely meant `cascade=all`
+    //                   was unreachable for pure template edits — the case
+    //                   that actually motivates a backfill.
     //   occurrence-only → existing 4-option picker.
     //   mixed → picker WITH footnote per Sal's Q1 = (c). Single
     //           cascade_scope on the wire; operator picks with full
     //           context about the trade-off.
     const { template, occurrence } = getChangedFieldsByScope();
     if (template.length > 0 && occurrence.length === 0) {
-      submit("this_and_future");
+      setMixedEditWarning(null);
+      setCascadeChoice("this_and_future");
+      setCascadePromptOpen(true);
       return;
     }
     if (occurrence.length > 0 && template.length === 0) {
@@ -1536,11 +1542,29 @@ export default function EditJobModal({
                         always-enabled because it doesn't depend on
                         daysOfWeek. */}
                     {(() => {
-                      const matchDisabled = daysOfWeek.length === 0;
+                      // [PR / 2026-05-03] Disable Match-schedule when parking
+                      // days already equal schedule days. Closes the
+                      // perception gap from the null-fallback case: when
+                      // parkingFeeDays is null, effectiveDays at the day-
+                      // toggle row already falls back to daysOfWeek, so
+                      // tapping Match-schedule fires setParkingFeeDays
+                      // correctly but produces no visible UI delta — feels
+                      // broken. Greying the button when there's nothing to
+                      // do (no-op vs effective state) makes the control
+                      // honest about its work.
+                      const sortedDow = [...daysOfWeek].sort();
+                      const sortedPark = parkingFeeDays == null ? null : [...parkingFeeDays].sort();
+                      const alreadyMatches = sortedPark != null
+                        && sortedPark.length === sortedDow.length
+                        && sortedPark.every((v, i) => v === sortedDow[i]);
+                      const matchDisabled = daysOfWeek.length === 0 || alreadyMatches;
+                      const matchTitle = daysOfWeek.length === 0
+                        ? "Pick schedule days first"
+                        : alreadyMatches ? "Parking already matches schedule" : undefined;
                       return (
                         <button type="button"
                           disabled={matchDisabled}
-                          title={matchDisabled ? "Pick schedule days first" : undefined}
+                          title={matchTitle}
                           onClick={() => setParkingFeeDays([...daysOfWeek].sort())}
                           style={{
                             fontSize: 11, fontWeight: 600, padding: "5px 10px", borderRadius: 6,
