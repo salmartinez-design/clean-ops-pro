@@ -1393,9 +1393,18 @@ export default function EditJobModal({
                     <select value={scopeId ?? ""} onChange={e => setScopeId(parseInt(e.target.value))}
                       style={INPUT} disabled={scopesLoading}>
                       {scopesLoading ? <option>Loading…</option> : null}
-                      {scopes.map(s => (
-                        <option key={s.id} value={s.id}>{s.name} {s.scope_group ? `· ${s.scope_group}` : ""}</option>
-                      ))}
+                      {/* Residential clients must not see Commercial scopes.
+                          The commercial branch above uses a separate dropdown
+                          (commercial_service_types) and never reaches this
+                          select, so the only filter we need here is to drop
+                          Commercial scope_group entries from the residential
+                          list. Recurring Cleaning + Hourly stay because
+                          residential clients legitimately use them. */}
+                      {scopes
+                        .filter(s => s.scope_group !== "Commercial")
+                        .map(s => (
+                          <option key={s.id} value={s.id}>{s.name} {s.scope_group ? `· ${s.scope_group}` : ""}</option>
+                        ))}
                     </select>
                   </div>
                   <div>
