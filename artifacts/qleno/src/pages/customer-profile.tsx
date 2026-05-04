@@ -3364,7 +3364,13 @@ function ServiceDetailsSection({ client, onUpdate, refetch, recurringSchedule, o
     return filteredScopes.find(s => s.name.toLowerCase() === target || scopeToSlug(s.name) === target);
   };
 
-  const [form, setForm] = useState({
+  // [PR #56] Build form values from current props. Reused by both the
+  // useState initializer and the Edit-click handler so the form always
+  // reflects the LATEST props when the operator opens the editor — fixes
+  // the "Schedule Rate field is blank but view shows $215" repro where the
+  // form was initialized once at mount (before recurringSchedule had
+  // loaded) and stayed stale across re-renders.
+  const buildFormFromProps = () => ({
     // [audit BUG #4] Fall back to the recurring schedule's values when the
     // client-level fields are empty. Migrated MC clients have the schedule
     // populated but `clients.frequency` / `clients.service_type` /
@@ -3402,6 +3408,7 @@ function ServiceDetailsSection({ client, onUpdate, refetch, recurringSchedule, o
       ? recurringSchedule.parking_fee_days
       : (recurringSchedule?.days_of_week ?? [])) as number[],
   });
+  const [form, setForm] = useState(buildFormFromProps);
 
   const save = async () => {
     setSaving(true);
@@ -3495,7 +3502,7 @@ function ServiceDetailsSection({ client, onUpdate, refetch, recurringSchedule, o
             <button onClick={save} disabled={saving} style={{ padding: "7px 14px", background: "var(--brand)", border: "none", borderRadius: 7, color: "#FFFFFF", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FF, opacity: saving ? 0.6 : 1 }}>{saving ? "Saving..." : "Save"}</button>
           </div>
         ) : (
-          <button onClick={() => setEditing(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", border: "1px solid #E5E2DC", borderRadius: 7, background: "#FFFFFF", color: "#1A1917", fontSize: 13, cursor: "pointer", fontFamily: FF }}>
+          <button onClick={() => { setForm(buildFormFromProps()); setEditing(true); }} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", border: "1px solid #E5E2DC", borderRadius: 7, background: "#FFFFFF", color: "#1A1917", fontSize: 13, cursor: "pointer", fontFamily: FF }}>
             <Edit2 size={13} /> Edit Service Details
           </button>
         )}
