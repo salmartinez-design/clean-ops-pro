@@ -3576,34 +3576,11 @@ function ServiceDetailsSection({ client, onUpdate, refetch, recurringSchedule, o
         )}
       </div>
 
-      {/* [PR #59] Property + access details. The redundant Frequency /
-          Service Type / Base Rate / Allowed Hours fields used to live here
-          AND on the Recurring Schedule below — operators saw two of each
-          and assumed they were different concepts. They aren't: the
-          schedule is the single source of truth. We dropped the duplicate
-          fields and kept only the actually-property-level info (entry
-          instructions, alarm code, pets, internal notes). The schedule
-          editor below now mirrors its values back to the legacy clients.*
-          columns on save so any old code path that still reads them stays
-          correct. */}
-      {editing ? (
-        <div style={{ border: "1px solid #E5E2DC", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#6B6860", textTransform: "uppercase" as const, letterSpacing: "0.07em" }}>Access &amp; Notes</div>
-          <div>{lbl("Entry Instructions")}<textarea value={form.home_access_notes} onChange={upd("home_access_notes")} rows={2} style={{ ...inp, resize: "vertical" as const }} /></div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>{lbl("Alarm / Lockbox Code")}<input value={form.alarm_code} onChange={upd("alarm_code")} style={inp} /></div>
-            <div>{lbl("Pets / Equipment Notes")}<input value={form.pets} onChange={upd("pets")} style={inp} /></div>
-          </div>
-          <div>{lbl("Internal Notes")}<textarea value={form.notes} onChange={upd("notes")} rows={2} style={{ ...inp, resize: "vertical" as const }} /></div>
-        </div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
-          {client.home_access_notes && <DL label="Entry Instructions" value={client.home_access_notes} />}
-          {client.alarm_code && <DL label="Alarm Code" value="••••••" />}
-          {client.pets && <DL label="Pets / Equipment" value={client.pets} />}
-          {client.notes && <DL label="Notes" value={client.notes} />}
-        </div>
-      )}
+      {/* [PR #61] Recurring Schedule moved ABOVE Access & Notes — operator
+          works in this section first when setting up or reviewing a
+          client; access/notes are reference fields they touch less
+          often. Property fields (entry instructions, alarm, pets,
+          internal notes) now live below. */}
 
       {/* [PR #59] Recurring Schedule — now ALWAYS rendered. When the
           client has no schedule yet, the read-only view shows a "Set Up
@@ -4009,6 +3986,29 @@ function ServiceDetailsSection({ client, onUpdate, refetch, recurringSchedule, o
             </div>
           ) : null}
         </div>
+
+      {/* [PR #59] Access & Notes — property-level fields (entry, alarm,
+          pets, internal notes). [PR #61] Moved here, below Recurring
+          Schedule, since operators reference these less often than the
+          recurring service config. */}
+      {editing ? (
+        <div style={{ border: "1px solid #E5E2DC", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#6B6860", textTransform: "uppercase" as const, letterSpacing: "0.07em" }}>Access &amp; Notes</div>
+          <div>{lbl("Entry Instructions")}<textarea value={form.home_access_notes} onChange={upd("home_access_notes")} rows={2} style={{ ...inp, resize: "vertical" as const }} /></div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>{lbl("Alarm / Lockbox Code")}<input value={form.alarm_code} onChange={upd("alarm_code")} style={inp} /></div>
+            <div>{lbl("Pets / Equipment Notes")}<input value={form.pets} onChange={upd("pets")} style={inp} /></div>
+          </div>
+          <div>{lbl("Internal Notes")}<textarea value={form.notes} onChange={upd("notes")} rows={2} style={{ ...inp, resize: "vertical" as const }} /></div>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+          {client.home_access_notes && <DL label="Entry Instructions" value={client.home_access_notes} />}
+          {client.alarm_code && <DL label="Alarm Code" value="••••••" />}
+          {client.pets && <DL label="Pets / Equipment" value={client.pets} />}
+          {client.notes && <DL label="Notes" value={client.notes} />}
+        </div>
+      )}
 
       {/* Rate History */}
       <div style={{ border: "1px solid #E5E2DC", borderRadius: 10, padding: 16 }}>
