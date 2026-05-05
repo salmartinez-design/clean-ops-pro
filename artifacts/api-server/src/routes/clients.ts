@@ -1435,23 +1435,60 @@ router.patch("/:id/recurring-schedule", requireAuth, async (req, res) => {
         setFragments.push(sql`allowed_hours = ${hrs}`);
       }
       if (service_type !== undefined) {
-        // Pass the raw value — the jobs.service_type enum is the same
-        // as recurring_schedules.service_type so no mapping needed.
-        setFragments.push(sql`service_type = ${service_type}::service_type`);
+        // [PR #61] After PR #57 the Service Type dropdown stores the
+        // readable scope name ("Standard Clean") instead of the slug
+        // ("standard_clean"). The jobs.service_type enum only accepts
+        // slug values — casting "Standard Clean"::service_type fails
+        // and aborts the entire save with "Failed to save changes."
+        // Convert to slug + validate against the enum allowlist before
+        // cascading. If the value isn't a recognized enum, skip the
+        // cascade for service_type (the schedule template still updates
+        // — just doesn't rewrite existing jobs' service_type).
+        const validEnumSlugs = new Set([
+          "standard_clean", "deep_clean", "move_out", "recurring",
+          "post_construction", "move_in", "office_cleaning",
+          "common_areas", "retail_store", "medical_office",
+          "ppm_turnover", "post_event", "ppm_common_areas",
+          "commercial_cleaning", "recurring_commercial_cleaning",
+        ]);
+        const slugify = (s: string) => String(s).toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+        const candidate = service_type ? slugify(String(service_type)) : "";
+        if (candidate && validEnumSlugs.has(candidate)) {
+          setFragments.push(sql`service_type = ${candidate}::service_type`);
+        } else if (service_type) {
+          console.warn(`[recurring-schedule cascade] skipping service_type cast — "${service_type}" doesn't match a known enum slug. Schedule template updated; jobs.service_type left unchanged.`);
+        }
       }
       if (frequency !== undefined) {
-        setFragments.push(sql`frequency = ${frequency}::frequency`);
+        // [PR #61] Defensive cast for frequency too. Belt-and-suspenders
+        // against future UI changes that might pass non-canonical values.
+        const validFreqs = new Set([
+          "weekly", "biweekly", "every_3_weeks", "monthly", "on_demand",
+          "daily", "weekdays", "custom_days", "semi_monthly",
+        ]);
+        if (frequency && validFreqs.has(String(frequency))) {
+          setFragments.push(sql`frequency = ${frequency}::frequency`);
+        } else if (frequency) {
+          console.warn(`[recurring-schedule cascade] skipping frequency cast — "${frequency}" not in enum. Schedule template updated; jobs.frequency left unchanged.`);
+        }
       }
-      const setSql = setFragments.reduce((acc: any, frag: any, i: number) => i === 0 ? frag : sql`${acc}, ${frag}`);
-      const cascadeRes = await db.execute(sql`
-        UPDATE jobs
-        SET ${setSql}
-        WHERE company_id = ${companyId}
-          AND recurring_schedule_id = ${updated[0].id}
-          AND status = 'scheduled'
-          AND scheduled_date >= ${today}
-      `);
-      cascadeUpdated = (cascadeRes as any).rowCount ?? 0;
+      // [PR #61] Skip the cascade UPDATE entirely when no fragments
+      // survived validation — happens when the only changed field is
+      // service_type or frequency and the value didn't match a valid
+      // enum slug. Otherwise we'd build "UPDATE jobs SET WHERE ..."
+      // and Postgres would error on the empty SET clause.
+      if (setFragments.length > 0) {
+        const setSql = setFragments.reduce((acc: any, frag: any, i: number) => i === 0 ? frag : sql`${acc}, ${frag}`);
+        const cascadeRes = await db.execute(sql`
+          UPDATE jobs
+          SET ${setSql}
+          WHERE company_id = ${companyId}
+            AND recurring_schedule_id = ${updated[0].id}
+            AND status = 'scheduled'
+            AND scheduled_date >= ${today}
+        `);
+        cascadeUpdated = (cascadeRes as any).rowCount ?? 0;
+      }
     }
 
     // [parking-cascade] Cascade parking config to existing future scheduled
